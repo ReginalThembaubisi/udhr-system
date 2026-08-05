@@ -40,6 +40,9 @@ public class Diagnosis {
     @Column(nullable = false)
     private String diagnosis;
 
+    @Column(name = "icd10_code")
+    private String icd10Code;
+
     @Column(columnDefinition = "TEXT")
     private String notes;
 

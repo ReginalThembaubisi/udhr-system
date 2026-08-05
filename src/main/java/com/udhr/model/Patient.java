@@ -38,6 +38,9 @@ public class Patient {
     @Column(name = "contact_number")
     private String contactNumber;
 
+    @Column(name = "email")
+    private String email;
+
     @Column(columnDefinition = "TEXT")
     private String address;
 

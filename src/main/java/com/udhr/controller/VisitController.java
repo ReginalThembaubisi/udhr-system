@@ -41,12 +41,8 @@ public class VisitController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            Visit visit = visitService.addVisit(visitRequest);
-            return ResponseEntity.status(HttpStatus.CREATED).body(visit);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        Visit visit = visitService.addVisit(visitRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(visit);
     }
 
     @GetMapping("/patient/{patientId}")
@@ -56,11 +52,7 @@ public class VisitController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            List<Visit> visits = visitService.getVisitsByPatient(patientId);
-            return ResponseEntity.ok(visits);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        List<Visit> visits = visitService.getVisitsByPatient(patientId);
+        return ResponseEntity.ok(visits);
     }
 }

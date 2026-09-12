@@ -41,12 +41,8 @@ public class ChronicConditionController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            ChronicCondition chronicCondition = chronicConditionService.addChronicCondition(chronicConditionRequest);
-            return ResponseEntity.status(HttpStatus.CREATED).body(chronicCondition);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        ChronicCondition chronicCondition = chronicConditionService.addChronicCondition(chronicConditionRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(chronicCondition);
     }
 
     @GetMapping("/patient/{patientId}")
@@ -56,11 +52,7 @@ public class ChronicConditionController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            List<ChronicCondition> chronicConditions = chronicConditionService.getChronicConditionsByPatient(patientId);
-            return ResponseEntity.ok(chronicConditions);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        List<ChronicCondition> chronicConditions = chronicConditionService.getChronicConditionsByPatient(patientId);
+        return ResponseEntity.ok(chronicConditions);
     }
 }

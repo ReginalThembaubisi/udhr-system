@@ -1,5 +1,6 @@
 package com.udhr.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -12,6 +13,9 @@ import org.springframework.web.client.RestTemplate;
 
 @Service
 public class AfricasTalkingService {
+
+    @Autowired
+    private RestTemplate restTemplate;
 
     @Value("${africastalking.username:sandbox}")
     private String username;
@@ -28,9 +32,7 @@ public class AfricasTalkingService {
         }
 
         try {
-            RestTemplate restTemplate = new RestTemplate();
-            
-            String url = "sandbox".equalsIgnoreCase(username) 
+            String url = "sandbox".equalsIgnoreCase(username)
                     ? "https://api.sandbox.africastalking.com/version1/messaging"
                     : "https://api.africastalking.com/version1/messaging";
 

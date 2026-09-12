@@ -41,12 +41,8 @@ public class PrescriptionController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            Prescription prescription = prescriptionService.addPrescription(prescriptionRequest);
-            return ResponseEntity.status(HttpStatus.CREATED).body(prescription);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        Prescription prescription = prescriptionService.addPrescription(prescriptionRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(prescription);
     }
 
     @GetMapping("/patient/{patientId}")
@@ -56,12 +52,8 @@ public class PrescriptionController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            List<Prescription> prescriptions = prescriptionService.getPrescriptionsByPatient(patientId);
-            return ResponseEntity.ok(prescriptions);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        List<Prescription> prescriptions = prescriptionService.getPrescriptionsByPatient(patientId);
+        return ResponseEntity.ok(prescriptions);
     }
 
     @GetMapping("/patient/{patientId}/active")
@@ -71,11 +63,7 @@ public class PrescriptionController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            List<Prescription> prescriptions = prescriptionService.getActivePrescriptionsByPatient(patientId);
-            return ResponseEntity.ok(prescriptions);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        List<Prescription> prescriptions = prescriptionService.getActivePrescriptionsByPatient(patientId);
+        return ResponseEntity.ok(prescriptions);
     }
 }

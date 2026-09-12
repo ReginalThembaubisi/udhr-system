@@ -2,10 +2,10 @@ package com.udhr.controller;
 
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.security.FacilityGuard;
 import com.udhr.service.DrugFoodAuditService;
 import com.udhr.service.TreatmentResponseService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +22,9 @@ public class ClinicalAlertController {
 
     @Autowired
     private PatientRepository patientRepository;
+
+    @Autowired
+    private StaffRepository staffRepository;
 
     @Autowired
     private PrescriptionRepository prescriptionRepository;
@@ -48,169 +51,162 @@ public class ClinicalAlertController {
         return (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
 
+    private Staff currentStaff() {
+        String staffNumber = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Authenticated staff not found"));
+    }
+
     @GetMapping
     public ResponseEntity<?> getUnresolvedAlerts() {
-        try {
-            List<ClinicalAlert> alerts = alertRepository.findByIsResolvedFalseOrderByCreatedAtDesc();
-            List<Map<String, Object>> response = new ArrayList<>();
+        Staff staff = currentStaff();
+        boolean isAdmin = "ADMIN".equalsIgnoreCase(staff.getRole());
+        Long staffFacilityId = staff.getFacility() != null ? staff.getFacility().getId() : null;
 
-            for (ClinicalAlert alert : alerts) {
-                Map<String, Object> detail = new HashMap<>();
-                detail.put("alert", alert);
-                detail.put("patient", alert.getPatient());
+        List<ClinicalAlert> alerts = alertRepository.findByIsResolvedFalseOrderByCreatedAtDesc().stream()
+                .filter(a -> isAdmin
+                        || (a.getPatient().getFacility() != null
+                            && a.getPatient().getFacility().getId().equals(staffFacilityId)))
+                .collect(Collectors.toList());
+        List<Map<String, Object>> response = new ArrayList<>();
 
-                Patient patient = alert.getPatient();
-                
-                // Fetch active prescriptions
-                List<Prescription> activeRx = prescriptionRepository.findByPatientIdOrderByCreatedAtDesc(patient.getId())
-                        .stream().filter(Prescription::getActive).collect(Collectors.toList());
-                detail.put("activePrescriptions", activeRx);
+        for (ClinicalAlert alert : alerts) {
+            Map<String, Object> detail = new HashMap<>();
+            detail.put("alert", alert);
+            detail.put("patient", alert.getPatient());
 
-                // Calculate adherence score (last 14 days)
-                LocalDateTime fourteenDaysAgo = LocalDateTime.now().minusDays(14);
-                List<MedicationAdherence> logs = adherenceRepository.findByPatientIdAndScheduledTimeBetweenOrderByScheduledTimeAsc(
-                        patient.getId(), fourteenDaysAgo, LocalDateTime.now());
-                long totalDoses = logs.stream().filter(l -> l.getScheduledTime().isBefore(LocalDateTime.now())).count();
-                long takenDoses = logs.stream().filter(l -> "TAKEN".equals(l.getStatus())).count();
-                int score = totalDoses > 0 ? (int) ((takenDoses * 100) / totalDoses) : 100;
-                detail.put("adherenceScore", score);
+            Patient patient = alert.getPatient();
 
-                // Last 3 symptom checks
-                List<SymptomCheck> checks = symptomCheckRepository.findByPatientIdOrderByCheckedAtDesc(patient.getId())
-                        .stream().limit(3).collect(Collectors.toList());
-                detail.put("recentSymptomChecks", checks);
+            // Fetch active prescriptions
+            List<Prescription> activeRx = prescriptionRepository.findByPatientIdOrderByCreatedAtDesc(patient.getId())
+                    .stream().filter(Prescription::getActive).collect(Collectors.toList());
+            detail.put("activePrescriptions", activeRx);
 
-                // Lab recommendations
-                List<LabRecommendation> labRecs = labRecommendationRepository.findByAlertId(alert.getId());
-                detail.put("labRecommendations", labRecs);
+            // Calculate adherence score (last 14 days)
+            LocalDateTime fourteenDaysAgo = LocalDateTime.now().minusDays(14);
+            List<MedicationAdherence> logs = adherenceRepository.findByPatientIdAndScheduledTimeBetweenOrderByScheduledTimeAsc(
+                    patient.getId(), fourteenDaysAgo, LocalDateTime.now());
+            long totalDoses = logs.stream().filter(l -> l.getScheduledTime().isBefore(LocalDateTime.now())).count();
+            long takenDoses = logs.stream().filter(l -> "TAKEN".equals(l.getStatus())).count();
+            int score = totalDoses > 0 ? (int) ((takenDoses * 100) / totalDoses) : 100;
+            detail.put("adherenceScore", score);
 
-                // Differential diagnoses
-                List<DifferentialDiagnosis> diffDiags = differentialDiagnosisRepository.findByAlertId(alert.getId());
-                detail.put("differentialDiagnoses", diffDiags);
+            // Last 3 symptom checks
+            List<SymptomCheck> checks = symptomCheckRepository.findByPatientIdOrderByCheckedAtDesc(patient.getId())
+                    .stream().limit(3).collect(Collectors.toList());
+            detail.put("recentSymptomChecks", checks);
 
-                response.add(detail);
-            }
+            // Lab recommendations
+            List<LabRecommendation> labRecs = labRecommendationRepository.findByAlertId(alert.getId());
+            detail.put("labRecommendations", labRecs);
 
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+            // Differential diagnoses
+            List<DifferentialDiagnosis> diffDiags = differentialDiagnosisRepository.findByAlertId(alert.getId());
+            detail.put("differentialDiagnoses", diffDiags);
+
+            response.add(detail);
         }
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{id}/resolve")
     public ResponseEntity<?> resolveAlert(@PathVariable Long id) {
-        try {
-            ClinicalAlert alert = alertRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("Alert not found"));
-            alert.setIsResolved(true);
-            alert.setResolvedAt(LocalDateTime.now());
-            ClinicalAlert saved = alertRepository.save(alert);
-            return ResponseEntity.ok(saved);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        ClinicalAlert alert = alertRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Alert not found"));
+        FacilityGuard.assertSameFacility(currentStaff(), alert.getPatient());
+        alert.setIsResolved(true);
+        alert.setResolvedAt(LocalDateTime.now());
+        ClinicalAlert saved = alertRepository.save(alert);
+        return ResponseEntity.ok(saved);
     }
 
     @GetMapping("/patient/{patientId}")
     public ResponseEntity<?> getPatientTimelineData(@PathVariable Long patientId) {
-        try {
-            Patient patient = patientRepository.findById(patientId)
-                    .orElseThrow(() -> new RuntimeException("Patient not found"));
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        FacilityGuard.assertSameFacility(currentStaff(), patient);
 
-            LocalDateTime fourteenDaysAgo = LocalDateTime.now().minusDays(14);
+        LocalDateTime fourteenDaysAgo = LocalDateTime.now().minusDays(14);
 
-            Map<String, Object> data = new HashMap<>();
-            data.put("patient", patient);
-            
-            // Adherence Logs in last 14 days
-            List<MedicationAdherence> adherenceLogs = adherenceRepository.findByPatientIdAndScheduledTimeBetweenOrderByScheduledTimeAsc(
-                    patientId, fourteenDaysAgo, LocalDateTime.now().plusDays(1));
-            data.put("adherenceLogs", adherenceLogs);
+        Map<String, Object> data = new HashMap<>();
+        data.put("patient", patient);
 
-            // Symptom checks in last 14 days
-            List<SymptomCheck> symptomChecks = symptomCheckRepository.findByPatientIdOrderByCheckedAtDesc(patientId)
-                    .stream().filter(c -> c.getCheckedAt().isAfter(fourteenDaysAgo)).collect(Collectors.toList());
-            data.put("symptomChecks", symptomChecks);
+        // Adherence Logs in last 14 days
+        List<MedicationAdherence> adherenceLogs = adherenceRepository.findByPatientIdAndScheduledTimeBetweenOrderByScheduledTimeAsc(
+                patientId, fourteenDaysAgo, LocalDateTime.now().plusDays(1));
+        data.put("adherenceLogs", adherenceLogs);
 
-            // Active Prescriptions
-            List<Prescription> rxList = prescriptionRepository.findByPatientIdOrderByCreatedAtDesc(patientId)
-                    .stream().filter(Prescription::getActive).collect(Collectors.toList());
-            data.put("prescriptions", rxList);
+        // Symptom checks in last 14 days
+        List<SymptomCheck> symptomChecks = symptomCheckRepository.findByPatientIdOrderByCheckedAtDesc(patientId)
+                .stream().filter(c -> c.getCheckedAt().isAfter(fourteenDaysAgo)).collect(Collectors.toList());
+        data.put("symptomChecks", symptomChecks);
 
-            // Active clinical alerts
-            List<ClinicalAlert> activeAlerts = alertRepository.findByPatientIdAndIsResolvedFalse(patientId);
-            data.put("activeAlerts", activeAlerts);
+        // Active Prescriptions
+        List<Prescription> rxList = prescriptionRepository.findByPatientIdOrderByCreatedAtDesc(patientId)
+                .stream().filter(Prescription::getActive).collect(Collectors.toList());
+        data.put("prescriptions", rxList);
 
-            // Food drug audit
-            List<Map<String, Object>> conflicts = drugFoodAuditService.auditDrugFoodConflicts(patientId);
-            data.put("foodConflicts", conflicts);
+        // Active clinical alerts
+        List<ClinicalAlert> activeAlerts = alertRepository.findByPatientIdAndIsResolvedFalse(patientId);
+        data.put("activeAlerts", activeAlerts);
 
-            return ResponseEntity.ok(data);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        // Food drug audit
+        List<Map<String, Object>> conflicts = drugFoodAuditService.auditDrugFoodConflicts(patientId);
+        data.put("foodConflicts", conflicts);
+
+        return ResponseEntity.ok(data);
     }
 
     @GetMapping("/my-alerts")
     public ResponseEntity<?> getLoggedInPatientAlerts() {
-        try {
-            String idNumber = getLoggedInPatientId();
-            Patient patient = patientRepository.findByIdNumber(idNumber)
-                    .orElseThrow(() -> new RuntimeException("Patient not found"));
-            List<ClinicalAlert> activeAlerts = alertRepository.findByPatientIdAndIsResolvedFalse(patient.getId());
-            return ResponseEntity.ok(activeAlerts);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        String idNumber = getLoggedInPatientId();
+        Patient patient = patientRepository.findByIdNumber(idNumber)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        List<ClinicalAlert> activeAlerts = alertRepository.findByPatientIdAndIsResolvedFalse(patient.getId());
+        return ResponseEntity.ok(activeAlerts);
     }
 
     @GetMapping("/drug-food-audit")
     public ResponseEntity<?> getPatientDrugFoodConflicts() {
-        try {
-            String idNumber = getLoggedInPatientId();
-            Patient patient = patientRepository.findByIdNumber(idNumber)
-                    .orElseThrow(() -> new RuntimeException("Patient not found"));
-            List<Map<String, Object>> conflicts = drugFoodAuditService.auditDrugFoodConflicts(patient.getId());
-            return ResponseEntity.ok(conflicts);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        String idNumber = getLoggedInPatientId();
+        Patient patient = patientRepository.findByIdNumber(idNumber)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        List<Map<String, Object>> conflicts = drugFoodAuditService.auditDrugFoodConflicts(patient.getId());
+        return ResponseEntity.ok(conflicts);
     }
 
     @PostMapping("/patient/{patientId}/evaluate")
     public ResponseEntity<?> manualEvaluatePatient(@PathVariable Long patientId) {
-        try {
-            Patient patient = patientRepository.findById(patientId)
-                    .orElseThrow(() -> new RuntimeException("Patient not found"));
-            treatmentResponseService.evaluatePatientResponse(patient);
-            return ResponseEntity.ok(Map.of("message", "Evaluation completed successfully for patient ID: " + patientId));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        FacilityGuard.assertSameFacility(currentStaff(), patient);
+        treatmentResponseService.evaluatePatientResponse(patient);
+        return ResponseEntity.ok(Map.of("message", "Evaluation completed successfully for patient ID: " + patientId));
     }
 
     @PostMapping
     public ResponseEntity<?> createManualAlert(@RequestBody Map<String, Object> request) {
-        try {
-            Long patientId = Long.valueOf(request.get("patientId").toString());
-            String severityStr = request.get("severity").toString();
-            String message = request.get("message").toString();
-
-            Patient patient = patientRepository.findById(patientId)
-                    .orElseThrow(() -> new RuntimeException("Patient not found"));
-
-            ClinicalAlert alert = new ClinicalAlert();
-            alert.setPatient(patient);
-            alert.setSeverity(ClinicalAlert.AlertSeverity.valueOf(severityStr.toUpperCase()));
-            alert.setMessage("🧑‍⚕️ Custom Alert: " + message);
-            alert.setAlertType(ClinicalAlert.AlertType.MANUAL);
-            alert.setIsResolved(false);
-            alert.setCreatedAt(LocalDateTime.now());
-
-            ClinicalAlert saved = alertRepository.save(alert);
-            return ResponseEntity.ok(saved);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        if (request.get("patientId") == null || request.get("severity") == null || request.get("message") == null) {
+            throw new IllegalArgumentException("patientId, severity, and message are all required.");
         }
+        Long patientId = Long.valueOf(request.get("patientId").toString());
+        String severityStr = request.get("severity").toString();
+        String message = request.get("message").toString();
+
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        FacilityGuard.assertSameFacility(currentStaff(), patient);
+
+        ClinicalAlert alert = new ClinicalAlert();
+        alert.setPatient(patient);
+        alert.setSeverity(ClinicalAlert.AlertSeverity.valueOf(severityStr.toUpperCase()));
+        alert.setMessage("🧑‍⚕️ Custom Alert: " + message);
+        alert.setAlertType(ClinicalAlert.AlertType.MANUAL);
+        alert.setIsResolved(false);
+        alert.setCreatedAt(LocalDateTime.now());
+
+        ClinicalAlert saved = alertRepository.save(alert);
+        return ResponseEntity.ok(saved);
     }
 }

@@ -41,12 +41,8 @@ public class PatientController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            Patient patient = patientService.findByIdNumber(idNumber);
-            return ResponseEntity.ok(patient);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+        Patient patient = patientService.findByIdNumber(idNumber, staffNumber);
+        return ResponseEntity.ok(patient);
     }
 
     @PostMapping
@@ -56,12 +52,8 @@ public class PatientController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            Patient patient = patientService.registerPatient(patientRequest, staffNumber);
-            return ResponseEntity.status(HttpStatus.CREATED).body(patient);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        Patient patient = patientService.registerPatient(patientRequest, staffNumber);
+        return ResponseEntity.status(HttpStatus.CREATED).body(patient);
     }
 
     @GetMapping("/{idNumber}/record")
@@ -71,11 +63,7 @@ public class PatientController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            PatientRecordResponse record = patientService.getFullRecord(idNumber, staffNumber);
-            return ResponseEntity.ok(record);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
-        }
+        PatientRecordResponse record = patientService.getFullRecord(idNumber, staffNumber);
+        return ResponseEntity.ok(record);
     }
 }

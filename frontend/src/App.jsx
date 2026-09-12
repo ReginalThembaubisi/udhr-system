@@ -14,10 +14,10 @@ function App() {
   const [userName, setUserName] = useState(localStorage.getItem('userName') || '');
   
   const [loginRole, setLoginRole] = useState('patient'); // 'patient' or 'staff'
-  const [staffNumber, setStaffNumber] = useState('DOC001');
-  const [staffPassword, setStaffPassword] = useState('Doctor@123');
-  const [patientIdNumber, setPatientIdNumber] = useState('9001015000083');
-  const [patientDob, setPatientDob] = useState('1990-01-01');
+  const [staffNumber, setStaffNumber] = useState('');
+  const [staffPassword, setStaffPassword] = useState('');
+  const [patientIdNumber, setPatientIdNumber] = useState('');
+  const [patientDob, setPatientDob] = useState('');
   
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -77,6 +77,18 @@ function App() {
     };
   };
 
+  // Wraps fetch so an expired/invalid session (401 on an authenticated
+  // request) logs the user out and explains why, instead of leaving them
+  // looking at a stale or blank dashboard with fetches silently failing.
+  const apiFetch = async (url, options) => {
+    const response = await fetch(url, options);
+    if (response.status === 401 && options?.headers?.Authorization) {
+      handleLogout();
+      setErrorMessage('Your session has expired. Please sign in again.');
+    }
+    return response;
+  };
+
   // Log in user
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -87,13 +99,13 @@ function App() {
     try {
       let response;
       if (loginRole === 'patient') {
-        response = await fetch('/api/auth/patient/login', {
+        response = await apiFetch('/api/auth/patient/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ idNumber: patientIdNumber, dateOfBirth: patientDob })
         });
       } else {
-        response = await fetch('/api/auth/login', {
+        response = await apiFetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ staffNumber, password: staffPassword })
@@ -163,56 +175,56 @@ function App() {
     setLoading(true);
     try {
       // 1. Fetch Profile
-      const profileRes = await fetch('/api/patient/me', { headers: getAuthHeaders() });
+      const profileRes = await apiFetch('/api/patient/me', { headers: getAuthHeaders() });
       if (profileRes.ok) {
         const profileData = await profileRes.json();
         setPatientProfile(profileData);
       }
 
       // 2. Fetch Record
-      const recordRes = await fetch('/api/patient/me/record', { headers: getAuthHeaders() });
+      const recordRes = await apiFetch('/api/patient/me/record', { headers: getAuthHeaders() });
       if (recordRes.ok) {
         const recordData = await recordRes.json();
         setPatientRecord(recordData);
       }
 
       // 3. Fetch Symptoms List
-      const symptomsRes = await fetch('/api/symptoms', { headers: getAuthHeaders() });
+      const symptomsRes = await apiFetch('/api/symptoms', { headers: getAuthHeaders() });
       if (symptomsRes.ok) {
         const symptomsData = await symptomsRes.json();
         setSymptomsList(symptomsData);
       }
 
       // 4. Fetch Triage History
-      const historyRes = await fetch('/api/symptom-checker/history', { headers: getAuthHeaders() });
+      const historyRes = await apiFetch('/api/symptom-checker/history', { headers: getAuthHeaders() });
       if (historyRes.ok) {
         const historyData = await historyRes.json();
         setTriageHistory(historyData);
       }
 
       // 5. Fetch Health Guidance & FDA warnings
-      const guidanceRes = await fetch('/api/health-guidance/tips', { headers: getAuthHeaders() });
+      const guidanceRes = await apiFetch('/api/health-guidance/tips', { headers: getAuthHeaders() });
       if (guidanceRes.ok) {
         const guidanceData = await guidanceRes.json();
         setHealthGuidance(guidanceData);
       }
 
       // 6. Fetch Medication Reminders
-      const remindersRes = await fetch('/api/reminders/patient', { headers: getAuthHeaders() });
+      const remindersRes = await apiFetch('/api/reminders/patient', { headers: getAuthHeaders() });
       if (remindersRes.ok) {
         const remindersData = await remindersRes.json();
         setReminderData(remindersData);
       }
 
       // 7. Fetch Drug Food Audit Conflicts
-      const conflictRes = await fetch('/api/clinical-alerts/drug-food-audit', { headers: getAuthHeaders() });
+      const conflictRes = await apiFetch('/api/clinical-alerts/drug-food-audit', { headers: getAuthHeaders() });
       if (conflictRes.ok) {
         const conflictData = await conflictRes.json();
         setDrugFoodConflicts(conflictData);
       }
 
       // 8. Fetch Active Clinical Alerts
-      const patientAlertsRes = await fetch('/api/clinical-alerts/my-alerts', { headers: getAuthHeaders() });
+      const patientAlertsRes = await apiFetch('/api/clinical-alerts/my-alerts', { headers: getAuthHeaders() });
       if (patientAlertsRes.ok) {
         const patientAlertsData = await patientAlertsRes.json();
         setPatientAlerts(patientAlertsData);
@@ -227,7 +239,7 @@ function App() {
   // Fetch all unresolved alerts for doctors
   const fetchClinicalAlerts = async () => {
     try {
-      const alertsRes = await fetch('/api/clinical-alerts', { headers: getAuthHeaders() });
+      const alertsRes = await apiFetch('/api/clinical-alerts', { headers: getAuthHeaders() });
       if (alertsRes.ok) {
         const alertsData = await alertsRes.json();
         setClinicalAlerts(alertsData);
@@ -247,7 +259,7 @@ function App() {
     setPatientTimeline(null);
 
     try {
-      const response = await fetch(`/api/patients/${searchId}/record`, { headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/patients/${searchId}/record`, { headers: getAuthHeaders() });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.message || 'Patient record not found');
@@ -258,20 +270,20 @@ function App() {
       setAddAlertForm(prev => ({ ...prev, patientId: data.patient.id }));
 
       // Trigger automatic CDS evaluation on patient file search to generate alerts in real time
-      await fetch(`/api/clinical-alerts/patient/${data.patient.id}/evaluate`, {
+      await apiFetch(`/api/clinical-alerts/patient/${data.patient.id}/evaluate`, {
         method: 'POST',
         headers: getAuthHeaders()
       });
 
       // Fetch Adherence Logs
-      const adherenceRes = await fetch(`/api/reminders/patient/${data.patient.id}/adherence`, { headers: getAuthHeaders() });
+      const adherenceRes = await apiFetch(`/api/reminders/patient/${data.patient.id}/adherence`, { headers: getAuthHeaders() });
       if (adherenceRes.ok) {
         const adherenceData = await adherenceRes.json();
         setPatientAdherence(adherenceData);
       }
 
       // Fetch patient timeline data (adherence logs, symptom checks, alerts, food conflicts)
-      const timelineRes = await fetch(`/api/clinical-alerts/patient/${data.patient.id}`, { headers: getAuthHeaders() });
+      const timelineRes = await apiFetch(`/api/clinical-alerts/patient/${data.patient.id}`, { headers: getAuthHeaders() });
       if (timelineRes.ok) {
         const timelineData = await timelineRes.json();
         setPatientTimeline(timelineData);
@@ -289,7 +301,7 @@ function App() {
     setSuccessMessage('');
     setLoading(true);
     try {
-      const response = await fetch(`/api/clinical-alerts/patient/${patientId}/evaluate`, {
+      const response = await apiFetch(`/api/clinical-alerts/patient/${patientId}/evaluate`, {
         method: 'POST',
         headers: getAuthHeaders()
       });
@@ -312,7 +324,7 @@ function App() {
     setSuccessMessage('');
     setLoading(true);
     try {
-      const response = await fetch(`/api/clinical-alerts/${alertId}/resolve`, {
+      const response = await apiFetch(`/api/clinical-alerts/${alertId}/resolve`, {
         method: 'POST',
         headers: getAuthHeaders()
       });
@@ -337,7 +349,7 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/patients', {
+      const response = await apiFetch('/api/patients', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(patientRegForm)
@@ -374,7 +386,7 @@ function App() {
         diagnosis: addDiagnosisForm.conditionName,
         notes: addDiagnosisForm.notes
       };
-      const response = await fetch('/api/diagnoses', {
+      const response = await apiFetch('/api/diagnoses', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
@@ -398,7 +410,7 @@ function App() {
     setSuccessMessage('');
 
     try {
-      const response = await fetch('/api/prescriptions', {
+      const response = await apiFetch('/api/prescriptions', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(addPrescriptionForm)
@@ -423,7 +435,7 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/clinical-alerts', {
+      const response = await apiFetch('/api/clinical-alerts', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -459,7 +471,7 @@ function App() {
     setTriageResult(null);
 
     try {
-      const response = await fetch('/api/symptom-checker/check', {
+      const response = await apiFetch('/api/symptom-checker/check', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(selectedSymptoms)
@@ -504,7 +516,7 @@ function App() {
     setSuccessMessage('');
     setLoading(true);
     try {
-      const response = await fetch(`/api/reminders/adherence/${adherenceId}`, {
+      const response = await apiFetch(`/api/reminders/adherence/${adherenceId}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ status, notes })
@@ -533,7 +545,7 @@ function App() {
     formData.append('file', file);
     
     try {
-      const response = await fetch('/api/food-checker/ocr', {
+      const response = await apiFetch('/api/food-checker/ocr', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -560,7 +572,7 @@ function App() {
     setLoading(true);
     
     try {
-      const response = await fetch(`/api/food-checker/search?type=${lookupType}&query=${productQuery}`, {
+      const response = await apiFetch(`/api/food-checker/search?type=${lookupType}&query=${productQuery}`, {
         headers: getAuthHeaders()
       });
       const data = await response.json();
@@ -587,7 +599,7 @@ function App() {
     setCheckResults([]);
     
     try {
-      const response = await fetch('/api/food-checker/check', {
+      const response = await apiFetch('/api/food-checker/check', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ ingredients: ingredientsInput })
@@ -698,11 +710,6 @@ function App() {
                         required 
                       />
                     </div>
-                    <div style={{ textAlign: 'left', marginBottom: '20px', background: 'rgba(79, 70, 229, 0.1)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(79, 70, 229, 0.2)' }}>
-                      <p style={{ fontSize: '0.8rem', color: '#a5b4fc' }}>
-                        💡 <strong>Demo Patient Login:</strong> Use ID <code>9001015000083</code> and Date of Birth <code>1990-01-01</code> to view the pre-seeded patient (diabetic, hypertensive, penicillin allergic).
-                      </p>
-                    </div>
                   </>
                 ) : (
                   <>
@@ -727,13 +734,6 @@ function App() {
                         placeholder="••••••••" 
                         required 
                       />
-                    </div>
-                    <div style={{ textAlign: 'left', marginBottom: '20px', background: 'rgba(79, 70, 229, 0.1)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(79, 70, 229, 0.2)' }}>
-                      <p style={{ fontSize: '0.8rem', color: '#a5b4fc' }}>
-                        💡 <strong>Demo Staff Logins:</strong><br />
-                        - Doctor: <code>DOC001</code> / <code>Doctor@123</code><br />
-                        - Nurse: <code>NUR001</code> / <code>Nurse@123</code>
-                      </p>
                     </div>
                   </>
                 )}
@@ -1019,30 +1019,29 @@ function App() {
                   {symptomsList.map((symptom) => {
                     const isSelected = selectedSymptoms.includes(symptom.id);
                     return (
-                      <div 
-                        key={symptom.id} 
+                      <label
+                        key={symptom.id}
                         className="flex items-center gap-4"
-                        onClick={() => handleSymptomToggle(symptom.id)}
-                        style={{ 
-                          padding: '12px', 
-                          background: isSelected ? 'rgba(79, 70, 229, 0.25)' : 'rgba(15, 23, 42, 0.4)', 
+                        style={{
+                          padding: '12px',
+                          background: isSelected ? 'rgba(79, 70, 229, 0.25)' : 'rgba(15, 23, 42, 0.4)',
                           border: isSelected ? '1px solid var(--primary)' : '1px solid rgba(255,255,255,0.05)',
                           borderRadius: '12px',
                           cursor: 'pointer',
                           transition: 'all 0.2s ease'
                         }}
                       >
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           checked={isSelected}
-                          onChange={() => {}} // Handled by div onClick
-                          style={{ width: '18px', height: '18px', cursor: 'pointer', pointerEvents: 'none' }}
+                          onChange={() => handleSymptomToggle(symptom.id)}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
                         />
                         <div>
                           <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 500 }}>{symptom.name}</p>
                           <p className="text-muted" style={{ fontSize: '0.75rem' }}>ICD-10: {symptom.icd10Code || 'N/A'}</p>
                         </div>
-                      </div>
+                      </label>
                     );
                   })}
                 </div>
@@ -1209,7 +1208,7 @@ function App() {
                     )}
                     <div style={{ background: 'rgba(14, 165, 233, 0.1)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(14, 165, 233, 0.2)' }}>
                       <p style={{ fontSize: '0.8rem', color: '#7dd3fc' }}>
-                        💡 <strong>OCR Demo Trigger:</strong> Select any file. If the file name contains <code>juice</code>, <code>chips</code>, or <code>bread</code>, it will automatically extract matching condition-specific ingredients!
+                        💡 Take a clear, well-lit photo of the ingredients list. If the scan can't read it, you can always type the ingredients in manually instead.
                       </p>
                     </div>
                   </div>
@@ -1972,7 +1971,18 @@ function App() {
                                   Fired: {new Date(alert.createdAt).toLocaleString()} | Alert Type: {alert.alertType}
                                 </p>
                               </div>
-                              <button className="btn btn-success" onClick={() => handleResolveAlert(alert.id)}>
+                              <button
+                                className="btn btn-success"
+                                onClick={() => {
+                                  const isSeriousAlert = alert.severity === 'CRITICAL' || alert.severity === 'HIGH';
+                                  if (isSeriousAlert && !window.confirm(
+                                    `This is a ${alert.severity} severity alert for ${item.patient.firstName} ${item.patient.lastName}. Are you sure you want to resolve and clear it?`
+                                  )) {
+                                    return;
+                                  }
+                                  handleResolveAlert(alert.id);
+                                }}
+                              >
                                 Resolve Alert & Clear
                               </button>
                             </div>

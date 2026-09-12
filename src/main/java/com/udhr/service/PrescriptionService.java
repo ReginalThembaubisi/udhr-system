@@ -3,8 +3,9 @@ package com.udhr.service;
 import com.udhr.dto.PrescriptionRequest;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.security.CurrentUser;
+import com.udhr.security.FacilityGuard;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.util.List;
@@ -22,40 +23,34 @@ public class PrescriptionService {
     private StaffRepository staffRepository;
 
     @Autowired
-    private FacilityRepository facilityRepository;
-
-    @Autowired
     private VisitRepository visitRepository;
 
     @Autowired
     private ReminderService reminderService;
 
+    private Staff currentStaff() {
+        return staffRepository.findByStaffNumber(CurrentUser.principal())
+                .orElseThrow(() -> new RuntimeException("Authenticated staff not found"));
+    }
+
     public Prescription addPrescription(PrescriptionRequest request) {
         Patient patient = patientRepository.findById(request.getPatientId())
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
-        Staff doctor = null;
-        if (request.getDoctorId() != null) {
-            doctor = staffRepository.findById(request.getDoctorId())
-                .orElseThrow(() -> new RuntimeException("Doctor not found"));
-        } else {
-            String staffNum = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-            doctor = staffRepository.findByStaffNumber(staffNum)
-                .orElseThrow(() -> new RuntimeException("Logged in doctor/staff not found"));
-        }
-
-        Facility facility = null;
-        if (request.getFacilityId() != null) {
-            facility = facilityRepository.findById(request.getFacilityId())
-                .orElseThrow(() -> new RuntimeException("Facility not found"));
-        } else {
-            facility = doctor.getFacility();
-        }
+        // The prescribing doctor and facility are always the authenticated
+        // caller's own -- never trusted from the request body, which would
+        // otherwise let a caller forge authorship or cross a facility boundary.
+        Staff doctor = currentStaff();
+        FacilityGuard.assertSameFacility(doctor, patient);
+        Facility facility = doctor.getFacility();
 
         Visit visit = null;
         if (request.getVisitId() != null) {
             visit = visitRepository.findById(request.getVisitId())
                 .orElseThrow(() -> new RuntimeException("Visit not found"));
+            if (!visit.getPatient().getId().equals(patient.getId())) {
+                throw new RuntimeException("Visit does not belong to this patient");
+            }
         } else {
             List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
             if (!visits.isEmpty()) {
@@ -108,10 +103,16 @@ public class PrescriptionService {
     }
 
     public List<Prescription> getPrescriptionsByPatient(Long patientId) {
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        FacilityGuard.assertSameFacility(currentStaff(), patient);
         return prescriptionRepository.findByPatientIdOrderByCreatedAtDesc(patientId);
     }
 
     public List<Prescription> getActivePrescriptionsByPatient(Long patientId) {
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        FacilityGuard.assertSameFacility(currentStaff(), patient);
         return prescriptionRepository.findByPatientIdAndActiveTrue(patientId);
     }
 }

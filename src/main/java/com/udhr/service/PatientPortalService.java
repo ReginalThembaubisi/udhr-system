@@ -3,9 +3,11 @@ package com.udhr.service;
 import com.udhr.dto.PatientLoginRequest;
 import com.udhr.dto.PatientLoginResponse;
 import com.udhr.dto.PatientRecordResponse;
+import com.udhr.exception.AuthenticationFailedException;
 import com.udhr.model.*;
 import com.udhr.repository.*;
 import com.udhr.security.JwtUtil;
+import com.udhr.security.LoginAttemptService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
@@ -41,20 +43,32 @@ public class PatientPortalService {
     @Autowired
     private AuditLogRepository auditLogRepository;
 
-    public PatientLoginResponse login(PatientLoginRequest request) {
-        Patient patient = patientRepository.findByIdNumber(request.getIdNumber())
-                .orElseThrow(() -> new RuntimeException("Patient not found with ID number: " + request.getIdNumber()));
+    @Autowired
+    private LoginAttemptService loginAttemptService;
 
-        LocalDate dob;
+    public PatientLoginResponse login(PatientLoginRequest request) {
+        String attemptKey = "patient:" + request.getIdNumber();
+        loginAttemptService.assertNotLocked(attemptKey);
+
+        Patient patient = patientRepository.findByIdNumber(request.getIdNumber()).orElse(null);
+
+        LocalDate dob = null;
         try {
             dob = LocalDate.parse(request.getDateOfBirth());
-        } catch (Exception e) {
-            throw new RuntimeException("Invalid date of birth format. Use YYYY-MM-DD");
+        } catch (Exception ignored) {
+            // handled as an invalid-credentials failure below
         }
 
-        if (!patient.getDateOfBirth().equals(dob)) {
-            throw new RuntimeException("Invalid credentials (ID number or date of birth is incorrect)");
+        // One generic failure message whether the ID number doesn't exist,
+        // the date is malformed, or the date is simply wrong -- distinguishing
+        // "not found" from "wrong DOB" would let an attacker confirm a real
+        // ID number exists before trying to guess the date of birth.
+        boolean valid = patient != null && dob != null && patient.getDateOfBirth().equals(dob);
+        if (!valid) {
+            loginAttemptService.recordFailure(attemptKey);
+            throw new AuthenticationFailedException("Invalid ID number or date of birth");
         }
+        loginAttemptService.recordSuccess(attemptKey);
 
         String token = jwtUtil.generateToken(patient.getIdNumber(), "PATIENT");
         String fullName = patient.getFirstName() + " " + patient.getLastName();

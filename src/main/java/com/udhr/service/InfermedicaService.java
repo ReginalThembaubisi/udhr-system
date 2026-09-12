@@ -1,5 +1,6 @@
 package com.udhr.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -12,6 +13,9 @@ import java.util.*;
 @Service
 public class InfermedicaService {
 
+    @Autowired
+    private RestTemplate restTemplate;
+
     @Value("${infermedica.app.id:}")
     private String appId;
 
@@ -21,13 +25,16 @@ public class InfermedicaService {
     private static final String INFERMEDICA_API_URL = "https://api.infermedica.com/v3/triage";
 
     public Map<String, Object> getTriageRecommendation(String gender, int ageInYears, List<Map<String, String>> evidenceList) {
-        // If credentials are not configured, use local fallback logic
+        // If credentials are not configured, use local fallback logic. This is
+        // a deliberately conservative ruleset, not real medical triage -- log
+        // it loudly so it's never mistaken for the real Infermedica engine.
         if (appId == null || appId.trim().isEmpty() || appKey == null || appKey.trim().isEmpty()) {
+            System.err.println("WARNING: infermedica.app.id/app.key are not configured -- symptom " +
+                    "triage is running on a limited local fallback, not the real Infermedica engine.");
             return getLocalFallbackTriage(evidenceList);
         }
 
         try {
-            RestTemplate restTemplate = new RestTemplate();
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("App-Id", appId);
@@ -72,18 +79,21 @@ public class InfermedicaService {
         return getLocalFallbackTriage(evidenceList);
     }
 
+    // Unrecognized or missing triage levels default to YELLOW ("seek care"),
+    // never GREEN ("you're fine") -- an API contract change or unexpected
+    // value here should never be silently treated as an all-clear.
     private String mapTriageLevelToUrgency(String triageLevel) {
-        if (triageLevel == null) return "GREEN";
+        if (triageLevel == null) return "YELLOW";
         switch (triageLevel.toLowerCase()) {
             case "emergency":
             case "emergency_ambulance":
                 return "RED";
+            case "self_care":
+                return "GREEN";
             case "consultation_24":
             case "consultation":
-                return "YELLOW";
-            case "self_care":
             default:
-                return "GREEN";
+                return "YELLOW";
         }
     }
 
@@ -118,6 +128,11 @@ public class InfermedicaService {
             }
         }
 
+        // This ruleset only recognizes a small, explicit list of symptom IDs.
+        // A symptom that isn't on either list is UNRECOGNIZED, not "mild" --
+        // defaulting that case to green would silently tell a patient with a
+        // serious, unlisted symptom that it's safe to stay home. Default to
+        // "seek care" instead.
         String urgency;
         String recommendation;
         if (hasRedFlag) {
@@ -127,8 +142,8 @@ public class InfermedicaService {
             urgency = "YELLOW";
             recommendation = "🟡 Medical consultation recommended: Based on your symptoms (such as fever or abdominal pain), please visit a local health clinic within the next 24 hours. [Local Triage]";
         } else {
-            urgency = "GREEN";
-            recommendation = "🟢 Home care recommended: Your reported symptoms appear mild. Rest at home, keep hydrated, and monitor your symptoms. Visit a clinic if they do not improve. [Local Triage]";
+            urgency = "YELLOW";
+            recommendation = "🟡 We can't confidently assess these symptoms with our limited local triage. Please visit a local health clinic or call a nurse hotline to be safe. [Local Triage - Unrecognized Symptoms]";
         }
 
         Map<String, Object> result = new HashMap<>();

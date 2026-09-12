@@ -1,12 +1,18 @@
 package com.udhr.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @Service
 public class OpenFdaService {
+
+    @Autowired
+    private RestTemplate restTemplate;
 
     private static final String OPEN_FDA_URL = "https://api.fda.gov/drug/label.json";
 
@@ -16,11 +22,10 @@ public class OpenFdaService {
         }
 
         try {
-            RestTemplate restTemplate = new RestTemplate();
             // Construct the search query
             // Example: (warnings:penicillin+OR+contraindications:penicillin)+AND+allergy
             String searchQuery = String.format("(warnings:\"%s\" OR contraindications:\"%s\") AND (allergy OR hypersensitivity)", allergen, allergen);
-            String url = OPEN_FDA_URL + "?search=" + searchQuery + "&limit=3";
+            String url = OPEN_FDA_URL + "?search=" + URLEncoder.encode(searchQuery, StandardCharsets.UTF_8) + "&limit=3";
 
             ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
 
@@ -77,43 +82,13 @@ public class OpenFdaService {
                 }
             }
         } catch (Exception e) {
-            System.err.println("OpenFDA API request failed for allergen '" + allergen + "'. Using local fallback. Error: " + e.getMessage());
+            System.err.println("OpenFDA API request failed for allergen '" + allergen + "'. Error: " + e.getMessage());
         }
 
-        // Return local fallbacks if API is unavailable or returns empty
-        return getLocalFallbackWarnings(allergen);
-    }
-
-    private List<Map<String, Object>> getLocalFallbackWarnings(String allergen) {
-        List<Map<String, Object>> warnings = new ArrayList<>();
-        String normalized = allergen.toLowerCase();
-
-        if (normalized.contains("penicillin")) {
-            Map<String, Object> w1 = new HashMap<>();
-            w1.put("brandName", "Amoxil, Augmentin, Pen-Vee K");
-            w1.put("genericName", "Amoxicillin, Co-amoxiclav, Penicillin V");
-            w1.put("warningText", "Contraindicated: Cross-reactivity is highly common. Avoid all beta-lactam antibiotics (penicillins, cephalosporins like Cephalexin). Use alternatives like Macrolides (Azithromycin, Erythromycin) if prescribed.");
-            warnings.add(w1);
-        } else if (normalized.contains("aspirin") || normalized.contains("nsaid")) {
-            Map<String, Object> w1 = new HashMap<>();
-            w1.put("brandName", "Ecotrin, Disprin, Nurofen, Voltaren");
-            w1.put("genericName", "Aspirin, Ibuprofen, Diclofenac, Naproxen");
-            w1.put("warningText", "Contraindicated: May cause severe bronchospasm or hives in aspirin-sensitive patients. Avoid all Non-Steroidal Anti-inflammatory Drugs (NSAIDs). Use Acetaminophen (Paracetamol) for mild pain relief.");
-            warnings.add(w1);
-        } else if (normalized.contains("sulfa") || normalized.contains("sulfonamide")) {
-            Map<String, Object> w1 = new HashMap<>();
-            w1.put("brandName", "Bactrim, Pazo");
-            w1.put("genericName", "Sulfamethoxazole-Trimethoprim, Sulfasalazine");
-            w1.put("warningText", "Contraindicated: High risk of severe cutaneous adverse reactions (Stevens-Johnson syndrome). Avoid sulfa antibiotics and sulfasalazine. Inform doctor before taking thiazide diuretics or sulfonylureas.");
-            warnings.add(w1);
-        } else {
-            Map<String, Object> w1 = new HashMap<>();
-            w1.put("brandName", "Medications containing " + allergen);
-            w1.put("genericName", allergen + " related compounds");
-            w1.put("warningText", "Warning: Patient has a documented allergy to " + allergen + ". Avoid taking any medication containing this substance or its derivatives. Monitor closely for signs of hives, swelling, or breathing difficulty.");
-            warnings.add(w1);
-        }
-
-        return warnings;
+        // Never invent regulatory warning data. An empty result here is
+        // rendered by the frontend as "no FDA alerts found -- consult your
+        // doctor", which is honest whether that's because OpenFDA genuinely
+        // has nothing on file or because the lookup itself failed.
+        return Collections.emptyList();
     }
 }

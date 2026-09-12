@@ -31,47 +31,32 @@ public class FoodIngredientController {
 
     @PostMapping("/ocr")
     public ResponseEntity<?> parseImageLabel(@RequestParam("file") MultipartFile file) {
-        try {
-            String extractedText = ocrService.extractTextFromImage(file);
-            Map<String, String> response = new HashMap<>();
-            response.put("extractedText", extractedText);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        String extractedText = ocrService.extractTextFromImage(file);
+        Map<String, String> response = new HashMap<>();
+        response.put("extractedText", extractedText);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/search")
     public ResponseEntity<?> searchIngredients(@RequestParam("type") String type, @RequestParam("query") String query) {
-        try {
-            String ingredients = "";
-            if ("barcode".equalsIgnoreCase(type)) {
-                ingredients = openFoodFactsService.fetchIngredientsByBarcode(query);
-            } else {
-                ingredients = openFoodFactsService.fetchIngredientsBySearch(query);
-            }
+        String ingredients = "barcode".equalsIgnoreCase(type)
+                ? openFoodFactsService.fetchIngredientsByBarcode(query)
+                : openFoodFactsService.fetchIngredientsBySearch(query);
 
-            Map<String, String> response = new HashMap<>();
-            response.put("ingredients", ingredients);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        Map<String, String> response = new HashMap<>();
+        response.put("ingredients", ingredients);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/check")
     public ResponseEntity<?> checkIngredientsSafety(@RequestBody Map<String, String> request) {
-        try {
-            String idNumber = getLoggedInPatientId();
-            String ingredientsText = request.get("ingredients");
-            if (ingredientsText == null) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Ingredients text is required");
-            }
-
-            List<IngredientCheckResult> results = foodIngredientService.checkIngredients(idNumber, ingredientsText);
-            return ResponseEntity.ok(results);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        String idNumber = getLoggedInPatientId();
+        String ingredientsText = request.get("ingredients");
+        if (ingredientsText == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", "Ingredients text is required"));
         }
+
+        List<IngredientCheckResult> results = foodIngredientService.checkIngredients(idNumber, ingredientsText);
+        return ResponseEntity.ok(results);
     }
 }

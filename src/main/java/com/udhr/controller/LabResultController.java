@@ -41,12 +41,8 @@ public class LabResultController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            LabResult labResult = labResultService.addLabResult(labResultRequest);
-            return ResponseEntity.status(HttpStatus.CREATED).body(labResult);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        LabResult labResult = labResultService.addLabResult(labResultRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(labResult);
     }
 
     @GetMapping("/patient/{patientId}")
@@ -56,11 +52,7 @@ public class LabResultController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            List<LabResult> labResults = labResultService.getLabResultsByPatient(patientId);
-            return ResponseEntity.ok(labResults);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        List<LabResult> labResults = labResultService.getLabResultsByPatient(patientId);
+        return ResponseEntity.ok(labResults);
     }
 }

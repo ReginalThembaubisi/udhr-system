@@ -1,5 +1,6 @@
 package com.udhr.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -40,6 +41,11 @@ public class Staff {
     @Column(unique = true, nullable = false)
     private String email;
 
+    // Never serialize the password hash into an API response -- Staff is
+    // reachable (directly or via eagerly-loaded relations on Visit,
+    // Diagnosis, Prescription, LabResult, ClinicalAlert, AuditLog) from many
+    // endpoints that were never meant to expose it.
+    @JsonIgnore
     @Column(nullable = false)
     private String password;
 

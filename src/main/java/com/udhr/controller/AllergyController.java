@@ -41,12 +41,8 @@ public class AllergyController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            Allergy allergy = allergyService.addAllergy(allergyRequest);
-            return ResponseEntity.status(HttpStatus.CREATED).body(allergy);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        Allergy allergy = allergyService.addAllergy(allergyRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(allergy);
     }
 
     @GetMapping("/patient/{patientId}")
@@ -56,11 +52,7 @@ public class AllergyController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            List<Allergy> allergies = allergyService.getAllergiesByPatient(patientId);
-            return ResponseEntity.ok(allergies);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        List<Allergy> allergies = allergyService.getAllergiesByPatient(patientId);
+        return ResponseEntity.ok(allergies);
     }
 }

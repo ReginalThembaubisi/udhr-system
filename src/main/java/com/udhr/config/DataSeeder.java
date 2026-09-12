@@ -154,6 +154,7 @@ public class DataSeeder implements CommandLineRunner {
             patient.setContactNumber("0821234567");
             patient.setEmail("reginal@udhr.gov.za");
             patient.setAddress("123 Mandela Drive, Nelspruit, Mpumalanga");
+            patient.setFacility(facility);
             patient = patientRepository.save(patient);
 
             // Add Chronic Conditions
@@ -166,6 +167,7 @@ public class DataSeeder implements CommandLineRunner {
             System.out.println("Test patient 'Reginal Themba' (ID: 9001015000083) seeded successfully.");
         } else {
             patient = patientRepository.findAll().get(0);
+            backfillMissingPatientFacilities(facility);
         }
 
         // 6. Seed Visits and Diagnoses with official ICD-10 codes
@@ -247,6 +249,24 @@ public class DataSeeder implements CommandLineRunner {
                 
                 System.out.println("Visits and Diagnoses with ICD-10 codes seeded successfully.");
             }
+        }
+    }
+
+    // Patients created before the facility column existed would otherwise be
+    // permanently unreachable by facility-scoped staff (see FacilityGuard).
+    private void backfillMissingPatientFacilities(Facility defaultFacility) {
+        if (defaultFacility == null) {
+            return;
+        }
+        List<Patient> orphaned = patientRepository.findAll().stream()
+                .filter(p -> p.getFacility() == null)
+                .collect(java.util.stream.Collectors.toList());
+        if (!orphaned.isEmpty()) {
+            for (Patient p : orphaned) {
+                p.setFacility(defaultFacility);
+            }
+            patientRepository.saveAll(orphaned);
+            System.out.println("Backfilled facility for " + orphaned.size() + " existing patient(s).");
         }
     }
 

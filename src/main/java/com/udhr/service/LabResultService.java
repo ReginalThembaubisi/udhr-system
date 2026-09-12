@@ -3,6 +3,8 @@ package com.udhr.service;
 import com.udhr.dto.LabResultRequest;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.security.CurrentUser;
+import com.udhr.security.FacilityGuard;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.util.List;
@@ -20,23 +22,44 @@ public class LabResultService {
     private StaffRepository staffRepository;
 
     @Autowired
-    private FacilityRepository facilityRepository;
-
-    @Autowired
     private VisitRepository visitRepository;
+
+    private Staff currentStaff() {
+        return staffRepository.findByStaffNumber(CurrentUser.principal())
+                .orElseThrow(() -> new RuntimeException("Authenticated staff not found"));
+    }
 
     public LabResult addLabResult(LabResultRequest request) {
         Patient patient = patientRepository.findById(request.getPatientId())
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
-        Staff staff = staffRepository.findById(request.getStaffId())
-                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        // The recording staff member and facility are always the authenticated
+        // caller's own -- never trusted from the request body.
+        Staff staff = currentStaff();
+        FacilityGuard.assertSameFacility(staff, patient);
+        Facility facility = staff.getFacility();
 
-        Facility facility = facilityRepository.findById(request.getFacilityId())
-                .orElseThrow(() -> new RuntimeException("Facility not found"));
-
-        Visit visit = visitRepository.findById(request.getVisitId())
-                .orElseThrow(() -> new RuntimeException("Visit not found"));
+        Visit visit;
+        if (request.getVisitId() != null) {
+            visit = visitRepository.findById(request.getVisitId())
+                    .orElseThrow(() -> new RuntimeException("Visit not found"));
+            if (!visit.getPatient().getId().equals(patient.getId())) {
+                throw new RuntimeException("Visit does not belong to this patient");
+            }
+        } else {
+            List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
+            if (!visits.isEmpty()) {
+                visit = visits.get(0);
+            } else {
+                visit = new Visit();
+                visit.setPatient(patient);
+                visit.setStaff(staff);
+                visit.setFacility(facility);
+                visit.setReason("Clinical consultation");
+                visit.setNotes("Automatically created for lab result entry.");
+                visit = visitRepository.save(visit);
+            }
+        }
 
         LabResult labResult = new LabResult();
         labResult.setPatient(patient);
@@ -53,6 +76,9 @@ public class LabResultService {
     }
 
     public List<LabResult> getLabResultsByPatient(Long patientId) {
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        FacilityGuard.assertSameFacility(currentStaff(), patient);
         return labResultRepository.findByPatientIdOrderByTestDateDesc(patientId);
     }
 }

@@ -4,7 +4,6 @@ import com.udhr.dto.PatientRecordResponse;
 import com.udhr.model.Patient;
 import com.udhr.service.PatientPortalService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,23 +23,15 @@ public class PatientPortalController {
 
     @GetMapping
     public ResponseEntity<?> getProfile() {
-        try {
-            String idNumber = getLoggedInPatientId();
-            Patient patient = patientPortalService.getPatientProfile(idNumber);
-            return ResponseEntity.ok(patient);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        String idNumber = getLoggedInPatientId();
+        Patient patient = patientPortalService.getPatientProfile(idNumber);
+        return ResponseEntity.ok(patient);
     }
 
     @GetMapping("/record")
     public ResponseEntity<?> getRecord() {
-        try {
-            String idNumber = getLoggedInPatientId();
-            PatientRecordResponse record = patientPortalService.getPatientRecord(idNumber);
-            return ResponseEntity.ok(record);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        String idNumber = getLoggedInPatientId();
+        PatientRecordResponse record = patientPortalService.getPatientRecord(idNumber);
+        return ResponseEntity.ok(record);
     }
 }

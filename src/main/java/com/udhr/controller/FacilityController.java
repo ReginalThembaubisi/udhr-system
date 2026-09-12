@@ -41,12 +41,8 @@ public class FacilityController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            Facility facility = facilityService.addFacility(facilityRequest);
-            return ResponseEntity.status(HttpStatus.CREATED).body(facility);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        Facility facility = facilityService.addFacility(facilityRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(facility);
     }
 
     @GetMapping
@@ -56,11 +52,7 @@ public class FacilityController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            List<Facility> facilities = facilityService.getAllFacilities();
-            return ResponseEntity.ok(facilities);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        List<Facility> facilities = facilityService.getAllFacilities();
+        return ResponseEntity.ok(facilities);
     }
 }

@@ -41,12 +41,8 @@ public class DiagnosisController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            Diagnosis diagnosis = diagnosisService.addDiagnosis(diagnosisRequest);
-            return ResponseEntity.status(HttpStatus.CREATED).body(diagnosis);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        Diagnosis diagnosis = diagnosisService.addDiagnosis(diagnosisRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(diagnosis);
     }
 
     @GetMapping("/patient/{patientId}")
@@ -56,11 +52,7 @@ public class DiagnosisController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            List<Diagnosis> diagnoses = diagnosisService.getDiagnosesByPatient(patientId);
-            return ResponseEntity.ok(diagnoses);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        List<Diagnosis> diagnoses = diagnosisService.getDiagnosesByPatient(patientId);
+        return ResponseEntity.ok(diagnoses);
     }
 }

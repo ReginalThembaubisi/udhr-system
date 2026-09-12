@@ -8,11 +8,17 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
+// Method-level checks below are a deliberate second line of defense on top
+// of SecurityConfig's URL-pattern matcher for /api/staff/** (hasRole ADMIN) --
+// staff management (including creating new accounts) must never depend on a
+// single, easily-mis-edited URL pattern staying correct.
 @RestController
 @RequestMapping("/api/staff")
+@PreAuthorize("hasRole('ADMIN')")
 public class StaffController {
 
     @Autowired
@@ -41,12 +47,8 @@ public class StaffController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            Staff staff = staffService.registerStaff(staffRequest);
-            return ResponseEntity.status(HttpStatus.CREATED).body(staff);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        Staff staff = staffService.registerStaff(staffRequest);
+        return ResponseEntity.status(HttpStatus.CREATED).body(staff);
     }
 
     @PutMapping("/{id}/deactivate")
@@ -56,12 +58,8 @@ public class StaffController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            Staff staff = staffService.deactivateStaff(id);
-            return ResponseEntity.ok(staff);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        Staff staff = staffService.deactivateStaff(id);
+        return ResponseEntity.ok(staff);
     }
 
     @GetMapping
@@ -71,11 +69,7 @@ public class StaffController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
-        try {
-            List<Staff> staffList = staffService.getAllStaff();
-            return ResponseEntity.ok(staffList);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
+        List<Staff> staffList = staffService.getAllStaff();
+        return ResponseEntity.ok(staffList);
     }
 }

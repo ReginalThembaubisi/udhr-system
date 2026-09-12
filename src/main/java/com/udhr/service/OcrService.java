@@ -11,79 +11,89 @@ import java.util.UUID;
 @Service
 public class OcrService {
 
+    private static final long MAX_FILE_SIZE_BYTES = 5L * 1024 * 1024; // 5MB, matches the frontend limit
+
+    /**
+     * Runs Tesseract OCR against the uploaded label photo and returns the
+     * extracted text. This never fabricates a result: if the image can't be
+     * read (missing/failed Tesseract install, corrupt image, blank output) it
+     * throws, so the caller can tell the patient the scan didn't work rather
+     * than silently showing guessed ingredients for a safety-relevant check.
+     */
     public String extractTextFromImage(MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            return "";
+            throw new IllegalArgumentException("No image was uploaded.");
+        }
+        if (file.getSize() > MAX_FILE_SIZE_BYTES) {
+            throw new IllegalArgumentException("Image is too large (max 5MB).");
+        }
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new IllegalArgumentException("Only image files are supported.");
         }
 
-        String fileName = file.getOriginalFilename();
-        System.out.println("Processing image upload for OCR: " + fileName);
+        // Never trust the client-supplied filename for a filesystem path
+        // (it could contain "../" traversal sequences). Derive a safe,
+        // server-generated name and a bounded extension instead.
+        String extension = switch (contentType) {
+            case "image/png" -> ".png";
+            case "image/jpeg" -> ".jpg";
+            case "image/webp" -> ".webp";
+            default -> "";
+        };
 
-        // Attempt local file execution with Tesseract
+        String tempDir = System.getProperty("java.io.tmpdir");
+        File tempFile = new File(tempDir, "udhr-ocr-" + UUID.randomUUID() + extension);
+        File outputBase = new File(tempDir, "udhr-ocr-" + UUID.randomUUID());
+        File txtResult = new File(outputBase.getAbsolutePath() + ".txt");
+
         try {
-            // Write multipart file to temporary location
-            String tempDir = System.getProperty("java.io.tmpdir");
-            String uniqueName = UUID.randomUUID().toString() + "_" + fileName;
-            File tempFile = new File(tempDir, uniqueName);
             file.transferTo(tempFile);
 
-            File outputFile = new File(tempDir, tempFile.getName().replace(".", "_") + "_out");
-            
+            ProcessBuilder pb = new ProcessBuilder("tesseract", tempFile.getAbsolutePath(), outputBase.getAbsolutePath());
+            pb.redirectErrorStream(true);
+            Process process;
             try {
-                // Construct process builder for Tesseract
-                // Syntax: tesseract [image_path] [output_base_name]
-                ProcessBuilder pb = new ProcessBuilder("tesseract", tempFile.getAbsolutePath(), outputFile.getAbsolutePath());
-                pb.redirectErrorStream(true);
-                Process process = pb.start();
-
-                // Read output
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        System.out.println("[Tesseract CLI] " + line);
-                    }
-                }
-
-                int exitCode = process.waitFor();
-                if (exitCode == 0) {
-                    // Tesseract appends .txt automatically to the output base name
-                    File txtResult = new File(outputFile.getAbsolutePath() + ".txt");
-                    if (txtResult.exists()) {
-                        String textContent = Files.readString(txtResult.toPath());
-                        // Cleanup
-                        Files.deleteIfExists(tempFile.toPath());
-                        Files.deleteIfExists(txtResult.toPath());
-                        return textContent;
-                    }
-                }
+                process = pb.start();
             } catch (Exception e) {
-                System.err.println("Native Tesseract call failed, falling back to simulated OCR. Error: " + e.getMessage());
+                throw new IllegalStateException(
+                        "Label scanning isn't available right now (OCR engine not installed). " +
+                        "Please type the ingredients in manually.", e);
             }
 
-            // Cleanup temp file if process failed
-            Files.deleteIfExists(tempFile.toPath());
-            
-        } catch (Exception e) {
-            System.err.println("Failed to manage temporary file: " + e.getMessage());
-        }
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println("[Tesseract CLI] " + line);
+                }
+            }
 
-        // Simulated OCR Fallback
-        return getSimulatedOcrText(fileName);
-    }
+            int exitCode = process.waitFor();
+            if (exitCode != 0 || !txtResult.exists()) {
+                throw new IllegalStateException(
+                        "Couldn't read any text from that photo. Try a clearer, well-lit photo of the " +
+                        "ingredients list, or type them in manually.");
+            }
 
-    private String getSimulatedOcrText(String fileName) {
-        if (fileName == null) return "Ingredients: Sugar, Sodium Bicarbonate, Peanuts.";
-        
-        String normalized = fileName.toLowerCase();
-        
-        if (normalized.contains("juice")) {
-            return "Ingredients: Apple Juice, Filtered Water, Sugar, High Fructose Corn Syrup, Vitamin C, Citric Acid, Natural Apple Flavor.";
-        } else if (normalized.contains("chips") || normalized.contains("crisps")) {
-            return "Ingredients: Dried Potatoes, Vegetable Oil, Corn Starch, Sodium Chloride, Monosodium Glutamate, Salt, Sugar.";
-        } else if (normalized.contains("bread")) {
-            return "Ingredients: Enriched Bleached Flour, Water, Yeast, Peanuts, Soybean Oil, Soy Lecithin, Cane Sugar, Salt.";
-        } else {
-            return "Ingredients: Wheat Flour, Sugar, Sodium Chloride, Peanut Butter, Vegetable Fat, Milk Powder, Preservatives.";
+            String textContent = Files.readString(txtResult.toPath()).trim();
+            if (textContent.isEmpty()) {
+                throw new IllegalStateException(
+                        "Couldn't read any text from that photo. Try a clearer, well-lit photo of the " +
+                        "ingredients list, or type them in manually.");
+            }
+            return textContent;
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Failed to process the uploaded image.", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Image processing was interrupted.", e);
+        } finally {
+            try {
+                Files.deleteIfExists(tempFile.toPath());
+                Files.deleteIfExists(txtResult.toPath());
+            } catch (java.io.IOException ignored) {
+                // best-effort cleanup
+            }
         }
     }
 }

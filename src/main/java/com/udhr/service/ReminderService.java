@@ -3,6 +3,7 @@ package com.udhr.service;
 import com.udhr.model.*;
 import com.udhr.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
@@ -91,7 +92,7 @@ public class ReminderService {
     public List<MedicationAdherence> getWeeklyAdherenceLogsForPatient(Long patientId) {
         LocalDate today = LocalDate.now();
         LocalDate startWeek = today.minusDays(7); // Last 7 days
-        
+
         Patient patient = patientRepository.findById(patientId)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
@@ -145,9 +146,17 @@ public class ReminderService {
     }
 
     @Transactional
-    public MedicationAdherence updateAdherenceStatus(Long adherenceId, String status, String notes) {
+    public MedicationAdherence updateAdherenceStatus(Long adherenceId, String status, String notes, String requestingPatientIdNumber) {
         MedicationAdherence log = adherenceRepository.findById(adherenceId)
                 .orElseThrow(() -> new RuntimeException("Adherence record not found"));
+
+        // A patient may only update their own medication adherence records --
+        // adherence IDs are sequential, so this was otherwise a straight IDOR
+        // letting one patient forge or erase another's clinical adherence history.
+        String ownerIdNumber = log.getPatient() != null ? log.getPatient().getIdNumber() : null;
+        if (ownerIdNumber == null || !ownerIdNumber.equals(requestingPatientIdNumber)) {
+            throw new AccessDeniedException("This medication reminder does not belong to you.");
+        }
 
         log.setStatus(status.toUpperCase());
         if ("TAKEN".equalsIgnoreCase(status)) {

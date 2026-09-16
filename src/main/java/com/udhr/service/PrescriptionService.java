@@ -1,5 +1,8 @@
 package com.udhr.service;
 
+import com.udhr.dto.MedicationPrescriptionTally;
+import com.udhr.dto.PrescriberTally;
+import com.udhr.dto.PrescriptionReportResponse;
 import com.udhr.dto.PrescriptionRequest;
 import com.udhr.model.*;
 import com.udhr.repository.*;
@@ -7,7 +10,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class PrescriptionService {
@@ -113,5 +120,58 @@ public class PrescriptionService {
 
     public List<Prescription> getActivePrescriptionsByPatient(Long patientId) {
         return prescriptionRepository.findByPatientIdAndActiveTrue(patientId);
+    }
+
+    public PrescriptionReportResponse getReport(String staffNumber) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Facility facility = staff.getFacility();
+
+        List<Prescription> all = prescriptionRepository.findByFacilityIdOrderByCreatedAtDesc(facility.getId());
+
+        int activeCount = (int) all.stream().filter(Prescription::getActive).count();
+
+        LocalDate today = LocalDate.now();
+        int issuedToday = (int) all.stream()
+                .filter(p -> p.getCreatedAt().toLocalDate().equals(today))
+                .count();
+
+        long uniquePatients = all.stream()
+                .map(p -> p.getPatient().getId())
+                .distinct()
+                .count();
+
+        Map<String, Integer> medicationCounts = new LinkedHashMap<>();
+        Map<String, Integer> prescriberCounts = new LinkedHashMap<>();
+        for (Prescription p : all) {
+            medicationCounts.merge(p.getMedication(), 1, Integer::sum);
+            String prescriberName = p.getDoctor().getFirstName() + " " + p.getDoctor().getLastName();
+            prescriberCounts.merge(prescriberName, 1, Integer::sum);
+        }
+
+        List<MedicationPrescriptionTally> topMedications = medicationCounts.entrySet().stream()
+                .map(e -> new MedicationPrescriptionTally(e.getKey(), e.getValue()))
+                .sorted(Comparator.comparingInt(MedicationPrescriptionTally::getPrescriptionCount).reversed())
+                .limit(5)
+                .collect(Collectors.toList());
+
+        List<PrescriberTally> topPrescribers = prescriberCounts.entrySet().stream()
+                .map(e -> new PrescriberTally(e.getKey(), e.getValue()))
+                .sorted(Comparator.comparingInt(PrescriberTally::getPrescriptionCount).reversed())
+                .limit(5)
+                .collect(Collectors.toList());
+
+        List<Prescription> recent = all.stream().limit(10).collect(Collectors.toList());
+
+        return new PrescriptionReportResponse(
+                facility.getName(),
+                all.size(),
+                activeCount,
+                issuedToday,
+                (int) uniquePatients,
+                topMedications,
+                topPrescribers,
+                recent
+        );
     }
 }

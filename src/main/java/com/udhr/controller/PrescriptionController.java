@@ -1,5 +1,6 @@
 package com.udhr.controller;
 
+import com.udhr.dto.PrescriptionReportResponse;
 import com.udhr.dto.PrescriptionRequest;
 import com.udhr.model.Prescription;
 import com.udhr.service.PrescriptionService;
@@ -76,6 +77,21 @@ public class PrescriptionController {
             return ResponseEntity.ok(prescriptions);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/report")
+    public ResponseEntity<?> getReport(HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            PrescriptionReportResponse report = prescriptionService.getReport(staffNumber);
+            return ResponseEntity.ok(report);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
         }
     }
 }

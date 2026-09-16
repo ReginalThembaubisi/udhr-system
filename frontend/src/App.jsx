@@ -124,6 +124,7 @@ function App() {
   const [stockReport, setStockReport] = useState(null); // admin-only pharmacy stock report
   const [dispenseReport, setDispenseReport] = useState(null); // admin-only pharmacy dispensing report
   const [referralReport, setReferralReport] = useState(null); // admin-only facility-wide referral report
+  const [prescriptionReport, setPrescriptionReport] = useState(null); // admin-only facility-wide prescription report
   const [lowStockAlert, setLowStockAlert] = useState(null); // { items } shown once after login, dismissible
 
   // Setup Authorization headers
@@ -767,6 +768,15 @@ function App() {
       if (response.ok) setReferralReport(await response.json());
     } catch (err) {
       console.error('Error fetching referral report', err);
+    }
+  };
+
+  const fetchPrescriptionReport = async () => {
+    try {
+      const response = await fetch('/api/prescriptions/report', { headers: getAuthHeaders() });
+      if (response.ok) setPrescriptionReport(await response.json());
+    } catch (err) {
+      console.error('Error fetching prescription report', err);
     }
   };
 
@@ -2340,7 +2350,7 @@ function App() {
                 <button
                   className="btn"
                   style={{ flex: 1, background: activeTabStaff === 'staff' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); fetchStockReport(); fetchDispenseReport(); fetchReferralReport(); }}
+                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); fetchStockReport(); fetchDispenseReport(); fetchReferralReport(); fetchPrescriptionReport(); }}
                 >
                   👥 Staff Management
                 </button>
@@ -4504,6 +4514,81 @@ function App() {
                                 </div>
                               );
                             })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {prescriptionReport && (
+                    <div className="glass-card" style={{ textAlign: 'left' }}>
+                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Clipboard size={18} /> Facility Prescription Report
+                      </h3>
+                      <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{prescriptionReport.facilityName}</p>
+
+                      <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Total Prescriptions (All-Time)</p>
+                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{prescriptionReport.totalPrescriptions}</p>
+                        </div>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Active Prescriptions</p>
+                          <p style={{ color: 'var(--success)', fontSize: '1.4rem', fontWeight: 'bold' }}>{prescriptionReport.activePrescriptions}</p>
+                        </div>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Issued Today</p>
+                          <p style={{ color: '#0ea5e9', fontSize: '1.4rem', fontWeight: 'bold' }}>{prescriptionReport.issuedToday}</p>
+                        </div>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Unique Patients Prescribed</p>
+                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{prescriptionReport.uniquePatientsPrescribed}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2" style={{ gap: '16px', marginBottom: '16px' }}>
+                        {prescriptionReport.topMedications.length > 0 && (
+                          <div>
+                            <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Prescribed Medications</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {prescriptionReport.topMedications.map(m => (
+                                <div key={m.medicationName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>{m.medicationName}</span>
+                                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{m.prescriptionCount}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {prescriptionReport.topPrescribers.length > 0 && (
+                          <div>
+                            <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Prescribers</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {prescriptionReport.topPrescribers.map(p => (
+                                <div key={p.prescriberName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>Dr. {p.prescriberName}</span>
+                                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{p.prescriptionCount}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Recent Prescriptions</p>
+                        {prescriptionReport.recentPrescriptions.length === 0 ? (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No prescriptions recorded yet.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {prescriptionReport.recentPrescriptions.map(p => (
+                              <div key={p.id} style={{ fontSize: '0.8rem' }}>
+                                {!p.active && <span className="badge badge-red" style={{ marginRight: '6px' }}>INACTIVE</span>}
+                                <span className="text-muted">
+                                  <span style={{ color: '#fff' }}>{p.medication}</span> ({p.dosage}, {p.frequency}) for {p.patient?.firstName} {p.patient?.lastName} — {new Date(p.createdAt).toLocaleString()} by Dr. {p.doctor?.firstName} {p.doctor?.lastName}
+                                </span>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>

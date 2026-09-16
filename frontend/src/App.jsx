@@ -76,6 +76,13 @@ function App() {
     vaccineName: '', doseNumber: '', scheduledDate: '', administeredDate: '', notes: ''
   });
 
+  // Admin: Staff Management state
+  const [staffList, setStaffList] = useState([]);
+  const [facilitiesList, setFacilitiesList] = useState([]);
+  const [staffRegForm, setStaffRegForm] = useState({
+    staffNumber: '', firstName: '', lastName: '', role: 'NURSE', facilityId: '', email: '', password: ''
+  });
+
   // Setup Authorization headers
   const getAuthHeaders = () => {
     return {
@@ -245,6 +252,82 @@ function App() {
       }
     } catch (err) {
       console.error("Error fetching clinical alerts", err);
+    }
+  };
+
+  // Admin: Staff Management
+  const fetchStaffList = async () => {
+    try {
+      const response = await fetch('/api/staff', { headers: getAuthHeaders() });
+      if (response.ok) {
+        setStaffList(await response.json());
+      }
+    } catch (err) {
+      console.error("Error fetching staff list", err);
+    }
+  };
+
+  const fetchFacilitiesList = async () => {
+    try {
+      const response = await fetch('/api/facilities', { headers: getAuthHeaders() });
+      if (response.ok) {
+        const data = await response.json();
+        setFacilitiesList(data);
+        setStaffRegForm(prev => (prev.facilityId ? prev : { ...prev, facilityId: data.length > 0 ? String(data[0].id) : '' }));
+      }
+    } catch (err) {
+      console.error("Error fetching facilities list", err);
+    }
+  };
+
+  const handleRegisterStaff = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const payload = {
+        ...staffRegForm,
+        facilityId: staffRegForm.facilityId ? Number(staffRegForm.facilityId) : undefined
+      };
+      const response = await fetch('/api/staff', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to register staff member');
+      }
+      setSuccessMessage(`Staff member '${data.firstName} ${data.lastName}' (${data.staffNumber}) registered successfully!`);
+      setStaffRegForm({
+        staffNumber: '', firstName: '', lastName: '', role: 'NURSE',
+        facilityId: facilitiesList.length > 0 ? String(facilitiesList[0].id) : '', email: '', password: ''
+      });
+      fetchStaffList();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeactivateStaff = async (staffId) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/staff/${staffId}/deactivate`, {
+        method: 'PUT',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) throw new Error('Failed to deactivate staff member');
+      setSuccessMessage('Staff member deactivated.');
+      fetchStaffList();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1561,6 +1644,15 @@ function App() {
                   </span>
                 )}
               </button>
+              {userRole === 'ADMIN' && (
+                <button
+                  className="btn"
+                  style={{ flex: 1, background: activeTabStaff === 'staff' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
+                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); }}
+                >
+                  👥 Staff Management
+                </button>
+              )}
             </div>
 
             {activeTabStaff === 'patients' ? (
@@ -2299,7 +2391,7 @@ function App() {
                   )}
                 </div>
               </div>
-            ) : (
+            ) : activeTabStaff === 'alerts' ? (
               /* Feature 5: Clinical Alerts Feed Layout */
               <div style={{ maxWidth: '1200px', margin: '0 auto 40px', padding: '0 20px', textAlign: 'left' }}>
                 <div className="glass-card">
@@ -2438,6 +2530,149 @@ function App() {
                       })}
                     </div>
                   )}
+                </div>
+              </div>
+            ) : (
+              /* Admin: Staff Management */
+              <div className="dashboard-grid">
+                <div className="dashboard-sidebar">
+                  <div className="glass-card" style={{ textAlign: 'left' }}>
+                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <PlusCircle size={18} /> Register Staff Member
+                    </h3>
+                    <form onSubmit={handleRegisterStaff}>
+                      <div className="form-group">
+                        <label>Staff Number</label>
+                        <input
+                          type="text"
+                          value={staffRegForm.staffNumber}
+                          onChange={(e) => setStaffRegForm({...staffRegForm, staffNumber: e.target.value})}
+                          placeholder="e.g. NUR002"
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>First Name</label>
+                        <input
+                          type="text"
+                          value={staffRegForm.firstName}
+                          onChange={(e) => setStaffRegForm({...staffRegForm, firstName: e.target.value})}
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Last Name</label>
+                        <input
+                          type="text"
+                          value={staffRegForm.lastName}
+                          onChange={(e) => setStaffRegForm({...staffRegForm, lastName: e.target.value})}
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Role</label>
+                        <select
+                          value={staffRegForm.role}
+                          onChange={(e) => setStaffRegForm({...staffRegForm, role: e.target.value})}
+                        >
+                          <option value="ADMIN">Admin</option>
+                          <option value="DOCTOR">Doctor</option>
+                          <option value="NURSE">Nurse</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Facility</label>
+                        <select
+                          value={staffRegForm.facilityId}
+                          onChange={(e) => setStaffRegForm({...staffRegForm, facilityId: e.target.value})}
+                          required
+                        >
+                          <option value="" disabled>Select facility</option>
+                          {facilitiesList.map(f => (
+                            <option key={f.id} value={f.id}>{f.name} ({f.province})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Email</label>
+                        <input
+                          type="email"
+                          value={staffRegForm.email}
+                          onChange={(e) => setStaffRegForm({...staffRegForm, email: e.target.value})}
+                          placeholder="staff@udhr.gov.za"
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Temporary Password</label>
+                        <input
+                          type="password"
+                          value={staffRegForm.password}
+                          onChange={(e) => setStaffRegForm({...staffRegForm, password: e.target.value})}
+                          required
+                        />
+                      </div>
+                      <button type="submit" className="btn btn-secondary" style={{ width: '100%' }} disabled={loading}>
+                        {loading ? 'Registering...' : 'Register Staff Member'}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+                <div className="dashboard-main">
+                  <div className="glass-card" style={{ textAlign: 'left' }}>
+                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <User size={18} /> All Staff ({staffList.length})
+                    </h3>
+                    {staffList.length === 0 ? (
+                      <p className="text-muted" style={{ fontSize: '0.9rem' }}>No staff members found.</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {staffList.map(s => (
+                          <div
+                            key={s.id}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              flexWrap: 'wrap',
+                              gap: '10px',
+                              padding: '12px 16px',
+                              borderRadius: '10px',
+                              background: s.active ? 'rgba(15, 23, 42, 0.4)' : 'rgba(239, 68, 68, 0.05)',
+                              border: '1px solid rgba(255,255,255,0.05)'
+                            }}
+                          >
+                            <div>
+                              <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
+                                {s.firstName} {s.lastName} <span className="text-muted" style={{ fontWeight: 'normal' }}>({s.staffNumber})</span>
+                              </p>
+                              <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                {s.role} | {s.facility?.name || 'No facility'} | {s.email}
+                              </p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                              {s.active ? (
+                                <>
+                                  <span className="badge badge-green">Active</span>
+                                  <button
+                                    className="btn btn-danger"
+                                    onClick={() => handleDeactivateStaff(s.id)}
+                                    style={{ padding: '6px 10px', fontSize: '0.75rem' }}
+                                    disabled={loading}
+                                  >
+                                    Deactivate
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="badge badge-red">Inactive</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

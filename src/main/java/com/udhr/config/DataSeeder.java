@@ -60,6 +60,12 @@ public class DataSeeder implements CommandLineRunner {
     private ReminderService reminderService;
 
     @Autowired
+    private com.udhr.service.ImmunizationService immunizationService;
+
+    @Autowired
+    private ImmunizationRepository immunizationRepository;
+
+    @Autowired
     private BCryptPasswordEncoder passwordEncoder;
 
     @Override
@@ -166,6 +172,52 @@ public class DataSeeder implements CommandLineRunner {
             System.out.println("Test patient 'Reginal Themba' (ID: 9001015000083) seeded successfully.");
         } else {
             patient = patientRepository.findAll().get(0);
+        }
+
+        // 5b. Seed a mother + newborn baby to demonstrate a file opened from
+        // birth, before any national ID number exists. The baby is found by
+        // UHID, not idNumber, and is linked back to the mother's record.
+        if (patientRepository.count() <= 1 && facility != null) {
+            Patient mother = new Patient();
+            mother.setIdNumber("8805120123089");
+            mother.setFirstName("Nomvula");
+            mother.setLastName("Dlamini");
+            mother.setDateOfBirth(LocalDate.of(1988, 5, 12));
+            mother.setGender("FEMALE");
+            mother.setContactNumber("0827654321");
+            mother.setEmail("nomvula@udhr.gov.za");
+            mother.setAddress("45 Kruger Street, Nelspruit, Mpumalanga");
+            mother = patientRepository.save(mother);
+
+            Patient baby = new Patient();
+            // No ID number: the birth has not yet been registered with Home
+            // Affairs. The baby's file is still fully usable via its UHID.
+            baby.setFirstName("Baby");
+            baby.setLastName("Dlamini");
+            baby.setDateOfBirth(LocalDate.now().minusWeeks(2));
+            baby.setGender("FEMALE");
+            baby.setAddress(mother.getAddress());
+            baby.setMotherPatient(mother);
+            baby.setBirthFacility(facility);
+            baby.setBirthWeightGrams(3200);
+            baby.setBirthLengthCm(new java.math.BigDecimal("49.5"));
+            baby.setApgarScore1Min(9);
+            baby.setApgarScore5Min(10);
+            baby = patientRepository.save(baby);
+
+            List<Immunization> schedule = immunizationService.generateEpiSchedule(baby);
+            // Mark the two birth-dose vaccines as already given
+            for (Immunization dose : schedule) {
+                if (dose.getScheduledDate().equals(baby.getDateOfBirth())) {
+                    dose.setStatus("GIVEN");
+                    dose.setAdministeredDate(baby.getDateOfBirth());
+                    dose.setFacility(facility);
+                    dose.setNotes("Administered at birth.");
+                    immunizationRepository.save(dose);
+                }
+            }
+
+            System.out.println("Seeded mother 'Nomvula Dlamini' and newborn baby (UHID: " + baby.getUhid() + ", no ID number yet) with EPI schedule.");
         }
 
         // 6. Seed Visits and Diagnoses with official ICD-10 codes

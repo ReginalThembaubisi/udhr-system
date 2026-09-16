@@ -42,6 +42,17 @@ public class PatientService {
     @Autowired
     private FacilityRepository facilityRepository;
 
+    @Autowired
+    private ImmunizationRepository immunizationRepository;
+
+    @Autowired
+    private ImmunizationService immunizationService;
+
+    public Patient findById(Long id) {
+        return patientRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+    }
+
     public Patient findByIdNumber(String idNumber) {
         return patientRepository.findByIdNumber(idNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
@@ -91,6 +102,16 @@ public class PatientService {
 
         Patient savedPatient = patientRepository.save(patient);
 
+        // A registration carrying birth details (weight/length/Apgar, or a
+        // linked mother) means this is a newborn's file: generate their EPI
+        // immunization schedule immediately, since doses start at birth.
+        boolean isBirthRegistration = savedPatient.getMotherPatient() != null
+                || savedPatient.getBirthWeightGrams() != null
+                || savedPatient.getBirthFacility() != null;
+        if (isBirthRegistration) {
+            immunizationService.generateEpiSchedule(savedPatient);
+        }
+
         // Log the register action in AuditLog
         Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
         if (staff != null) {
@@ -125,6 +146,7 @@ public class PatientService {
         List<Diagnosis> diagnoses = diagnosisRepository.findByPatientIdOrderByDiagnosedAtDesc(patient.getId());
         List<Prescription> prescriptions = prescriptionRepository.findByPatientIdOrderByCreatedAtDesc(patient.getId());
         List<LabResult> labResults = labResultRepository.findByPatientIdOrderByTestDateDesc(patient.getId());
+        List<Immunization> immunizations = immunizationRepository.findByPatientIdOrderByScheduledDateAsc(patient.getId());
 
         // Log the view action in AuditLog
         Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
@@ -144,7 +166,8 @@ public class PatientService {
                 visits,
                 diagnoses,
                 prescriptions,
-                labResults
+                labResults,
+                immunizations
         );
     }
 }

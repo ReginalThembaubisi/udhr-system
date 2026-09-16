@@ -85,6 +85,16 @@ function App() {
     staffNumber: '', firstName: '', lastName: '', role: 'NURSE', facilityId: '', email: '', password: ''
   });
 
+  // Reception: Queue & Vitals state
+  const [todayQueue, setTodayQueue] = useState([]);
+  const [showCheckInForm, setShowCheckInForm] = useState(false);
+  const [checkInForm, setCheckInForm] = useState({ department: 'GP', reason: '', urgency: 'GREEN' });
+  const [vitalsFormFor, setVitalsFormFor] = useState(null); // queue entry id currently showing the vitals form
+  const [vitalsForm, setVitalsForm] = useState({
+    systolicBp: '', diastolicBp: '', temperatureC: '', pulseBpm: '', respiratoryRate: '',
+    oxygenSaturation: '', weightKg: '', heightCm: '', glucoseMmol: '', notes: ''
+  });
+
   // Setup Authorization headers
   const getAuthHeaders = () => {
     return {
@@ -378,6 +388,140 @@ function App() {
       if (!response.ok) throw new Error('Failed to deactivate staff member');
       setSuccessMessage('Staff member deactivated.');
       fetchStaffList();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Reception: Queue
+  const fetchTodayQueue = async () => {
+    try {
+      const response = await fetch('/api/queue/today', { headers: getAuthHeaders() });
+      if (response.ok) {
+        setTodayQueue(await response.json());
+      }
+    } catch (err) {
+      console.error("Error fetching today's queue", err);
+    }
+  };
+
+  const handleCheckIn = async (e, patientId) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch('/api/queue/check-in', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ patientId, ...checkInForm })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to check in patient');
+      setSuccessMessage(`Checked in — queue number ${data.queueNumber} (${data.department}).`);
+      setShowCheckInForm(false);
+      setCheckInForm({ department: 'GP', reason: '', urgency: 'GREEN' });
+      fetchTodayQueue();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateQueueUrgency = async (id, urgency) => {
+    try {
+      const response = await fetch(`/api/queue/${id}/urgency`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ urgency })
+      });
+      if (!response.ok) throw new Error('Failed to update urgency');
+      fetchTodayQueue();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleCallIntoConsultation = async (id) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/queue/${id}/call`, { method: 'POST', headers: getAuthHeaders() });
+      if (!response.ok) throw new Error('Failed to call patient in');
+      setSuccessMessage('Patient called into consultation.');
+      fetchTodayQueue();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleCompleteQueueEntry = async (id) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/queue/${id}/complete`, { method: 'POST', headers: getAuthHeaders() });
+      if (!response.ok) throw new Error('Failed to complete queue entry');
+      setSuccessMessage('Marked as completed.');
+      fetchTodayQueue();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleCancelQueueEntry = async (id) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/queue/${id}/cancel`, { method: 'POST', headers: getAuthHeaders() });
+      if (!response.ok) throw new Error('Failed to cancel queue entry');
+      setSuccessMessage('Queue entry cancelled.');
+      fetchTodayQueue();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // Reception: Vitals
+  const handleRecordVitals = async (e, patientId, queueEntryId) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const payload = {
+        patientId,
+        queueEntryId,
+        systolicBp: vitalsForm.systolicBp ? parseInt(vitalsForm.systolicBp, 10) : undefined,
+        diastolicBp: vitalsForm.diastolicBp ? parseInt(vitalsForm.diastolicBp, 10) : undefined,
+        temperatureC: vitalsForm.temperatureC ? parseFloat(vitalsForm.temperatureC) : undefined,
+        pulseBpm: vitalsForm.pulseBpm ? parseInt(vitalsForm.pulseBpm, 10) : undefined,
+        respiratoryRate: vitalsForm.respiratoryRate ? parseInt(vitalsForm.respiratoryRate, 10) : undefined,
+        oxygenSaturation: vitalsForm.oxygenSaturation ? parseFloat(vitalsForm.oxygenSaturation) : undefined,
+        weightKg: vitalsForm.weightKg ? parseFloat(vitalsForm.weightKg) : undefined,
+        heightCm: vitalsForm.heightCm ? parseFloat(vitalsForm.heightCm) : undefined,
+        glucoseMmol: vitalsForm.glucoseMmol ? parseFloat(vitalsForm.glucoseMmol) : undefined,
+        notes: vitalsForm.notes || undefined
+      };
+      const response = await fetch('/api/vitals', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to record vitals');
+      setSuccessMessage('Vitals recorded.');
+      setVitalsFormFor(null);
+      setVitalsForm({
+        systolicBp: '', diastolicBp: '', temperatureC: '', pulseBpm: '', respiratoryRate: '',
+        oxygenSaturation: '', weightKg: '', heightCm: '', glucoseMmol: '', notes: ''
+      });
+      fetchTodayQueue();
+      if (searchedPatientRecord && searchedPatientRecord.patient.id === patientId) {
+        handleSearchPatient();
+      }
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -1718,17 +1862,39 @@ function App() {
         {token && !mustChangePassword && userRole !== 'PATIENT' && (
           <div>
             {/* Tab Switcher for Staff */}
-            <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '600px', margin: '0 auto' }}>
-              <button 
-                className="btn" 
+            <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '760px', margin: '0 auto' }}>
+              <button
+                className="btn"
                 style={{ flex: 1, background: activeTabStaff === 'patients' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
                 onClick={() => setActiveTabStaff('patients')}
               >
                 Locate & Manage Patients
               </button>
-              <button 
-                className="btn" 
-                style={{ 
+              <button
+                className="btn"
+                style={{
+                  flex: 1,
+                  background: activeTabStaff === 'queue' ? 'var(--primary)' : 'transparent',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '10px',
+                  fontSize: '0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+                onClick={() => { setActiveTabStaff('queue'); fetchTodayQueue(); }}
+              >
+                🕐 Queue {todayQueue && todayQueue.length > 0 && (
+                  <span style={{ background: '#0ea5e9', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                    {todayQueue.length}
+                  </span>
+                )}
+              </button>
+              <button
+                className="btn"
+                style={{
                   flex: 1, 
                   background: activeTabStaff === 'alerts' ? 'var(--primary)' : 'transparent', 
                   color: '#fff', 
@@ -1999,15 +2165,73 @@ function App() {
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
                           <span className="badge badge-green">Status: Active</span>
-                          <button 
-                            className="btn btn-primary" 
-                            onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() => setShowCheckInForm(!showCheckInForm)}
                             style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}
+                          >
+                            <Clock size={14} /> {showCheckInForm ? 'Cancel Check-In' : 'Check In to Queue'}
+                          </button>
+                          <button
+                            className="btn btn-primary"
+                            onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}
+                            style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                           >
                             <RefreshCw size={14} /> Analyze Response (CDS)
                           </button>
                         </div>
                       </div>
+
+                      {/* Reception: Check In to Queue */}
+                      {showCheckInForm && (
+                        <div className="glass-card" style={{ textAlign: 'left' }}>
+                          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Clock size={18} /> Check In {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}
+                          </h3>
+                          <form onSubmit={(e) => handleCheckIn(e, searchedPatientRecord.patient.id)}>
+                            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                              <div>
+                                <label>Department</label>
+                                <select
+                                  value={checkInForm.department}
+                                  onChange={(e) => setCheckInForm({...checkInForm, department: e.target.value})}
+                                >
+                                  <option value="GP">GP</option>
+                                  <option value="DENTAL">Dental</option>
+                                  <option value="MATERNITY">Maternity</option>
+                                  <option value="PEDIATRICS">Pediatrics</option>
+                                  <option value="CASUALTY">Casualty</option>
+                                  <option value="CHRONIC_CLUB">Chronic Medication Club</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label>Urgency</label>
+                                <select
+                                  value={checkInForm.urgency}
+                                  onChange={(e) => setCheckInForm({...checkInForm, urgency: e.target.value})}
+                                >
+                                  <option value="GREEN">🟢 Green — Routine</option>
+                                  <option value="YELLOW">🟡 Yellow — Moderate</option>
+                                  <option value="RED">🔴 Red — Urgent</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="form-group">
+                              <label>Reason for Visit</label>
+                              <input
+                                type="text"
+                                value={checkInForm.reason}
+                                onChange={(e) => setCheckInForm({...checkInForm, reason: e.target.value})}
+                                placeholder="e.g. Follow-up for hypertension, tooth pain, antenatal check"
+                                required
+                              />
+                            </div>
+                            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+                              {loading ? 'Checking in...' : 'Check In to Queue'}
+                            </button>
+                          </form>
+                        </div>
+                      )}
 
                       {/* Treatment Response Timeline (CDS View) */}
                       {patientTimeline && (
@@ -2225,6 +2449,38 @@ function App() {
                                   {d.diagnosis} {d.icd10Code && <span style={{ color: '#38bdf8', fontSize: '0.75rem', fontWeight: 'normal', background: 'rgba(56, 189, 248, 0.1)', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' }}>ICD-10: {d.icd10Code}</span>}
                                 </p>
                                 <p className="text-muted" style={{ fontSize: '0.8rem' }}>Diagnosed: {new Date(d.diagnosedAt).toLocaleString()} | Notes: {d.notes}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Vitals History */}
+                      <div className="glass-card" style={{ textAlign: 'left' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Heart size={18} /> Vitals History
+                        </h3>
+                        {(!searchedPatientRecord.vitals || searchedPatientRecord.vitals.length === 0) ? (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No vitals recorded. Vitals are captured at check-in from the Queue tab.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {searchedPatientRecord.vitals.map(v => (
+                              <div key={v.id} style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '6px' }}>
+                                  {new Date(v.recordedAt).toLocaleString()} — recorded by {v.recordedBy?.firstName} {v.recordedBy?.lastName}
+                                </p>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '0.85rem', color: '#fff' }}>
+                                  {(v.systolicBp || v.diastolicBp) && <span>🩸 BP: {v.systolicBp}/{v.diastolicBp}</span>}
+                                  {v.temperatureC && <span>🌡️ Temp: {v.temperatureC}°C</span>}
+                                  {v.pulseBpm && <span>💓 Pulse: {v.pulseBpm} bpm</span>}
+                                  {v.respiratoryRate && <span>🫁 Resp: {v.respiratoryRate}/min</span>}
+                                  {v.oxygenSaturation && <span>🅾️ SpO2: {v.oxygenSaturation}%</span>}
+                                  {v.weightKg && <span>⚖️ Weight: {v.weightKg}kg</span>}
+                                  {v.heightCm && <span>📏 Height: {v.heightCm}cm</span>}
+                                  {v.bmi && <span>BMI: {v.bmi}</span>}
+                                  {v.glucoseMmol && <span>🍬 Glucose: {v.glucoseMmol} mmol/L</span>}
+                                </div>
+                                {v.notes && <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '6px' }}>Notes: {v.notes}</p>}
                               </div>
                             ))}
                           </div>
@@ -2491,6 +2747,158 @@ function App() {
                       <Clipboard size={64} className="text-muted" style={{ margin: '0 auto 16px', opacity: 0.3 }} />
                       <h3 style={{ color: '#fff', marginBottom: '8px' }}>No Patient File Loaded</h3>
                       <p className="text-muted">Use the lookup tool on the left to locate a patient by their national ID number or register a new patient.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : activeTabStaff === 'queue' ? (
+              /* Reception: Today's Queue */
+              <div style={{ maxWidth: '1000px', margin: '0 auto 40px', padding: '0 20px', textAlign: 'left' }}>
+                <div className="glass-card">
+                  <h2 style={{ fontSize: '1.5rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Clock style={{ color: '#0ea5e9' }} /> Today's Queue
+                  </h2>
+                  <p className="text-muted" style={{ marginBottom: '24px', fontSize: '0.9rem' }}>
+                    Patients checked in today at your facility, ordered by urgency then arrival time. Check patients in from the "Locate & Manage Patients" tab after finding or registering them.
+                  </p>
+
+                  {todayQueue.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+                      <Clock size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 12px', opacity: 0.4 }} />
+                      <h4 style={{ color: '#fff' }}>No one checked in yet</h4>
+                      <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '4px' }}>Check in a patient from their file to see them here.</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      {todayQueue.map(entry => (
+                        <div
+                          key={entry.id}
+                          style={{
+                            border: `1px solid ${entry.urgency === 'RED' ? 'rgba(239, 68, 68, 0.3)' : entry.urgency === 'YELLOW' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.08)'}`,
+                            background: entry.urgency === 'RED' ? 'rgba(239, 68, 68, 0.05)' : entry.urgency === 'YELLOW' ? 'rgba(245, 158, 11, 0.04)' : 'rgba(15, 23, 42, 0.4)',
+                            borderRadius: '14px',
+                            padding: '18px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                            <div>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                #{entry.queueNumber} · {entry.department.replace('_', ' ')}
+                              </span>
+                              <h3 style={{ color: '#fff', fontSize: '1.1rem', marginTop: '4px' }}>
+                                {entry.patient.firstName} {entry.patient.lastName}
+                              </h3>
+                              <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>
+                                {entry.patient.idNumber || entry.patient.uhid} | {entry.reason}
+                              </p>
+                              <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+                                Checked in: {new Date(entry.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                {entry.calledAt && ` | Called: ${new Date(entry.calledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                              </p>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+                              <select
+                                value={entry.urgency}
+                                onChange={(e) => handleUpdateQueueUrgency(entry.id, e.target.value)}
+                                style={{ padding: '4px 8px', fontSize: '0.8rem', width: 'auto' }}
+                              >
+                                <option value="GREEN">🟢 Green</option>
+                                <option value="YELLOW">🟡 Yellow</option>
+                                <option value="RED">🔴 Red</option>
+                              </select>
+                              <span className={`badge ${entry.status === 'IN_CONSULTATION' ? 'badge-yellow' : 'badge-green'}`}>
+                                {entry.status === 'IN_CONSULTATION' ? 'In Consultation' : 'Waiting'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '14px' }}>
+                            <button
+                              className="btn btn-secondary"
+                              onClick={() => setVitalsFormFor(vitalsFormFor === entry.id ? null : entry.id)}
+                              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                            >
+                              {vitalsFormFor === entry.id ? 'Cancel Vitals' : 'Record Vitals'}
+                            </button>
+                            {entry.status === 'WAITING' && (
+                              <button
+                                className="btn btn-primary"
+                                onClick={() => handleCallIntoConsultation(entry.id)}
+                                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                              >
+                                Call Into Consultation
+                              </button>
+                            )}
+                            <button
+                              className="btn btn-success"
+                              onClick={() => handleCompleteQueueEntry(entry.id)}
+                              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                            >
+                              Mark Completed
+                            </button>
+                            <button
+                              className="btn btn-danger"
+                              onClick={() => handleCancelQueueEntry(entry.id)}
+                              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+
+                          {vitalsFormFor === entry.id && (
+                            <form
+                              onSubmit={(e) => handleRecordVitals(e, entry.patient.id, entry.id)}
+                              style={{ marginTop: '14px', background: 'rgba(0,0,0,0.15)', borderRadius: '10px', padding: '16px' }}
+                            >
+                              <div className="grid grid-cols-3" style={{ gap: '10px' }}>
+                                <div className="form-group">
+                                  <label>Systolic BP</label>
+                                  <input type="number" value={vitalsForm.systolicBp} onChange={(e) => setVitalsForm({...vitalsForm, systolicBp: e.target.value})} placeholder="mmHg" />
+                                </div>
+                                <div className="form-group">
+                                  <label>Diastolic BP</label>
+                                  <input type="number" value={vitalsForm.diastolicBp} onChange={(e) => setVitalsForm({...vitalsForm, diastolicBp: e.target.value})} placeholder="mmHg" />
+                                </div>
+                                <div className="form-group">
+                                  <label>Temperature (°C)</label>
+                                  <input type="number" step="0.1" value={vitalsForm.temperatureC} onChange={(e) => setVitalsForm({...vitalsForm, temperatureC: e.target.value})} />
+                                </div>
+                                <div className="form-group">
+                                  <label>Pulse (bpm)</label>
+                                  <input type="number" value={vitalsForm.pulseBpm} onChange={(e) => setVitalsForm({...vitalsForm, pulseBpm: e.target.value})} />
+                                </div>
+                                <div className="form-group">
+                                  <label>Respiratory Rate</label>
+                                  <input type="number" value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm({...vitalsForm, respiratoryRate: e.target.value})} placeholder="breaths/min" />
+                                </div>
+                                <div className="form-group">
+                                  <label>Oxygen Saturation (%)</label>
+                                  <input type="number" step="0.1" value={vitalsForm.oxygenSaturation} onChange={(e) => setVitalsForm({...vitalsForm, oxygenSaturation: e.target.value})} />
+                                </div>
+                                <div className="form-group">
+                                  <label>Weight (kg)</label>
+                                  <input type="number" step="0.1" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm({...vitalsForm, weightKg: e.target.value})} />
+                                </div>
+                                <div className="form-group">
+                                  <label>Height (cm)</label>
+                                  <input type="number" step="0.1" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm({...vitalsForm, heightCm: e.target.value})} />
+                                </div>
+                                <div className="form-group">
+                                  <label>Glucose (mmol/L)</label>
+                                  <input type="number" step="0.1" value={vitalsForm.glucoseMmol} onChange={(e) => setVitalsForm({...vitalsForm, glucoseMmol: e.target.value})} placeholder="optional" />
+                                </div>
+                              </div>
+                              <div className="form-group">
+                                <label>Notes</label>
+                                <textarea value={vitalsForm.notes} onChange={(e) => setVitalsForm({...vitalsForm, notes: e.target.value})} rows={2} />
+                              </div>
+                              <button type="submit" className="btn btn-primary" disabled={loading}>
+                                {loading ? 'Saving...' : 'Save Vitals'}
+                              </button>
+                            </form>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

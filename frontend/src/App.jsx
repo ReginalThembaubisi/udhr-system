@@ -122,6 +122,7 @@ function App() {
   const [stockHistoryFor, setStockHistoryFor] = useState(null); // stock item id currently showing its transaction history
   const [stockHistory, setStockHistory] = useState([]);
   const [stockReport, setStockReport] = useState(null); // admin-only pharmacy stock report
+  const [lowStockAlert, setLowStockAlert] = useState(null); // { items } shown once after login, dismissible
 
   // Setup Authorization headers
   const getAuthHeaders = () => {
@@ -266,6 +267,7 @@ function App() {
       } else {
         fetchClinicalAlerts();
         fetchFacilitiesList(); // needed for the "Refer to Another Facility" destination picker
+        checkLowStockOnLogin();
       }
     }
   }, [token, userRole, mustChangePassword]);
@@ -721,6 +723,21 @@ function App() {
       if (response.ok) setStockList(await response.json());
     } catch (err) {
       console.error('Error fetching stock list', err);
+    }
+  };
+
+  // Checked once right after login so staff see it immediately, rather than
+  // only discovering low stock if they happen to open the Stock tab.
+  const checkLowStockOnLogin = async () => {
+    try {
+      const response = await fetch('/api/stock', { headers: getAuthHeaders() });
+      if (response.ok) {
+        const items = await response.json();
+        const low = items.filter(s => s.quantityOnHand <= s.reorderLevel);
+        setLowStockAlert(low.length > 0 ? { items: low } : null);
+      }
+    } catch (err) {
+      console.error('Error checking low stock on login', err);
     }
   };
 
@@ -1395,6 +1412,24 @@ function App() {
             <CheckCircle color="#10b981" />
             <p style={{ color: '#10b981', textAlign: 'left', flex: 1 }}>{successMessage}</p>
             <button onClick={() => setSuccessMessage('')} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontWeight: 'bold' }}>X</button>
+          </div>
+        )}
+
+        {lowStockAlert && (
+          <div className="glass-card" style={{ borderLeft: '4px solid var(--warning)', padding: '16px', background: 'rgba(245, 158, 11, 0.1)', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <AlertTriangle color="#f59e0b" />
+            <p style={{ color: '#f59e0b', textAlign: 'left', flex: 1 }}>
+              {lowStockAlert.items.length} medication{lowStockAlert.items.length > 1 ? 's' : ''} running low at your facility: {lowStockAlert.items.slice(0, 3).map(i => i.medicationName).join(', ')}
+              {lowStockAlert.items.length > 3 ? ` and ${lowStockAlert.items.length - 3} more` : ''}.
+            </p>
+            <button
+              className="btn"
+              style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b', padding: '6px 12px', fontSize: '0.8rem' }}
+              onClick={() => { setActiveTabStaff('stock'); fetchStockList(); setLowStockAlert(null); }}
+            >
+              View Stock
+            </button>
+            <button onClick={() => setLowStockAlert(null)} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontWeight: 'bold' }}>X</button>
           </div>
         )}
 

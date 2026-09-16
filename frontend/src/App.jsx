@@ -806,6 +806,36 @@ function App() {
     fetchLabResultReport(qs);
   };
 
+  // Downloads a report's CSV export honoring the currently-applied date
+  // range. A plain <a href> can't carry the Authorization header these
+  // endpoints require, so this fetches the file as a blob and triggers the
+  // save via a temporary object URL instead.
+  const downloadReportCsv = async (path, filename) => {
+    setErrorMessage('');
+    try {
+      const params = new URLSearchParams();
+      if (reportDateRange.startDate) params.set('startDate', reportDateRange.startDate);
+      if (reportDateRange.endDate) params.set('endDate', reportDateRange.endDate);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const response = await fetch(`${path}${qs}`, { headers: getAuthHeaders() });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error((data && data.message) || 'Failed to export CSV');
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
   const handleAddStockItem = async (e) => {
     e.preventDefault();
     setErrorMessage('');
@@ -4413,9 +4443,14 @@ function App() {
 
                   {stockReport && (
                     <div className="glass-card" style={{ textAlign: 'left' }}>
-                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Pill size={18} /> Pharmacy Stock Report
-                      </h3>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '4px' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Pill size={18} /> Pharmacy Stock Report
+                        </h3>
+                        <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/stock/report/export', 'stock-transactions.csv')}>
+                          <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
+                        </button>
+                      </div>
                       <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{stockReport.facilityName}</p>
 
                       <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
@@ -4481,9 +4516,14 @@ function App() {
 
                   {dispenseReport && (
                     <div className="glass-card" style={{ textAlign: 'left' }}>
-                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <FileText size={18} /> Pharmacy Dispensing Report
-                      </h3>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '4px' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <FileText size={18} /> Pharmacy Dispensing Report
+                        </h3>
+                        <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/dispensing/report/export', 'dispensing.csv')}>
+                          <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
+                        </button>
+                      </div>
                       <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{dispenseReport.facilityName}</p>
 
                       <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
@@ -4538,9 +4578,14 @@ function App() {
 
                   {referralReport && (
                     <div className="glass-card" style={{ textAlign: 'left' }}>
-                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <RefreshCw size={18} /> Facility Referral Report
-                      </h3>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '4px' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <RefreshCw size={18} /> Facility Referral Report
+                        </h3>
+                        <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/referrals/report/export', 'referrals.csv')}>
+                          <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
+                        </button>
+                      </div>
                       <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{referralReport.facilityName}</p>
 
                       <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
@@ -4617,9 +4662,14 @@ function App() {
 
                   {prescriptionReport && (
                     <div className="glass-card" style={{ textAlign: 'left' }}>
-                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Clipboard size={18} /> Facility Prescription Report
-                      </h3>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '4px' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Clipboard size={18} /> Facility Prescription Report
+                        </h3>
+                        <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/prescriptions/report/export', 'prescriptions.csv')}>
+                          <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
+                        </button>
+                      </div>
                       <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{prescriptionReport.facilityName}</p>
 
                       <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
@@ -4692,9 +4742,14 @@ function App() {
 
                   {labResultReport && (
                     <div className="glass-card" style={{ textAlign: 'left' }}>
-                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <FileSpreadsheet size={18} /> Facility Lab Results Report
-                      </h3>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '4px' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <FileSpreadsheet size={18} /> Facility Lab Results Report
+                        </h3>
+                        <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/lab-results/report/export', 'lab-results.csv')}>
+                          <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
+                        </button>
+                      </div>
                       <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{labResultReport.facilityName}</p>
 
                       <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>

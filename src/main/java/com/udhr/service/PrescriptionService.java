@@ -6,6 +6,7 @@ import com.udhr.dto.PrescriptionReportResponse;
 import com.udhr.dto.PrescriptionRequest;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.util.CsvUtil;
 import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -182,5 +183,36 @@ public class PrescriptionService {
                 topPrescribers,
                 recent
         );
+    }
+
+    public String exportCsv(String staffNumber, String startDateStr, String endDateStr) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Facility facility = staff.getFacility();
+        LocalDate startDate = DateRangeUtil.parseOrNull(startDateStr);
+        LocalDate endDate = DateRangeUtil.parseOrNull(endDateStr);
+
+        List<Prescription> prescriptions = prescriptionRepository.findByFacilityIdOrderByCreatedAtDesc(facility.getId())
+                .stream()
+                .filter(p -> DateRangeUtil.isWithinRange(p.getCreatedAt(), startDate, endDate))
+                .collect(Collectors.toList());
+
+        List<String> headers = List.of("Date", "Medication", "Dosage", "Frequency", "Patient", "Doctor", "Active", "Start Date", "End Date", "Notes");
+        List<List<String>> rows = prescriptions.stream()
+                .map(p -> List.of(
+                        p.getCreatedAt().toString(),
+                        p.getMedication(),
+                        p.getDosage() != null ? p.getDosage() : "",
+                        p.getFrequency() != null ? p.getFrequency() : "",
+                        p.getPatient().getFirstName() + " " + p.getPatient().getLastName(),
+                        p.getDoctor().getFirstName() + " " + p.getDoctor().getLastName(),
+                        p.getActive() ? "Yes" : "No",
+                        p.getStartDate() != null ? p.getStartDate().toString() : "",
+                        p.getEndDate() != null ? p.getEndDate().toString() : "",
+                        p.getNotes() != null ? p.getNotes() : ""
+                ))
+                .collect(Collectors.toList());
+
+        return CsvUtil.buildCsv(headers, rows);
     }
 }

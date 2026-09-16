@@ -5,6 +5,7 @@ import com.udhr.dto.DispenseRequest;
 import com.udhr.dto.MedicationDispenseTally;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.util.CsvUtil;
 import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -88,9 +89,7 @@ public class DispenseService {
                 .filter(d -> d.getDispensedAt().toLocalDate().equals(today))
                 .count();
 
-        List<Dispense> all = allEver.stream()
-                .filter(d -> DateRangeUtil.isWithinRange(d.getDispensedAt(), startDate, endDate))
-                .collect(Collectors.toList());
+        List<Dispense> all = filterByRange(allEver, startDate, endDate);
 
         long uniquePatients = all.stream()
                 .map(d -> d.getPatient().getId())
@@ -123,5 +122,37 @@ public class DispenseService {
                 topMedications,
                 recent
         );
+    }
+
+    public String exportCsv(String staffNumber, String startDateStr, String endDateStr) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Facility facility = staff.getFacility();
+        LocalDate startDate = DateRangeUtil.parseOrNull(startDateStr);
+        LocalDate endDate = DateRangeUtil.parseOrNull(endDateStr);
+
+        List<Dispense> dispenses = filterByRange(
+                dispenseRepository.findByFacilityIdOrderByDispensedAtDesc(facility.getId()), startDate, endDate);
+
+        List<String> headers = List.of("Date", "Medication", "Quantity Dispensed", "Days Supply", "Patient", "Dispensed By", "Pharmacy Notes");
+        List<List<String>> rows = dispenses.stream()
+                .map(d -> List.of(
+                        d.getDispensedAt().toString(),
+                        d.getPrescription().getMedication(),
+                        d.getQuantityDispensed() != null ? d.getQuantityDispensed() : "",
+                        d.getDaysSupply() != null ? String.valueOf(d.getDaysSupply()) : "",
+                        d.getPatient().getFirstName() + " " + d.getPatient().getLastName(),
+                        d.getDispensedBy().getFirstName() + " " + d.getDispensedBy().getLastName(),
+                        d.getPharmacyNotes() != null ? d.getPharmacyNotes() : ""
+                ))
+                .collect(Collectors.toList());
+
+        return CsvUtil.buildCsv(headers, rows);
+    }
+
+    private List<Dispense> filterByRange(List<Dispense> dispenses, LocalDate startDate, LocalDate endDate) {
+        return dispenses.stream()
+                .filter(d -> DateRangeUtil.isWithinRange(d.getDispensedAt(), startDate, endDate))
+                .collect(Collectors.toList());
     }
 }

@@ -5,6 +5,7 @@ import com.udhr.dto.StockItemRequest;
 import com.udhr.dto.StockReportResponse;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.util.CsvUtil;
 import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -119,10 +120,7 @@ public class StockService {
                 .sorted(Comparator.comparing(StockItem::getMedicationName))
                 .collect(Collectors.toList());
 
-        List<StockTransaction> transactions = stockTransactionRepository.findByStockItem_FacilityIdOrderByCreatedAtDesc(facility.getId())
-                .stream()
-                .filter(t -> DateRangeUtil.isWithinRange(t.getCreatedAt(), startDate, endDate))
-                .collect(Collectors.toList());
+        List<StockTransaction> transactions = getFilteredTransactions(facility, startDate, endDate);
         int totalReceived = transactions.stream()
                 .filter(t -> t.getType() == StockTransaction.Type.RECEIVED)
                 .mapToInt(StockTransaction::getQuantityChange)
@@ -147,6 +145,38 @@ public class StockService {
                 totalWrittenOff,
                 recent
         );
+    }
+
+    public String exportCsv(String staffNumber, String startDateStr, String endDateStr) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Facility facility = staff.getFacility();
+        LocalDate startDate = DateRangeUtil.parseOrNull(startDateStr);
+        LocalDate endDate = DateRangeUtil.parseOrNull(endDateStr);
+
+        List<StockTransaction> transactions = getFilteredTransactions(facility, startDate, endDate);
+
+        List<String> headers = List.of("Date", "Type", "Medication", "Quantity Change", "Unit", "Staff", "Notes");
+        List<List<String>> rows = transactions.stream()
+                .map(t -> List.of(
+                        t.getCreatedAt().toString(),
+                        t.getType().name(),
+                        t.getStockItem().getMedicationName(),
+                        String.valueOf(t.getQuantityChange()),
+                        t.getStockItem().getUnit(),
+                        t.getStaff().getFirstName() + " " + t.getStaff().getLastName(),
+                        t.getNotes() != null ? t.getNotes() : ""
+                ))
+                .collect(Collectors.toList());
+
+        return CsvUtil.buildCsv(headers, rows);
+    }
+
+    private List<StockTransaction> getFilteredTransactions(Facility facility, LocalDate startDate, LocalDate endDate) {
+        return stockTransactionRepository.findByStockItem_FacilityIdOrderByCreatedAtDesc(facility.getId())
+                .stream()
+                .filter(t -> DateRangeUtil.isWithinRange(t.getCreatedAt(), startDate, endDate))
+                .collect(Collectors.toList());
     }
 
     // Called when a prescription is dispensed. Best-effort: if this facility

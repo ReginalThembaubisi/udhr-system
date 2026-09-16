@@ -6,6 +6,7 @@ import com.udhr.dto.ReferralRequest;
 import com.udhr.dto.ReferralResponseRequest;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.util.CsvUtil;
 import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -165,6 +166,49 @@ public class ReferralService {
                 topSources,
                 recentActivity
         );
+    }
+
+    public String exportCsv(String staffNumber, String startDateStr, String endDateStr) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Facility facility = staff.getFacility();
+        LocalDate startDate = DateRangeUtil.parseOrNull(startDateStr);
+        LocalDate endDate = DateRangeUtil.parseOrNull(endDateStr);
+
+        List<Referral> outgoing = referralRepository.findByFromFacilityIdOrderByReferredAtDesc(facility.getId())
+                .stream()
+                .filter(r -> DateRangeUtil.isWithinRange(r.getReferredAt(), startDate, endDate))
+                .collect(Collectors.toList());
+        List<Referral> incoming = referralRepository.findByToFacilityIdOrderByReferredAtDesc(facility.getId())
+                .stream()
+                .filter(r -> DateRangeUtil.isWithinRange(r.getReferredAt(), startDate, endDate))
+                .collect(Collectors.toList());
+
+        List<Referral> combined = Stream.concat(outgoing.stream(), incoming.stream())
+                .sorted(Comparator.comparing(Referral::getReferredAt).reversed())
+                .collect(Collectors.toList());
+
+        List<String> headers = List.of("Date", "Direction", "Patient", "From Facility", "To Facility", "Urgency", "Status", "Reason", "Referred By", "Responded By", "Response Notes");
+        List<List<String>> rows = combined.stream()
+                .map(r -> {
+                    boolean isOutgoing = r.getFromFacility().getId().equals(facility.getId());
+                    return List.of(
+                            r.getReferredAt().toString(),
+                            isOutgoing ? "Sent" : "Received",
+                            r.getPatient().getFirstName() + " " + r.getPatient().getLastName(),
+                            r.getFromFacility().getName(),
+                            r.getToFacility().getName(),
+                            r.getUrgency().name(),
+                            r.getStatus().name(),
+                            r.getReason() != null ? r.getReason() : "",
+                            r.getReferredBy().getFirstName() + " " + r.getReferredBy().getLastName(),
+                            r.getRespondedBy() != null ? r.getRespondedBy().getFirstName() + " " + r.getRespondedBy().getLastName() : "",
+                            r.getResponseNotes() != null ? r.getResponseNotes() : ""
+                    );
+                })
+                .collect(Collectors.toList());
+
+        return CsvUtil.buildCsv(headers, rows);
     }
 
     private List<FacilityReferralTally> tallyByFacility(List<Referral> referrals, java.util.function.Function<Referral, Facility> facilityOf) {

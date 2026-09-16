@@ -6,6 +6,7 @@ import com.udhr.dto.LabStaffTally;
 import com.udhr.dto.TestTypeTally;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.util.CsvUtil;
 import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -151,5 +152,34 @@ public class LabResultService {
                 topOrderingStaff,
                 recent
         );
+    }
+
+    public String exportCsv(String staffNumber, String startDateStr, String endDateStr) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Facility facility = staff.getFacility();
+        LocalDate startDate = DateRangeUtil.parseOrNull(startDateStr);
+        LocalDate endDate = DateRangeUtil.parseOrNull(endDateStr);
+
+        List<LabResult> results = labResultRepository.findByFacilityIdOrderByTestDateDesc(facility.getId())
+                .stream()
+                .filter(r -> DateRangeUtil.isWithinRange(r.getTestDate(), startDate, endDate))
+                .collect(Collectors.toList());
+
+        List<String> headers = List.of("Date", "Test Name", "Result", "Unit", "Normal Range", "Patient", "Staff", "Notes");
+        List<List<String>> rows = results.stream()
+                .map(r -> List.of(
+                        r.getTestDate().toString(),
+                        r.getTestName(),
+                        r.getResult() != null ? r.getResult() : "",
+                        r.getUnit() != null ? r.getUnit() : "",
+                        r.getNormalRange() != null ? r.getNormalRange() : "",
+                        r.getPatient().getFirstName() + " " + r.getPatient().getLastName(),
+                        r.getStaff().getFirstName() + " " + r.getStaff().getLastName(),
+                        r.getNotes() != null ? r.getNotes() : ""
+                ))
+                .collect(Collectors.toList());
+
+        return CsvUtil.buildCsv(headers, rows);
     }
 }

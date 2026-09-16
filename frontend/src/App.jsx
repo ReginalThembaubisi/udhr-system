@@ -13,6 +13,8 @@ function App() {
   const [userIdNumber, setUserIdNumber] = useState(localStorage.getItem('idNumber') || '');
   const [userName, setUserName] = useState(localStorage.getItem('userName') || '');
   const [userFacilityId, setUserFacilityId] = useState(localStorage.getItem('facilityId') || '');
+  const [mustChangePassword, setMustChangePassword] = useState(localStorage.getItem('mustChangePassword') === 'true');
+  const [changePasswordForm, setChangePasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   
   const [loginRole, setLoginRole] = useState('patient'); // 'patient' or 'staff'
   const [staffNumber, setStaffNumber] = useState('DOC001');
@@ -125,13 +127,15 @@ function App() {
       localStorage.setItem('idNumber', data.idNumber || data.staffNumber);
       localStorage.setItem('userName', data.fullName);
       localStorage.setItem('facilityId', data.facilityId || '');
+      localStorage.setItem('mustChangePassword', data.mustChangePassword ? 'true' : 'false');
 
       setToken(data.token);
       setUserRole(data.role);
       setUserIdNumber(data.idNumber || data.staffNumber);
       setUserName(data.fullName);
       setUserFacilityId(data.facilityId || '');
-      setSuccessMessage('Logged in successfully!');
+      setMustChangePassword(!!data.mustChangePassword);
+      setSuccessMessage(data.mustChangePassword ? 'Logged in — please set a new password to continue.' : 'Logged in successfully!');
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -146,11 +150,14 @@ function App() {
     localStorage.removeItem('idNumber');
     localStorage.removeItem('userName');
     localStorage.removeItem('facilityId');
+    localStorage.removeItem('mustChangePassword');
     setToken('');
     setUserRole('');
     setUserIdNumber('');
     setUserName('');
     setUserFacilityId('');
+    setMustChangePassword(false);
+    setChangePasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     setPatientProfile(null);
     setPatientRecord(null);
     setHealthGuidance(null);
@@ -164,6 +171,46 @@ function App() {
     setPatientTimeline(null);
     setDrugFoodConflicts([]);
     setActiveTabStaff('patients');
+  };
+
+  // Forced first-login password change (new/admin-created staff accounts)
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    if (changePasswordForm.newPassword !== changePasswordForm.confirmPassword) {
+      setErrorMessage('New password and confirmation do not match.');
+      return;
+    }
+    if (changePasswordForm.newPassword.length < 8) {
+      setErrorMessage('New password must be at least 8 characters.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          currentPassword: changePasswordForm.currentPassword,
+          newPassword: changePasswordForm.newPassword
+        })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(typeof data === 'string' ? data : data?.message || 'Failed to update password');
+      }
+      setSuccessMessage('Password updated. Welcome to UDHR.');
+      setMustChangePassword(false);
+      localStorage.setItem('mustChangePassword', 'false');
+      setChangePasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Fetch data on login
@@ -976,8 +1023,58 @@ function App() {
           </div>
         )}
 
+        {/* 1b. Forced Password Change (new/admin-created staff account) */}
+        {token && mustChangePassword && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, padding: '20px 0' }}>
+            <div className="glass-card" style={{ width: '450px', maxWidth: '100%', textAlign: 'center' }}>
+              <ShieldAlert size={48} color="#f59e0b" style={{ margin: '0 auto 16px' }} />
+              <h2 style={{ marginBottom: '8px' }}>Set Your Password</h2>
+              <p style={{ marginBottom: '24px' }}>
+                Your account was created with a temporary password by an administrator. Choose a new password before continuing to the staff workspace.
+              </p>
+              <form onSubmit={handleChangePassword}>
+                <div className="form-group">
+                  <label htmlFor="currentPassword">Temporary Password</label>
+                  <input
+                    type="password"
+                    id="currentPassword"
+                    value={changePasswordForm.currentPassword}
+                    onChange={(e) => setChangePasswordForm({...changePasswordForm, currentPassword: e.target.value})}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="newPassword">New Password</label>
+                  <input
+                    type="password"
+                    id="newPassword"
+                    value={changePasswordForm.newPassword}
+                    onChange={(e) => setChangePasswordForm({...changePasswordForm, newPassword: e.target.value})}
+                    minLength={8}
+                    required
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <label htmlFor="confirmPassword">Confirm New Password</label>
+                  <input
+                    type="password"
+                    id="confirmPassword"
+                    value={changePasswordForm.confirmPassword}
+                    onChange={(e) => setChangePasswordForm({...changePasswordForm, confirmPassword: e.target.value})}
+                    minLength={8}
+                    required
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+                  {loading ? 'Updating...' : 'Set Password & Continue'}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* 2. Patient Portal View */}
-        {token && userRole === 'PATIENT' && (
+        {token && !mustChangePassword && userRole === 'PATIENT' && (
           <div className="dashboard-grid">
             
             {/* Sidebar Demographics Card */}
@@ -1611,7 +1708,7 @@ function App() {
         )}
 
         {/* 3. Healthcare Staff View */}
-        {token && userRole !== 'PATIENT' && (
+        {token && !mustChangePassword && userRole !== 'PATIENT' && (
           <div>
             {/* Tab Switcher for Staff */}
             <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '600px', margin: '0 auto' }}>

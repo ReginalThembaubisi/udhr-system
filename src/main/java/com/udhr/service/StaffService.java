@@ -39,6 +39,7 @@ public class StaffService {
         staff.setEmail(request.getEmail());
         staff.setPassword(passwordEncoder.encode(request.getPassword()));
         staff.setActive(true);
+        staff.setMustChangePassword(true); // admin-set password is temporary until the new hire changes it
 
         return staffRepository.save(staff);
     }

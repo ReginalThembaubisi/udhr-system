@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle, 
-  Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock, 
-  Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode
+  Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
+  Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
+  Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode, Building2
 } from 'lucide-react';
 import './App.css';
 
@@ -87,6 +87,9 @@ function App() {
   const [facilitiesList, setFacilitiesList] = useState([]);
   const [staffRegForm, setStaffRegForm] = useState({
     staffNumber: '', firstName: '', lastName: '', role: 'NURSE', facilityId: '', email: '', password: ''
+  });
+  const [facilityRegForm, setFacilityRegForm] = useState({
+    name: '', type: 'CLINIC', province: 'Mpumalanga', address: ''
   });
 
   // Reception: Queue & Vitals state
@@ -401,6 +404,31 @@ function App() {
       if (!response.ok) throw new Error('Failed to deactivate staff member');
       setSuccessMessage('Staff member deactivated.');
       fetchStaffList();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegisterFacility = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch('/api/facilities', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(facilityRegForm)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to register facility');
+      }
+      setSuccessMessage(`Facility '${data.name}' registered successfully!`);
+      setFacilityRegForm({ name: '', type: 'CLINIC', province: 'Mpumalanga', address: '' });
+      fetchFacilitiesList();
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -3674,6 +3702,58 @@ function App() {
                 <div className="dashboard-sidebar">
                   <div className="glass-card" style={{ textAlign: 'left' }}>
                     <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Building2 size={18} /> Register Facility
+                    </h3>
+                    <form onSubmit={handleRegisterFacility}>
+                      <div className="form-group">
+                        <label>Facility Name</label>
+                        <input
+                          type="text"
+                          value={facilityRegForm.name}
+                          onChange={(e) => setFacilityRegForm({...facilityRegForm, name: e.target.value})}
+                          placeholder="e.g. Themba Hospital"
+                          required
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Type</label>
+                        <select
+                          value={facilityRegForm.type}
+                          onChange={(e) => setFacilityRegForm({...facilityRegForm, type: e.target.value})}
+                        >
+                          <option value="CLINIC">Clinic</option>
+                          <option value="HOSPITAL">Hospital</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Province</label>
+                        <select
+                          value={facilityRegForm.province}
+                          onChange={(e) => setFacilityRegForm({...facilityRegForm, province: e.target.value})}
+                        >
+                          {['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'].map(p => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Address</label>
+                        <textarea
+                          value={facilityRegForm.address}
+                          onChange={(e) => setFacilityRegForm({...facilityRegForm, address: e.target.value})}
+                          placeholder="Street, town/suburb"
+                          rows={2}
+                          required
+                        />
+                      </div>
+                      <button type="submit" className="btn btn-secondary" style={{ width: '100%' }} disabled={loading}>
+                        {loading ? 'Registering...' : 'Register Facility'}
+                      </button>
+                    </form>
+                  </div>
+
+                  <div className="glass-card" style={{ textAlign: 'left' }}>
+                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <PlusCircle size={18} /> Register Staff Member
                     </h3>
                     <form onSubmit={handleRegisterStaff}>
@@ -3804,6 +3884,44 @@ function App() {
                                 <span className="badge badge-red">Inactive</span>
                               )}
                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="glass-card" style={{ textAlign: 'left' }}>
+                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Building2 size={18} /> All Facilities ({facilitiesList.length})
+                    </h3>
+                    {facilitiesList.length === 0 ? (
+                      <p className="text-muted" style={{ fontSize: '0.9rem' }}>No facilities registered.</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {facilitiesList.map(f => (
+                          <div
+                            key={f.id}
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              flexWrap: 'wrap',
+                              gap: '10px',
+                              padding: '12px 16px',
+                              borderRadius: '10px',
+                              background: 'rgba(15, 23, 42, 0.4)',
+                              border: '1px solid rgba(255,255,255,0.05)'
+                            }}
+                          >
+                            <div>
+                              <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
+                                {f.name}
+                              </p>
+                              <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                {f.province} | {f.address}
+                              </p>
+                            </div>
+                            <span className={`badge ${f.type === 'HOSPITAL' ? 'badge-yellow' : 'badge-green'}`}>{f.type}</span>
                           </div>
                         ))}
                       </div>

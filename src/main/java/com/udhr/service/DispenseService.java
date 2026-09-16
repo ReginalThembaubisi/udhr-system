@@ -5,6 +5,7 @@ import com.udhr.dto.DispenseRequest;
 import com.udhr.dto.MedicationDispenseTally;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,17 +72,25 @@ public class DispenseService {
         return dispenseRepository.findByPatientIdOrderByDispensedAtDesc(patientId);
     }
 
-    public DispenseReportResponse getReport(String staffNumber) {
+    public DispenseReportResponse getReport(String staffNumber, String startDateStr, String endDateStr) {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
         Facility facility = staff.getFacility();
+        LocalDate startDate = DateRangeUtil.parseOrNull(startDateStr);
+        LocalDate endDate = DateRangeUtil.parseOrNull(endDateStr);
 
-        List<Dispense> all = dispenseRepository.findByFacilityIdOrderByDispensedAtDesc(facility.getId());
+        List<Dispense> allEver = dispenseRepository.findByFacilityIdOrderByDispensedAtDesc(facility.getId());
 
+        // "Dispensed Today" is an always-live pulse metric, independent of
+        // whatever historical range is being browsed.
         LocalDate today = LocalDate.now();
-        int dispensedToday = (int) all.stream()
+        int dispensedToday = (int) allEver.stream()
                 .filter(d -> d.getDispensedAt().toLocalDate().equals(today))
                 .count();
+
+        List<Dispense> all = allEver.stream()
+                .filter(d -> DateRangeUtil.isWithinRange(d.getDispensedAt(), startDate, endDate))
+                .collect(Collectors.toList());
 
         long uniquePatients = all.stream()
                 .map(d -> d.getPatient().getId())

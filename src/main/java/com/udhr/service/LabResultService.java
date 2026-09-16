@@ -6,6 +6,7 @@ import com.udhr.dto.LabStaffTally;
 import com.udhr.dto.TestTypeTally;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -93,17 +94,25 @@ public class LabResultService {
         return labResultRepository.findByPatientIdOrderByTestDateDesc(patientId);
     }
 
-    public LabResultReportResponse getReport(String staffNumber) {
+    public LabResultReportResponse getReport(String staffNumber, String startDateStr, String endDateStr) {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
         Facility facility = staff.getFacility();
+        LocalDate startDate = DateRangeUtil.parseOrNull(startDateStr);
+        LocalDate endDate = DateRangeUtil.parseOrNull(endDateStr);
 
-        List<LabResult> all = labResultRepository.findByFacilityIdOrderByTestDateDesc(facility.getId());
+        List<LabResult> allEver = labResultRepository.findByFacilityIdOrderByTestDateDesc(facility.getId());
 
+        // "Results Today" is an always-live pulse metric, independent of
+        // whatever historical range is being browsed.
         LocalDate today = LocalDate.now();
-        int resultsToday = (int) all.stream()
+        int resultsToday = (int) allEver.stream()
                 .filter(r -> r.getTestDate().toLocalDate().equals(today))
                 .count();
+
+        List<LabResult> all = allEver.stream()
+                .filter(r -> DateRangeUtil.isWithinRange(r.getTestDate(), startDate, endDate))
+                .collect(Collectors.toList());
 
         long uniquePatients = all.stream()
                 .map(r -> r.getPatient().getId())

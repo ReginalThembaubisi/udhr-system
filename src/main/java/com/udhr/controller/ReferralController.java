@@ -112,14 +112,17 @@ public class ReferralController {
     }
 
     @GetMapping("/report")
-    public ResponseEntity<?> getReport(HttpServletRequest request) {
+    public ResponseEntity<?> getReport(
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate,
+            HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);
         if (staffNumber == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
         try {
-            ReferralReportResponse report = referralService.getReport(staffNumber);
+            ReferralReportResponse report = referralService.getReport(staffNumber, startDate, endDate);
             return ResponseEntity.ok(report);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));

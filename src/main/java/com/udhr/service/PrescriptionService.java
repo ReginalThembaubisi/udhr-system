@@ -6,6 +6,7 @@ import com.udhr.dto.PrescriptionReportResponse;
 import com.udhr.dto.PrescriptionRequest;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -122,19 +123,27 @@ public class PrescriptionService {
         return prescriptionRepository.findByPatientIdAndActiveTrue(patientId);
     }
 
-    public PrescriptionReportResponse getReport(String staffNumber) {
+    public PrescriptionReportResponse getReport(String staffNumber, String startDateStr, String endDateStr) {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
         Facility facility = staff.getFacility();
+        LocalDate startDate = DateRangeUtil.parseOrNull(startDateStr);
+        LocalDate endDate = DateRangeUtil.parseOrNull(endDateStr);
 
-        List<Prescription> all = prescriptionRepository.findByFacilityIdOrderByCreatedAtDesc(facility.getId());
+        List<Prescription> allEver = prescriptionRepository.findByFacilityIdOrderByCreatedAtDesc(facility.getId());
 
-        int activeCount = (int) all.stream().filter(Prescription::getActive).count();
-
+        // "Issued Today" is an always-live pulse metric, independent of
+        // whatever historical range is being browsed.
         LocalDate today = LocalDate.now();
-        int issuedToday = (int) all.stream()
+        int issuedToday = (int) allEver.stream()
                 .filter(p -> p.getCreatedAt().toLocalDate().equals(today))
                 .count();
+
+        List<Prescription> all = allEver.stream()
+                .filter(p -> DateRangeUtil.isWithinRange(p.getCreatedAt(), startDate, endDate))
+                .collect(Collectors.toList());
+
+        int activeCount = (int) all.stream().filter(Prescription::getActive).count();
 
         long uniquePatients = all.stream()
                 .map(p -> p.getPatient().getId())

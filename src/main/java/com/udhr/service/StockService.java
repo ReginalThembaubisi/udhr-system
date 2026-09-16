@@ -5,9 +5,11 @@ import com.udhr.dto.StockItemRequest;
 import com.udhr.dto.StockReportResponse;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -101,31 +103,39 @@ public class StockService {
         return stockTransactionRepository.findByStockItemIdOrderByCreatedAtDesc(stockItemId);
     }
 
-    public StockReportResponse getReport(String staffNumber) {
+    public StockReportResponse getReport(String staffNumber, String startDateStr, String endDateStr) {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
         Facility facility = staff.getFacility();
+        LocalDate startDate = DateRangeUtil.parseOrNull(startDateStr);
+        LocalDate endDate = DateRangeUtil.parseOrNull(endDateStr);
 
+        // Current inventory state (what's tracked, what's low) isn't
+        // meaningfully "date-ranged" — it reflects stock right now, not stock
+        // as of some past window — so it stays unfiltered.
         List<StockItem> items = stockItemRepository.findByFacilityIdOrderByMedicationNameAsc(facility.getId());
         List<StockItem> lowStock = items.stream()
                 .filter(i -> i.getQuantityOnHand() <= i.getReorderLevel())
                 .sorted(Comparator.comparing(StockItem::getMedicationName))
                 .collect(Collectors.toList());
 
-        List<StockTransaction> allTransactions = stockTransactionRepository.findByStockItem_FacilityIdOrderByCreatedAtDesc(facility.getId());
-        int totalReceived = allTransactions.stream()
+        List<StockTransaction> transactions = stockTransactionRepository.findByStockItem_FacilityIdOrderByCreatedAtDesc(facility.getId())
+                .stream()
+                .filter(t -> DateRangeUtil.isWithinRange(t.getCreatedAt(), startDate, endDate))
+                .collect(Collectors.toList());
+        int totalReceived = transactions.stream()
                 .filter(t -> t.getType() == StockTransaction.Type.RECEIVED)
                 .mapToInt(StockTransaction::getQuantityChange)
                 .sum();
-        int totalDispensed = -allTransactions.stream()
+        int totalDispensed = -transactions.stream()
                 .filter(t -> t.getType() == StockTransaction.Type.DISPENSED)
                 .mapToInt(StockTransaction::getQuantityChange)
                 .sum();
-        int totalWrittenOff = -allTransactions.stream()
+        int totalWrittenOff = -transactions.stream()
                 .filter(t -> t.getType() == StockTransaction.Type.ADJUSTED)
                 .mapToInt(StockTransaction::getQuantityChange)
                 .sum();
-        List<StockTransaction> recent = allTransactions.stream().limit(10).collect(Collectors.toList());
+        List<StockTransaction> recent = transactions.stream().limit(10).collect(Collectors.toList());
 
         return new StockReportResponse(
                 facility.getName(),

@@ -126,6 +126,7 @@ function App() {
   const [referralReport, setReferralReport] = useState(null); // admin-only facility-wide referral report
   const [prescriptionReport, setPrescriptionReport] = useState(null); // admin-only facility-wide prescription report
   const [labResultReport, setLabResultReport] = useState(null); // admin-only facility-wide lab result report
+  const [reportDateRange, setReportDateRange] = useState({ startDate: '', endDate: '' }); // shared date filter for all admin reports
   const [lowStockAlert, setLowStockAlert] = useState(null); // { items } shown once after login, dismissible
 
   // Setup Authorization headers
@@ -745,49 +746,64 @@ function App() {
     }
   };
 
-  const fetchStockReport = async () => {
+  const fetchStockReport = async (qs = '') => {
     try {
-      const response = await fetch('/api/stock/report', { headers: getAuthHeaders() });
+      const response = await fetch(`/api/stock/report${qs}`, { headers: getAuthHeaders() });
       if (response.ok) setStockReport(await response.json());
     } catch (err) {
       console.error('Error fetching stock report', err);
     }
   };
 
-  const fetchDispenseReport = async () => {
+  const fetchDispenseReport = async (qs = '') => {
     try {
-      const response = await fetch('/api/dispensing/report', { headers: getAuthHeaders() });
+      const response = await fetch(`/api/dispensing/report${qs}`, { headers: getAuthHeaders() });
       if (response.ok) setDispenseReport(await response.json());
     } catch (err) {
       console.error('Error fetching dispensing report', err);
     }
   };
 
-  const fetchReferralReport = async () => {
+  const fetchReferralReport = async (qs = '') => {
     try {
-      const response = await fetch('/api/referrals/report', { headers: getAuthHeaders() });
+      const response = await fetch(`/api/referrals/report${qs}`, { headers: getAuthHeaders() });
       if (response.ok) setReferralReport(await response.json());
     } catch (err) {
       console.error('Error fetching referral report', err);
     }
   };
 
-  const fetchPrescriptionReport = async () => {
+  const fetchPrescriptionReport = async (qs = '') => {
     try {
-      const response = await fetch('/api/prescriptions/report', { headers: getAuthHeaders() });
+      const response = await fetch(`/api/prescriptions/report${qs}`, { headers: getAuthHeaders() });
       if (response.ok) setPrescriptionReport(await response.json());
     } catch (err) {
       console.error('Error fetching prescription report', err);
     }
   };
 
-  const fetchLabResultReport = async () => {
+  const fetchLabResultReport = async (qs = '') => {
     try {
-      const response = await fetch('/api/lab-results/report', { headers: getAuthHeaders() });
+      const response = await fetch(`/api/lab-results/report${qs}`, { headers: getAuthHeaders() });
       if (response.ok) setLabResultReport(await response.json());
     } catch (err) {
       console.error('Error fetching lab result report', err);
     }
+  };
+
+  // Shared by the admin reports' date-range filter bar: refetches all five
+  // reports with the same [startDate, endDate] window (either may be blank
+  // for an open-ended bound, both blank for all-time).
+  const fetchAllReports = (startDate, endDate) => {
+    const params = new URLSearchParams();
+    if (startDate) params.set('startDate', startDate);
+    if (endDate) params.set('endDate', endDate);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    fetchStockReport(qs);
+    fetchDispenseReport(qs);
+    fetchReferralReport(qs);
+    fetchPrescriptionReport(qs);
+    fetchLabResultReport(qs);
   };
 
   const handleAddStockItem = async (e) => {
@@ -2360,7 +2376,7 @@ function App() {
                 <button
                   className="btn"
                   style={{ flex: 1, background: activeTabStaff === 'staff' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); fetchStockReport(); fetchDispenseReport(); fetchReferralReport(); fetchPrescriptionReport(); fetchLabResultReport(); }}
+                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); fetchAllReports(reportDateRange.startDate, reportDateRange.endDate); }}
                 >
                   👥 Staff Management
                 </button>
@@ -4326,6 +4342,75 @@ function App() {
                 </div>
 
                 <div className="dashboard-main">
+                  <div className="glass-card" style={{ textAlign: 'left' }}>
+                    <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Calendar size={18} /> Report Date Range
+                    </h3>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end' }}>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label>Start Date</label>
+                        <input
+                          type="date"
+                          value={reportDateRange.startDate}
+                          onChange={(e) => setReportDateRange({...reportDateRange, startDate: e.target.value})}
+                        />
+                      </div>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label>End Date</label>
+                        <input
+                          type="date"
+                          value={reportDateRange.endDate}
+                          onChange={(e) => setReportDateRange({...reportDateRange, endDate: e.target.value})}
+                        />
+                      </div>
+                      <button
+                        className="btn btn-primary"
+                        style={{ padding: '10px 16px' }}
+                        onClick={() => fetchAllReports(reportDateRange.startDate, reportDateRange.endDate)}
+                      >
+                        Apply
+                      </button>
+                      <button
+                        className="btn"
+                        style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', color: '#fff' }}
+                        onClick={() => { setReportDateRange({ startDate: '', endDate: '' }); fetchAllReports('', ''); }}
+                      >
+                        All Time
+                      </button>
+                      <button
+                        className="btn"
+                        style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', color: '#fff' }}
+                        onClick={() => {
+                          const end = new Date();
+                          const start = new Date();
+                          start.setDate(end.getDate() - 6);
+                          const fmt = (d) => d.toISOString().split('T')[0];
+                          setReportDateRange({ startDate: fmt(start), endDate: fmt(end) });
+                          fetchAllReports(fmt(start), fmt(end));
+                        }}
+                      >
+                        Last 7 Days
+                      </button>
+                      <button
+                        className="btn"
+                        style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', color: '#fff' }}
+                        onClick={() => {
+                          const end = new Date();
+                          const start = new Date();
+                          start.setDate(end.getDate() - 29);
+                          const fmt = (d) => d.toISOString().split('T')[0];
+                          setReportDateRange({ startDate: fmt(start), endDate: fmt(end) });
+                          fetchAllReports(fmt(start), fmt(end));
+                        }}
+                      >
+                        Last 30 Days
+                      </button>
+                    </div>
+                    <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '10px' }}>
+                      Applies to every report below. "Today" tiles (e.g. Dispensed Today) always reflect the current day regardless of this filter. Stock's currently-tracked and low-stock counts always reflect live inventory.
+                    </p>
+                  </div>
+
                   {stockReport && (
                     <div className="glass-card" style={{ textAlign: 'left' }}>
                       <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>

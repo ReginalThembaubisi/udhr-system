@@ -6,9 +6,11 @@ import com.udhr.dto.ReferralRequest;
 import com.udhr.dto.ReferralResponseRequest;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -122,13 +124,21 @@ public class ReferralService {
         return referralRepository.findByPatientIdOrderByReferredAtDesc(patientId);
     }
 
-    public ReferralReportResponse getReport(String staffNumber) {
+    public ReferralReportResponse getReport(String staffNumber, String startDateStr, String endDateStr) {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
         Facility facility = staff.getFacility();
+        LocalDate startDate = DateRangeUtil.parseOrNull(startDateStr);
+        LocalDate endDate = DateRangeUtil.parseOrNull(endDateStr);
 
-        List<Referral> outgoing = referralRepository.findByFromFacilityIdOrderByReferredAtDesc(facility.getId());
-        List<Referral> incoming = referralRepository.findByToFacilityIdOrderByReferredAtDesc(facility.getId());
+        List<Referral> outgoing = referralRepository.findByFromFacilityIdOrderByReferredAtDesc(facility.getId())
+                .stream()
+                .filter(r -> DateRangeUtil.isWithinRange(r.getReferredAt(), startDate, endDate))
+                .collect(Collectors.toList());
+        List<Referral> incoming = referralRepository.findByToFacilityIdOrderByReferredAtDesc(facility.getId())
+                .stream()
+                .filter(r -> DateRangeUtil.isWithinRange(r.getReferredAt(), startDate, endDate))
+                .collect(Collectors.toList());
 
         int pendingIncoming = (int) incoming.stream()
                 .filter(r -> r.getStatus() == Referral.Status.PENDING)

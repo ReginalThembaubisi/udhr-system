@@ -50,6 +50,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/queue/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
                 .requestMatchers("/api/vitals/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
                 .requestMatchers("/api/referrals/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
+                .requestMatchers("/api/dispensing/report").hasRole("ADMIN")
                 .requestMatchers("/api/dispensing/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST", "ADMIN")
                 .requestMatchers("/api/stock/report").hasRole("ADMIN")
                 .requestMatchers("/api/stock/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST", "ADMIN")

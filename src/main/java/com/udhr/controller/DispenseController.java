@@ -1,5 +1,6 @@
 package com.udhr.controller;
 
+import com.udhr.dto.DispenseReportResponse;
 import com.udhr.dto.DispenseRequest;
 import com.udhr.model.Dispense;
 import com.udhr.service.DispenseService;
@@ -74,6 +75,21 @@ public class DispenseController {
         try {
             List<Dispense> history = dispenseService.getHistoryForPatient(patientId);
             return ResponseEntity.ok(history);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/report")
+    public ResponseEntity<?> getReport(HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            DispenseReportResponse report = dispenseService.getReport(staffNumber);
+            return ResponseEntity.ok(report);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
         }

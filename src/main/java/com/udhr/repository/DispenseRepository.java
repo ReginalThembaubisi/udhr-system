@@ -7,4 +7,5 @@ import java.util.List;
 public interface DispenseRepository extends JpaRepository<Dispense, Long> {
     List<Dispense> findByPatientIdOrderByDispensedAtDesc(Long patientId);
     List<Dispense> findByPrescriptionIdOrderByDispensedAtDesc(Long prescriptionId);
+    List<Dispense> findByFacilityIdOrderByDispensedAtDesc(Long facilityId);
 }

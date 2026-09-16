@@ -122,6 +122,7 @@ function App() {
   const [stockHistoryFor, setStockHistoryFor] = useState(null); // stock item id currently showing its transaction history
   const [stockHistory, setStockHistory] = useState([]);
   const [stockReport, setStockReport] = useState(null); // admin-only pharmacy stock report
+  const [dispenseReport, setDispenseReport] = useState(null); // admin-only pharmacy dispensing report
   const [lowStockAlert, setLowStockAlert] = useState(null); // { items } shown once after login, dismissible
 
   // Setup Authorization headers
@@ -747,6 +748,15 @@ function App() {
       if (response.ok) setStockReport(await response.json());
     } catch (err) {
       console.error('Error fetching stock report', err);
+    }
+  };
+
+  const fetchDispenseReport = async () => {
+    try {
+      const response = await fetch('/api/dispensing/report', { headers: getAuthHeaders() });
+      if (response.ok) setDispenseReport(await response.json());
+    } catch (err) {
+      console.error('Error fetching dispensing report', err);
     }
   };
 
@@ -2320,7 +2330,7 @@ function App() {
                 <button
                   className="btn"
                   style={{ flex: 1, background: activeTabStaff === 'staff' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); fetchStockReport(); }}
+                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); fetchStockReport(); fetchDispenseReport(); }}
                 >
                   👥 Staff Management
                 </button>
@@ -4345,6 +4355,63 @@ function App() {
                                 <span className="text-muted">
                                   {tx.stockItem?.medicationName}: {tx.quantityChange > 0 ? '+' : ''}{tx.quantityChange} {tx.stockItem?.unit} — {new Date(tx.createdAt).toLocaleString()} by {tx.staff?.firstName} {tx.staff?.lastName}
                                   {tx.notes ? ` (${tx.notes})` : ''}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {dispenseReport && (
+                    <div className="glass-card" style={{ textAlign: 'left' }}>
+                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FileText size={18} /> Pharmacy Dispensing Report
+                      </h3>
+                      <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{dispenseReport.facilityName}</p>
+
+                      <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Total Dispense Events</p>
+                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{dispenseReport.totalDispenseEvents}</p>
+                        </div>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Dispensed Today</p>
+                          <p style={{ color: '#0ea5e9', fontSize: '1.4rem', fontWeight: 'bold' }}>{dispenseReport.dispensedToday}</p>
+                        </div>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Unique Patients Served</p>
+                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{dispenseReport.uniquePatientsServed}</p>
+                        </div>
+                      </div>
+
+                      {dispenseReport.topMedications.length > 0 && (
+                        <div style={{ marginBottom: '16px' }}>
+                          <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Dispensed Medications</p>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {dispenseReport.topMedications.map((m, idx) => (
+                              <div key={m.medicationName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <span style={{ color: '#fff', fontSize: '0.85rem' }}>#{idx + 1} {m.medicationName}</span>
+                                <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                  {m.dispenseCount} dispense{m.dispenseCount !== 1 ? 's' : ''}{m.totalUnitsDispensed > 0 ? ` · ${m.totalUnitsDispensed} units` : ''}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Recent Dispensing Activity</p>
+                        {dispenseReport.recentDispenses.length === 0 ? (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No dispensing activity recorded yet.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {dispenseReport.recentDispenses.map(d => (
+                              <div key={d.id} style={{ fontSize: '0.8rem' }}>
+                                <span className="text-muted">
+                                  <span style={{ color: '#fff' }}>{d.prescription?.medication}</span> ({d.quantityDispensed}) to {d.patient?.firstName} {d.patient?.lastName} — {new Date(d.dispensedAt).toLocaleString()} by {d.dispensedBy?.firstName} {d.dispensedBy?.lastName}
                                 </span>
                               </div>
                             ))}

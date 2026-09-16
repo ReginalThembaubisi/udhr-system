@@ -71,6 +71,10 @@ function App() {
   const [addAlertForm, setAddAlertForm] = useState({
     patientId: '', severity: 'HIGH', message: ''
   });
+  const [showCatchUpForm, setShowCatchUpForm] = useState(false);
+  const [catchUpForm, setCatchUpForm] = useState({
+    vaccineName: '', doseNumber: '', scheduledDate: '', administeredDate: '', notes: ''
+  });
 
   // Setup Authorization headers
   const getAuthHeaders = () => {
@@ -463,6 +467,40 @@ function App() {
       });
       if (!response.ok) throw new Error('Failed to update immunization dose');
       setSuccessMessage('Dose marked as missed.');
+      handleSearchPatient();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Log a manual/catch-up immunization outside the standard EPI schedule
+  // (a dose given at another facility, a travel vaccine, etc.)
+  const handleAddCatchUpImmunization = async (e, patientId) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const payload = {
+        patientId,
+        vaccineName: catchUpForm.vaccineName,
+        doseNumber: catchUpForm.doseNumber ? parseInt(catchUpForm.doseNumber, 10) : undefined,
+        scheduledDate: catchUpForm.scheduledDate || undefined,
+        administeredDate: catchUpForm.administeredDate || undefined,
+        notes: catchUpForm.notes || undefined
+      };
+      const response = await fetch('/api/immunizations', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to add immunization record');
+      setSuccessMessage(`Immunization record added: ${data.vaccineName}.`);
+      setCatchUpForm({ vaccineName: '', doseNumber: '', scheduledDate: '', administeredDate: '', notes: '' });
+      setShowCatchUpForm(false);
       handleSearchPatient();
     } catch (err) {
       setErrorMessage(err.message);
@@ -2003,17 +2041,89 @@ function App() {
                           <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
                             <Shield /> Immunization Schedule (EPI)
                           </h3>
-                          {(!searchedPatientRecord.immunizations || searchedPatientRecord.immunizations.length === 0) && (
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            {(!searchedPatientRecord.immunizations || searchedPatientRecord.immunizations.length === 0) && (
+                              <button
+                                className="btn btn-secondary"
+                                onClick={() => handleGenerateImmunizationSchedule(searchedPatientRecord.patient.id)}
+                                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                                disabled={loading}
+                              >
+                                Generate EPI Schedule
+                              </button>
+                            )}
                             <button
                               className="btn btn-secondary"
-                              onClick={() => handleGenerateImmunizationSchedule(searchedPatientRecord.patient.id)}
+                              onClick={() => setShowCatchUpForm(!showCatchUpForm)}
                               style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                              disabled={loading}
                             >
-                              Generate EPI Schedule
+                              {showCatchUpForm ? 'Cancel' : '+ Add Catch-up Record'}
                             </button>
-                          )}
+                          </div>
                         </div>
+
+                        {showCatchUpForm && (
+                          <form
+                            onSubmit={(e) => handleAddCatchUpImmunization(e, searchedPatientRecord.patient.id)}
+                            style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '16px', marginBottom: '16px' }}
+                          >
+                            <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '12px' }}>
+                              Log a vaccine given outside the standard EPI schedule — a dose administered at another facility before this file existed, a travel vaccine, or a catch-up dose.
+                            </p>
+                            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
+                              <div>
+                                <label>Vaccine Name</label>
+                                <input
+                                  type="text"
+                                  value={catchUpForm.vaccineName}
+                                  onChange={(e) => setCatchUpForm({...catchUpForm, vaccineName: e.target.value})}
+                                  placeholder="e.g. Yellow Fever, Hepatitis B booster"
+                                  required
+                                />
+                              </div>
+                              <div>
+                                <label>Dose Number</label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={catchUpForm.doseNumber}
+                                  onChange={(e) => setCatchUpForm({...catchUpForm, doseNumber: e.target.value})}
+                                  placeholder="optional"
+                                />
+                              </div>
+                            </div>
+                            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                              <div>
+                                <label>Scheduled Date</label>
+                                <input
+                                  type="date"
+                                  value={catchUpForm.scheduledDate}
+                                  onChange={(e) => setCatchUpForm({...catchUpForm, scheduledDate: e.target.value})}
+                                />
+                              </div>
+                              <div>
+                                <label>Administered Date (leave blank if still due)</label>
+                                <input
+                                  type="date"
+                                  value={catchUpForm.administeredDate}
+                                  onChange={(e) => setCatchUpForm({...catchUpForm, administeredDate: e.target.value})}
+                                />
+                              </div>
+                            </div>
+                            <div className="form-group">
+                              <label>Notes</label>
+                              <textarea
+                                value={catchUpForm.notes}
+                                onChange={(e) => setCatchUpForm({...catchUpForm, notes: e.target.value})}
+                                rows={2}
+                                placeholder="e.g. Given at Themba Hospital prior to this file being opened"
+                              />
+                            </div>
+                            <button type="submit" className="btn btn-primary" disabled={loading}>
+                              {loading ? 'Saving...' : 'Save Record'}
+                            </button>
+                          </form>
+                        )}
 
                         {(!searchedPatientRecord.immunizations || searchedPatientRecord.immunizations.length === 0) ? (
                           <p className="text-muted" style={{ fontSize: '0.85rem' }}>No immunization schedule on file. Generate one to start tracking EPI doses for this patient.</p>

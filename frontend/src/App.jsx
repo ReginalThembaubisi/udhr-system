@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
+import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
   Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode, Building2
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import './App.css';
 
 function App() {
@@ -834,6 +836,172 @@ function App() {
     } catch (err) {
       setErrorMessage(err.message);
     }
+  };
+
+  const reportDateRangeLabel = () => {
+    const { startDate, endDate } = reportDateRange;
+    if (!startDate && !endDate) return 'All Time';
+    if (startDate && endDate) return `${startDate} to ${endDate}`;
+    return startDate ? `From ${startDate}` : `Through ${endDate}`;
+  };
+
+  // Shared header (title/facility/range/generated-at) every report PDF
+  // starts with, so each export function only has to lay out its own body.
+  const startPdfDoc = (title, facilityName) => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text(title, 14, 18);
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(facilityName || '', 14, 25);
+    doc.text(`Range: ${reportDateRangeLabel()}`, 14, 30);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 35);
+    doc.setTextColor(0);
+    return doc;
+  };
+
+  const addSectionTable = (doc, y, heading, head, body) => {
+    if (heading) {
+      doc.setFontSize(11);
+      doc.setTextColor(0);
+      doc.text(heading, 14, y);
+      y += 4;
+    }
+    autoTable(doc, {
+      startY: y,
+      head: [head],
+      body,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [79, 70, 229] },
+      margin: { left: 14, right: 14 },
+    });
+    return doc.lastAutoTable.finalY + 10;
+  };
+
+  const exportStockPdf = () => {
+    if (!stockReport) return;
+    const doc = startPdfDoc('Pharmacy Stock Report', stockReport.facilityName);
+    let y = addSectionTable(doc, 42, 'Summary', ['Metric', 'Value'], [
+      ['Medications Tracked', String(stockReport.totalMedicationsTracked)],
+      ['Low Stock Items', String(stockReport.lowStockCount)],
+      ['Units Received (All-Time)', String(stockReport.totalUnitsReceived)],
+      ['Units Dispensed (All-Time)', String(stockReport.totalUnitsDispensed)],
+      ['Units Written Off (All-Time)', String(stockReport.totalUnitsWrittenOff)],
+    ]);
+    if (stockReport.lowStockItems.length > 0) {
+      y = addSectionTable(doc, y, 'Needs Reordering', ['Medication', 'On Hand', 'Reorder Level', 'Unit'],
+        stockReport.lowStockItems.map(i => [i.medicationName, String(i.quantityOnHand), String(i.reorderLevel), i.unit]));
+    }
+    addSectionTable(doc, y, 'Recent Stock Activity', ['Date', 'Type', 'Medication', 'Qty Change', 'Staff', 'Notes'],
+      stockReport.recentTransactions.map(t => [
+        new Date(t.createdAt).toLocaleString(), t.type, t.stockItem?.medicationName || '',
+        `${t.quantityChange > 0 ? '+' : ''}${t.quantityChange} ${t.stockItem?.unit || ''}`,
+        `${t.staff?.firstName || ''} ${t.staff?.lastName || ''}`, t.notes || ''
+      ]));
+    doc.save('stock-report.pdf');
+  };
+
+  const exportDispensePdf = () => {
+    if (!dispenseReport) return;
+    const doc = startPdfDoc('Pharmacy Dispensing Report', dispenseReport.facilityName);
+    let y = addSectionTable(doc, 42, 'Summary', ['Metric', 'Value'], [
+      ['Total Dispense Events', String(dispenseReport.totalDispenseEvents)],
+      ['Dispensed Today', String(dispenseReport.dispensedToday)],
+      ['Unique Patients Served', String(dispenseReport.uniquePatientsServed)],
+    ]);
+    if (dispenseReport.topMedications.length > 0) {
+      y = addSectionTable(doc, y, 'Top Dispensed Medications', ['Medication', 'Dispenses', 'Units'],
+        dispenseReport.topMedications.map(m => [m.medicationName, String(m.dispenseCount), String(m.totalUnitsDispensed)]));
+    }
+    addSectionTable(doc, y, 'Recent Dispensing Activity', ['Date', 'Medication', 'Quantity', 'Patient', 'Dispensed By'],
+      dispenseReport.recentDispenses.map(d => [
+        new Date(d.dispensedAt).toLocaleString(), d.prescription?.medication || '', d.quantityDispensed || '',
+        `${d.patient?.firstName || ''} ${d.patient?.lastName || ''}`,
+        `${d.dispensedBy?.firstName || ''} ${d.dispensedBy?.lastName || ''}`
+      ]));
+    doc.save('dispensing-report.pdf');
+  };
+
+  const exportReferralPdf = () => {
+    if (!referralReport) return;
+    const doc = startPdfDoc('Facility Referral Report', referralReport.facilityName);
+    let y = addSectionTable(doc, 42, 'Summary', ['Metric', 'Value'], [
+      ['Outgoing Referrals (All-Time)', String(referralReport.totalOutgoing)],
+      ['Incoming Referrals (All-Time)', String(referralReport.totalIncoming)],
+      ['Pending Incoming (Needs Response)', String(referralReport.pendingIncoming)],
+      ['Emergency Referrals (All-Time)', String(referralReport.emergencyReferrals)],
+    ]);
+    if (referralReport.topDestinations.length > 0) {
+      y = addSectionTable(doc, y, 'Top Destination Facilities', ['Facility', 'Referrals'],
+        referralReport.topDestinations.map(f => [f.facilityName, String(f.referralCount)]));
+    }
+    if (referralReport.topSources.length > 0) {
+      y = addSectionTable(doc, y, 'Top Source Facilities', ['Facility', 'Referrals'],
+        referralReport.topSources.map(f => [f.facilityName, String(f.referralCount)]));
+    }
+    addSectionTable(doc, y, 'Recent Referral Activity', ['Date', 'Direction', 'Patient', 'Facility', 'Urgency', 'Status', 'Reason'],
+      referralReport.recentActivity.map(r => {
+        const isOutgoing = r.fromFacility?.name === referralReport.facilityName;
+        return [
+          new Date(r.referredAt).toLocaleString(), isOutgoing ? 'Sent' : 'Received',
+          `${r.patient?.firstName || ''} ${r.patient?.lastName || ''}`,
+          isOutgoing ? r.toFacility?.name : r.fromFacility?.name,
+          r.urgency, r.status, r.reason || ''
+        ];
+      }));
+    doc.save('referral-report.pdf');
+  };
+
+  const exportPrescriptionPdf = () => {
+    if (!prescriptionReport) return;
+    const doc = startPdfDoc('Facility Prescription Report', prescriptionReport.facilityName);
+    let y = addSectionTable(doc, 42, 'Summary', ['Metric', 'Value'], [
+      ['Total Prescriptions (All-Time)', String(prescriptionReport.totalPrescriptions)],
+      ['Active Prescriptions', String(prescriptionReport.activePrescriptions)],
+      ['Issued Today', String(prescriptionReport.issuedToday)],
+      ['Unique Patients Prescribed', String(prescriptionReport.uniquePatientsPrescribed)],
+    ]);
+    if (prescriptionReport.topMedications.length > 0) {
+      y = addSectionTable(doc, y, 'Top Prescribed Medications', ['Medication', 'Count'],
+        prescriptionReport.topMedications.map(m => [m.medicationName, String(m.prescriptionCount)]));
+    }
+    if (prescriptionReport.topPrescribers.length > 0) {
+      y = addSectionTable(doc, y, 'Top Prescribers', ['Prescriber', 'Count'],
+        prescriptionReport.topPrescribers.map(p => [`Dr. ${p.prescriberName}`, String(p.prescriptionCount)]));
+    }
+    addSectionTable(doc, y, 'Recent Prescriptions', ['Date', 'Medication', 'Dosage', 'Patient', 'Doctor', 'Active'],
+      prescriptionReport.recentPrescriptions.map(p => [
+        new Date(p.createdAt).toLocaleString(), p.medication, p.dosage || '',
+        `${p.patient?.firstName || ''} ${p.patient?.lastName || ''}`,
+        `Dr. ${p.doctor?.firstName || ''} ${p.doctor?.lastName || ''}`, p.active ? 'Yes' : 'No'
+      ]));
+    doc.save('prescription-report.pdf');
+  };
+
+  const exportLabResultPdf = () => {
+    if (!labResultReport) return;
+    const doc = startPdfDoc('Facility Lab Results Report', labResultReport.facilityName);
+    let y = addSectionTable(doc, 42, 'Summary', ['Metric', 'Value'], [
+      ['Total Lab Results (All-Time)', String(labResultReport.totalLabResults)],
+      ['Results Today', String(labResultReport.resultsToday)],
+      ['Unique Patients Tested', String(labResultReport.uniquePatientsTested)],
+      ['Unique Test Types', String(labResultReport.uniqueTestTypes)],
+    ]);
+    if (labResultReport.topTestTypes.length > 0) {
+      y = addSectionTable(doc, y, 'Top Test Types', ['Test', 'Count'],
+        labResultReport.topTestTypes.map(t => [t.testName, String(t.testCount)]));
+    }
+    if (labResultReport.topOrderingStaff.length > 0) {
+      y = addSectionTable(doc, y, 'Top Ordering Staff', ['Staff', 'Count'],
+        labResultReport.topOrderingStaff.map(s => [s.staffName, String(s.testCount)]));
+    }
+    addSectionTable(doc, y, 'Recent Lab Results', ['Date', 'Test', 'Result', 'Normal Range', 'Patient', 'Staff'],
+      labResultReport.recentResults.map(r => [
+        new Date(r.testDate).toLocaleString(), r.testName, `${r.result || ''} ${r.unit || ''}`.trim(),
+        r.normalRange || '', `${r.patient?.firstName || ''} ${r.patient?.lastName || ''}`,
+        `${r.staff?.firstName || ''} ${r.staff?.lastName || ''}`
+      ]));
+    doc.save('lab-results-report.pdf');
   };
 
   const handleAddStockItem = async (e) => {
@@ -4447,9 +4615,14 @@ function App() {
                         <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <Pill size={18} /> Pharmacy Stock Report
                         </h3>
-                        <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/stock/report/export', 'stock-transactions.csv')}>
-                          <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/stock/report/export', 'stock-transactions.csv')}>
+                            <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
+                          </button>
+                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={exportStockPdf}>
+                            <FileText size={14} /> Export PDF
+                          </button>
+                        </div>
                       </div>
                       <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{stockReport.facilityName}</p>
 
@@ -4520,9 +4693,14 @@ function App() {
                         <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <FileText size={18} /> Pharmacy Dispensing Report
                         </h3>
-                        <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/dispensing/report/export', 'dispensing.csv')}>
-                          <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/dispensing/report/export', 'dispensing.csv')}>
+                            <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
+                          </button>
+                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={exportDispensePdf}>
+                            <FileText size={14} /> Export PDF
+                          </button>
+                        </div>
                       </div>
                       <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{dispenseReport.facilityName}</p>
 
@@ -4582,9 +4760,14 @@ function App() {
                         <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <RefreshCw size={18} /> Facility Referral Report
                         </h3>
-                        <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/referrals/report/export', 'referrals.csv')}>
-                          <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/referrals/report/export', 'referrals.csv')}>
+                            <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
+                          </button>
+                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={exportReferralPdf}>
+                            <FileText size={14} /> Export PDF
+                          </button>
+                        </div>
                       </div>
                       <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{referralReport.facilityName}</p>
 
@@ -4666,9 +4849,14 @@ function App() {
                         <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <Clipboard size={18} /> Facility Prescription Report
                         </h3>
-                        <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/prescriptions/report/export', 'prescriptions.csv')}>
-                          <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/prescriptions/report/export', 'prescriptions.csv')}>
+                            <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
+                          </button>
+                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={exportPrescriptionPdf}>
+                            <FileText size={14} /> Export PDF
+                          </button>
+                        </div>
                       </div>
                       <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{prescriptionReport.facilityName}</p>
 
@@ -4746,9 +4934,14 @@ function App() {
                         <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <FileSpreadsheet size={18} /> Facility Lab Results Report
                         </h3>
-                        <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/lab-results/report/export', 'lab-results.csv')}>
-                          <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
-                        </button>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/lab-results/report/export', 'lab-results.csv')}>
+                            <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
+                          </button>
+                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={exportLabResultPdf}>
+                            <FileText size={14} /> Export PDF
+                          </button>
+                        </div>
                       </div>
                       <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{labResultReport.facilityName}</p>
 

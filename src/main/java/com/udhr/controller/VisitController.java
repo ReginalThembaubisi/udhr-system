@@ -1,5 +1,6 @@
 package com.udhr.controller;
 
+import com.udhr.dto.DischargeRequest;
 import com.udhr.dto.VisitRequest;
 import com.udhr.model.Visit;
 import com.udhr.service.VisitService;
@@ -59,6 +60,21 @@ public class VisitController {
         try {
             List<Visit> visits = visitService.getVisitsByPatient(patientId);
             return ResponseEntity.ok(visits);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/discharge")
+    public ResponseEntity<?> discharge(@RequestBody DischargeRequest dischargeRequest, HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            Visit visit = visitService.discharge(dischargeRequest, staffNumber);
+            return ResponseEntity.ok(visit);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }

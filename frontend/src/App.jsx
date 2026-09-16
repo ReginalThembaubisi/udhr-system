@@ -99,6 +99,14 @@ function App() {
     oxygenSaturation: '', weightKg: '', heightCm: '', glucoseMmol: '', notes: ''
   });
 
+  // Discharge & Referral state
+  const [showDischargeForm, setShowDischargeForm] = useState(false);
+  const [dischargeForm, setDischargeForm] = useState({ dischargeOutcome: 'HOME', dischargeSummary: '', followUpDate: '' });
+  const [showReferForm, setShowReferForm] = useState(false);
+  const [referForm, setReferForm] = useState({ toFacilityId: '', urgency: 'ROUTINE', reason: '', clinicalSummary: '' });
+  const [incomingReferrals, setIncomingReferrals] = useState([]);
+  const [outgoingReferrals, setOutgoingReferrals] = useState([]);
+
   // Setup Authorization headers
   const getAuthHeaders = () => {
     return {
@@ -241,6 +249,7 @@ function App() {
         fetchPatientPortalData();
       } else {
         fetchClinicalAlerts();
+        fetchFacilitiesList(); // needed for the "Refer to Another Facility" destination picker
       }
     }
   }, [token, userRole, mustChangePassword]);
@@ -530,6 +539,104 @@ function App() {
       setErrorMessage(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Discharge a patient's active visit
+  const handleDischarge = async (e, patientId) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch('/api/visits/discharge', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          patientId,
+          dischargeOutcome: dischargeForm.dischargeOutcome,
+          dischargeSummary: dischargeForm.dischargeSummary || undefined,
+          followUpDate: dischargeForm.followUpDate || undefined
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to discharge patient');
+      setSuccessMessage('Patient discharged.');
+      setShowDischargeForm(false);
+      setDischargeForm({ dischargeOutcome: 'HOME', dischargeSummary: '', followUpDate: '' });
+      handleSearchPatient();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Refer a patient to another facility
+  const handleRefer = async (e, patientId) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch('/api/referrals', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          patientId,
+          toFacilityId: Number(referForm.toFacilityId),
+          urgency: referForm.urgency,
+          reason: referForm.reason,
+          clinicalSummary: referForm.clinicalSummary || undefined
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to create referral');
+      setSuccessMessage(`Patient referred to ${facilitiesList.find(f => f.id === Number(referForm.toFacilityId))?.name || 'destination facility'}.`);
+      setShowReferForm(false);
+      setReferForm({ toFacilityId: '', urgency: 'ROUTINE', reason: '', clinicalSummary: '' });
+      handleSearchPatient();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Referrals tab: incoming (to my facility) and outgoing (from my facility)
+  const fetchIncomingReferrals = async () => {
+    try {
+      const response = await fetch('/api/referrals/incoming', { headers: getAuthHeaders() });
+      if (response.ok) setIncomingReferrals(await response.json());
+    } catch (err) {
+      console.error('Error fetching incoming referrals', err);
+    }
+  };
+
+  const fetchOutgoingReferrals = async () => {
+    try {
+      const response = await fetch('/api/referrals/outgoing', { headers: getAuthHeaders() });
+      if (response.ok) setOutgoingReferrals(await response.json());
+    } catch (err) {
+      console.error('Error fetching outgoing referrals', err);
+    }
+  };
+
+  const handleRespondToReferral = async (id, status) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/referrals/${id}/respond`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status })
+      });
+      if (!response.ok) throw new Error('Failed to update referral');
+      setSuccessMessage(`Referral marked as ${status.toLowerCase()}.`);
+      fetchIncomingReferrals();
+      fetchOutgoingReferrals();
+    } catch (err) {
+      setErrorMessage(err.message);
     }
   };
 
@@ -1906,7 +2013,7 @@ function App() {
         {token && !mustChangePassword && userRole !== 'PATIENT' && (
           <div>
             {/* Tab Switcher for Staff */}
-            <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '760px', margin: '0 auto' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '900px', margin: '0 auto' }}>
               <button
                 className="btn"
                 style={{ flex: 1, background: activeTabStaff === 'patients' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
@@ -1955,6 +2062,28 @@ function App() {
                 🚨 Clinical Alerts {clinicalAlerts && clinicalAlerts.length > 0 && (
                   <span style={{ background: '#ef4444', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
                     {clinicalAlerts.length}
+                  </span>
+                )}
+              </button>
+              <button
+                className="btn"
+                style={{
+                  flex: 1,
+                  background: activeTabStaff === 'referrals' ? 'var(--primary)' : 'transparent',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '10px',
+                  fontSize: '0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+                onClick={() => { setActiveTabStaff('referrals'); fetchIncomingReferrals(); fetchOutgoingReferrals(); }}
+              >
+                🔄 Referrals {incomingReferrals.filter(r => r.status === 'PENDING').length > 0 && (
+                  <span style={{ background: '#0ea5e9', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                    {incomingReferrals.filter(r => r.status === 'PENDING').length}
                   </span>
                 )}
               </button>
@@ -2263,6 +2392,20 @@ function App() {
                             <Clock size={14} /> {showCheckInForm ? 'Cancel Check-In' : 'Check In to Queue'}
                           </button>
                           <button
+                            className="btn btn-secondary"
+                            onClick={() => setShowReferForm(!showReferForm)}
+                            style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                          >
+                            <FileText size={14} /> {showReferForm ? 'Cancel Referral' : 'Refer to Another Facility'}
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() => setShowDischargeForm(!showDischargeForm)}
+                            style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                          >
+                            <CheckCircle size={14} /> {showDischargeForm ? 'Cancel Discharge' : 'Discharge Patient'}
+                          </button>
+                          <button
                             className="btn btn-primary"
                             onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}
                             style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
@@ -2271,6 +2414,112 @@ function App() {
                           </button>
                         </div>
                       </div>
+
+                      {/* Discharge Patient */}
+                      {showDischargeForm && (
+                        <div className="glass-card" style={{ textAlign: 'left' }}>
+                          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <CheckCircle size={18} /> Discharge {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}
+                          </h3>
+                          <form onSubmit={(e) => handleDischarge(e, searchedPatientRecord.patient.id)}>
+                            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                              <div>
+                                <label>Outcome</label>
+                                <select
+                                  value={dischargeForm.dischargeOutcome}
+                                  onChange={(e) => setDischargeForm({...dischargeForm, dischargeOutcome: e.target.value})}
+                                >
+                                  <option value="HOME">Discharged Home</option>
+                                  <option value="TRANSFERRED">Transferred</option>
+                                  <option value="ABSCONDED">Absconded</option>
+                                  <option value="DECEASED">Deceased</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label>Follow-up Date (optional)</label>
+                                <input
+                                  type="date"
+                                  value={dischargeForm.followUpDate}
+                                  onChange={(e) => setDischargeForm({...dischargeForm, followUpDate: e.target.value})}
+                                />
+                              </div>
+                            </div>
+                            <div className="form-group">
+                              <label>Discharge Summary</label>
+                              <textarea
+                                value={dischargeForm.dischargeSummary}
+                                onChange={(e) => setDischargeForm({...dischargeForm, dischargeSummary: e.target.value})}
+                                placeholder="Condition on discharge, instructions given, medication to continue..."
+                                rows={3}
+                              />
+                            </div>
+                            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+                              {loading ? 'Discharging...' : 'Confirm Discharge'}
+                            </button>
+                          </form>
+                        </div>
+                      )}
+
+                      {/* Refer to Another Facility */}
+                      {showReferForm && (
+                        <div className="glass-card" style={{ textAlign: 'left' }}>
+                          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <FileText size={18} /> Refer {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}
+                          </h3>
+                          <form onSubmit={(e) => handleRefer(e, searchedPatientRecord.patient.id)}>
+                            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
+                              <div>
+                                <label>Destination Facility</label>
+                                <select
+                                  value={referForm.toFacilityId}
+                                  onChange={(e) => setReferForm({...referForm, toFacilityId: e.target.value})}
+                                  required
+                                >
+                                  <option value="" disabled>Select facility</option>
+                                  {facilitiesList
+                                    .filter(f => String(f.id) !== String(userFacilityId))
+                                    .map(f => (
+                                      <option key={f.id} value={f.id}>{f.name} ({f.province})</option>
+                                    ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label>Urgency</label>
+                                <select
+                                  value={referForm.urgency}
+                                  onChange={(e) => setReferForm({...referForm, urgency: e.target.value})}
+                                >
+                                  <option value="ROUTINE">Routine</option>
+                                  <option value="URGENT">Urgent</option>
+                                  <option value="EMERGENCY">Emergency</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="form-group">
+                              <label>Reason for Referral</label>
+                              <input
+                                type="text"
+                                value={referForm.reason}
+                                onChange={(e) => setReferForm({...referForm, reason: e.target.value})}
+                                placeholder="e.g. Requires specialist care beyond this facility's capability"
+                                required
+                              />
+                            </div>
+                            <div className="form-group">
+                              <label>Clinical Summary</label>
+                              <textarea
+                                value={referForm.clinicalSummary}
+                                onChange={(e) => setReferForm({...referForm, clinicalSummary: e.target.value})}
+                                placeholder="Diagnosis, treatment given, current medications, relevant history..."
+                                rows={3}
+                              />
+                            </div>
+                            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+                              {loading ? 'Referring...' : 'Send Referral'}
+                            </button>
+                          </form>
+                        </div>
+                      )}
 
                       {/* Reception: Check In to Queue */}
                       {showCheckInForm && (
@@ -2522,6 +2771,85 @@ function App() {
                             </div>
                           )}
                         </div>
+                      </div>
+
+                      {/* Visit History */}
+                      <div className="glass-card" style={{ textAlign: 'left' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Clipboard size={18} /> Visit History
+                        </h3>
+                        {(!searchedPatientRecord.visits || searchedPatientRecord.visits.length === 0) ? (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No visits recorded.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {searchedPatientRecord.visits.map(v => (
+                              <div key={v.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                                  <div>
+                                    <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>{v.reason}</p>
+                                    <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                      {new Date(v.visitDate).toLocaleString()} | {v.facility?.name}
+                                    </p>
+                                  </div>
+                                  <span className={`badge ${v.status === 'ACTIVE' ? 'badge-green' : v.status === 'REFERRED' ? 'badge-yellow' : 'badge-red'}`}>
+                                    {v.status === 'ACTIVE' ? 'Active' : v.status === 'REFERRED' ? 'Referred' : 'Discharged'}
+                                  </span>
+                                </div>
+                                {v.notes && <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '6px' }}>{v.notes}</p>}
+                                {v.status === 'DISCHARGED' && (
+                                  <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <p style={{ fontSize: '0.8rem', color: '#a7f3d0' }}>
+                                      Discharged {v.dischargeOutcome === 'HOME' ? 'home' : v.dischargeOutcome?.toLowerCase()} by {v.dischargedBy?.firstName} {v.dischargedBy?.lastName} on {new Date(v.dischargedAt).toLocaleDateString()}
+                                      {v.followUpDate && ` | Follow-up: ${v.followUpDate}`}
+                                    </p>
+                                    {v.dischargeSummary && <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>{v.dischargeSummary}</p>}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Referral History */}
+                      <div className="glass-card" style={{ textAlign: 'left' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <FileText size={18} /> Referral History
+                        </h3>
+                        {(!searchedPatientRecord.referrals || searchedPatientRecord.referrals.length === 0) ? (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No referrals on file.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {searchedPatientRecord.referrals.map(r => (
+                              <div key={r.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                                  <div>
+                                    <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>
+                                      {r.fromFacility?.name} → {r.toFacility?.name}
+                                    </p>
+                                    <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                      {r.reason} | {new Date(r.referredAt).toLocaleString()} by {r.referredBy?.firstName} {r.referredBy?.lastName}
+                                    </p>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                    <span className={`badge ${r.urgency === 'EMERGENCY' ? 'badge-red' : r.urgency === 'URGENT' ? 'badge-yellow' : 'badge-green'}`}>
+                                      {r.urgency}
+                                    </span>
+                                    <span className={`badge ${r.status === 'ACCEPTED' || r.status === 'COMPLETED' ? 'badge-green' : r.status === 'DECLINED' || r.status === 'CANCELLED' ? 'badge-red' : 'badge-yellow'}`}>
+                                      {r.status}
+                                    </span>
+                                  </div>
+                                </div>
+                                {r.clinicalSummary && <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '6px' }}>{r.clinicalSummary}</p>}
+                                {r.responseNotes && (
+                                  <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '6px', fontStyle: 'italic' }}>
+                                    Response ({r.respondedBy?.firstName} {r.respondedBy?.lastName}): {r.responseNotes}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       {/* Diagnostic Logs */}
@@ -3075,6 +3403,123 @@ function App() {
                                 {loading ? 'Saving...' : 'Save Vitals'}
                               </button>
                             </form>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : activeTabStaff === 'referrals' ? (
+              /* Referrals: Incoming & Outgoing */
+              <div style={{ maxWidth: '1000px', margin: '0 auto 40px', padding: '0 20px', textAlign: 'left' }}>
+                <div className="glass-card" style={{ marginBottom: '24px' }}>
+                  <h2 style={{ fontSize: '1.5rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    🔄 Incoming Referrals
+                  </h2>
+                  <p className="text-muted" style={{ marginBottom: '20px', fontSize: '0.9rem' }}>
+                    Patients referred to your facility from elsewhere.
+                  </p>
+                  {incomingReferrals.length === 0 ? (
+                    <p className="text-muted" style={{ fontSize: '0.85rem' }}>No incoming referrals.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {incomingReferrals.map(r => (
+                        <div
+                          key={r.id}
+                          style={{
+                            border: `1px solid ${r.urgency === 'EMERGENCY' ? 'rgba(239, 68, 68, 0.3)' : r.urgency === 'URGENT' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.08)'}`,
+                            background: r.urgency === 'EMERGENCY' ? 'rgba(239, 68, 68, 0.05)' : r.urgency === 'URGENT' ? 'rgba(245, 158, 11, 0.04)' : 'rgba(15, 23, 42, 0.4)',
+                            borderRadius: '12px',
+                            padding: '16px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                            <div>
+                              <h3 style={{ color: '#fff', fontSize: '1rem' }}>
+                                {r.patient?.firstName} {r.patient?.lastName} <span className="text-muted" style={{ fontWeight: 'normal', fontSize: '0.8rem' }}>({r.patient?.idNumber || r.patient?.uhid})</span>
+                              </h3>
+                              <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>
+                                From {r.fromFacility?.name} | {r.reason}
+                              </p>
+                              <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}>
+                                Referred: {new Date(r.referredAt).toLocaleString()} by {r.referredBy?.firstName} {r.referredBy?.lastName}
+                              </p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <span className={`badge ${r.urgency === 'EMERGENCY' ? 'badge-red' : r.urgency === 'URGENT' ? 'badge-yellow' : 'badge-green'}`}>{r.urgency}</span>
+                              <span className={`badge ${r.status === 'ACCEPTED' || r.status === 'COMPLETED' ? 'badge-green' : r.status === 'DECLINED' ? 'badge-red' : 'badge-yellow'}`}>{r.status}</span>
+                            </div>
+                          </div>
+                          {r.clinicalSummary && (
+                            <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '10px', background: 'rgba(0,0,0,0.15)', padding: '10px', borderRadius: '8px' }}>
+                              {r.clinicalSummary}
+                            </p>
+                          )}
+                          {r.status === 'PENDING' && (
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                              <button className="btn btn-success" onClick={() => handleRespondToReferral(r.id, 'ACCEPTED')} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                                Accept
+                              </button>
+                              <button className="btn btn-danger" onClick={() => handleRespondToReferral(r.id, 'DECLINED')} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                                Decline
+                              </button>
+                            </div>
+                          )}
+                          {r.status === 'ACCEPTED' && (
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                              <button className="btn btn-success" onClick={() => handleRespondToReferral(r.id, 'COMPLETED')} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                                Mark Seen / Completed
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="glass-card">
+                  <h2 style={{ fontSize: '1.5rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    📤 Outgoing Referrals
+                  </h2>
+                  <p className="text-muted" style={{ marginBottom: '20px', fontSize: '0.9rem' }}>
+                    Patients your facility has referred elsewhere.
+                  </p>
+                  {outgoingReferrals.length === 0 ? (
+                    <p className="text-muted" style={{ fontSize: '0.85rem' }}>No outgoing referrals.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {outgoingReferrals.map(r => (
+                        <div key={r.id} style={{ border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '12px', padding: '16px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                            <div>
+                              <h3 style={{ color: '#fff', fontSize: '1rem' }}>
+                                {r.patient?.firstName} {r.patient?.lastName} <span className="text-muted" style={{ fontWeight: 'normal', fontSize: '0.8rem' }}>({r.patient?.idNumber || r.patient?.uhid})</span>
+                              </h3>
+                              <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>
+                                To {r.toFacility?.name} | {r.reason}
+                              </p>
+                              <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}>
+                                Referred: {new Date(r.referredAt).toLocaleString()}
+                              </p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <span className={`badge ${r.urgency === 'EMERGENCY' ? 'badge-red' : r.urgency === 'URGENT' ? 'badge-yellow' : 'badge-green'}`}>{r.urgency}</span>
+                              <span className={`badge ${r.status === 'ACCEPTED' || r.status === 'COMPLETED' ? 'badge-green' : r.status === 'DECLINED' ? 'badge-red' : 'badge-yellow'}`}>{r.status}</span>
+                            </div>
+                          </div>
+                          {r.responseNotes && (
+                            <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '10px', fontStyle: 'italic' }}>
+                              Response: {r.responseNotes}
+                            </p>
+                          )}
+                          {r.status === 'PENDING' && (
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                              <button className="btn btn-danger" onClick={() => handleRespondToReferral(r.id, 'CANCELLED')} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                                Cancel Referral
+                              </button>
+                            </div>
                           )}
                         </div>
                       ))}

@@ -7,6 +7,7 @@ import com.udhr.model.Immunization;
 import com.udhr.model.LabResult;
 import com.udhr.model.Patient;
 import com.udhr.model.Prescription;
+import com.udhr.model.Referral;
 import com.udhr.model.Vitals;
 import com.udhr.model.Visit;
 import lombok.AllArgsConstructor;
@@ -27,4 +28,5 @@ public class PatientRecordResponse {
     private List<LabResult> labResults;
     private List<Immunization> immunizations;
     private List<Vitals> vitals;
+    private List<Referral> referrals;
 }

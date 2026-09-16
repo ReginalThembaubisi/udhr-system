@@ -73,6 +73,9 @@ function App() {
   const [addAlertForm, setAddAlertForm] = useState({
     patientId: '', severity: 'HIGH', message: ''
   });
+  const [addLabResultForm, setAddLabResultForm] = useState({
+    patientId: '', testName: '', result: '', unit: '', normalRange: '', notes: ''
+  });
   const [showCatchUpForm, setShowCatchUpForm] = useState(false);
   const [catchUpForm, setCatchUpForm] = useState({
     vaccineName: '', doseNumber: '', scheduledDate: '', administeredDate: '', notes: ''
@@ -553,6 +556,7 @@ function App() {
       setAddDiagnosisForm(prev => ({ ...prev, patientId: data.patient.id }));
       setAddPrescriptionForm(prev => ({ ...prev, patientId: data.patient.id }));
       setAddAlertForm(prev => ({ ...prev, patientId: data.patient.id }));
+      setAddLabResultForm(prev => ({ ...prev, patientId: data.patient.id }));
 
       // Trigger automatic CDS evaluation on patient file search to generate alerts in real time
       await fetch(`/api/clinical-alerts/patient/${data.patient.id}/evaluate`, {
@@ -867,6 +871,40 @@ function App() {
       setSuccessMessage('Custom Clinical Alert created successfully!');
       setAddAlertForm(prev => ({ ...prev, message: '' }));
       fetchClinicalAlerts();
+      handleSearchPatient(); // Refresh record
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Staff adds a lab result
+  const handleAddLabResult = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/lab-results', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          patientId: addLabResultForm.patientId,
+          testName: addLabResultForm.testName,
+          result: addLabResultForm.result,
+          unit: addLabResultForm.unit || undefined,
+          normalRange: addLabResultForm.normalRange || undefined,
+          notes: addLabResultForm.notes || undefined
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(typeof data === 'string' ? data : data.message || 'Failed to add lab result');
+      }
+      setSuccessMessage('Lab result added successfully!');
+      setAddLabResultForm(prev => ({ ...prev, testName: '', result: '', unit: '', normalRange: '', notes: '' }));
       handleSearchPatient(); // Refresh record
     } catch (err) {
       setErrorMessage(err.message);
@@ -2434,7 +2472,7 @@ function App() {
                         </div>
                       </div>
 
-                      {/* Diagnoses and Lab Results */}
+                      {/* Diagnostic Logs */}
                       <div className="glass-card" style={{ textAlign: 'left' }}>
                         <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <FileText /> Diagnostic Logs & Clinical Visits
@@ -2449,6 +2487,34 @@ function App() {
                                   {d.diagnosis} {d.icd10Code && <span style={{ color: '#38bdf8', fontSize: '0.75rem', fontWeight: 'normal', background: 'rgba(56, 189, 248, 0.1)', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' }}>ICD-10: {d.icd10Code}</span>}
                                 </p>
                                 <p className="text-muted" style={{ fontSize: '0.8rem' }}>Diagnosed: {new Date(d.diagnosedAt).toLocaleString()} | Notes: {d.notes}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Laboratory Results */}
+                      <div className="glass-card" style={{ textAlign: 'left' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <FileSpreadsheet size={18} /> Laboratory Results
+                        </h3>
+                        {(!searchedPatientRecord.labResults || searchedPatientRecord.labResults.length === 0) ? (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No lab results recorded.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {searchedPatientRecord.labResults.map(lr => (
+                              <div key={lr.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '8px' }}>
+                                  <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>{lr.testName}</p>
+                                  <p style={{ color: '#7dd3fc', fontSize: '0.95rem', fontWeight: 700 }}>
+                                    {lr.result} {lr.unit}
+                                  </p>
+                                </div>
+                                <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>
+                                  {lr.normalRange && `Normal range: ${lr.normalRange} | `}
+                                  Tested: {new Date(lr.testDate).toLocaleString()}
+                                </p>
+                                {lr.notes && <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>Notes: {lr.notes}</p>}
                               </div>
                             ))}
                           </div>
@@ -2740,6 +2806,67 @@ function App() {
                             </button>
                           </form>
                         </div>
+                      </div>
+
+                      {/* Add Lab Result Form */}
+                      <div className="glass-card" style={{ textAlign: 'left' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <FileSpreadsheet size={18} /> Add Lab Result
+                        </h3>
+                        <form onSubmit={handleAddLabResult}>
+                          <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '10px' }}>
+                            <div>
+                              <label>Test Name</label>
+                              <input
+                                type="text"
+                                value={addLabResultForm.testName}
+                                onChange={(e) => setAddLabResultForm({...addLabResultForm, testName: e.target.value})}
+                                placeholder="e.g. HbA1c, Full Blood Count, GeneXpert MTB/RIF"
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label>Result</label>
+                              <input
+                                type="text"
+                                value={addLabResultForm.result}
+                                onChange={(e) => setAddLabResultForm({...addLabResultForm, result: e.target.value})}
+                                placeholder="e.g. 6.8"
+                                required
+                              />
+                            </div>
+                            <div>
+                              <label>Unit</label>
+                              <input
+                                type="text"
+                                value={addLabResultForm.unit}
+                                onChange={(e) => setAddLabResultForm({...addLabResultForm, unit: e.target.value})}
+                                placeholder="e.g. %"
+                              />
+                            </div>
+                          </div>
+                          <div className="form-group">
+                            <label>Normal Range</label>
+                            <input
+                              type="text"
+                              value={addLabResultForm.normalRange}
+                              onChange={(e) => setAddLabResultForm({...addLabResultForm, normalRange: e.target.value})}
+                              placeholder="e.g. 4.0 - 5.6%"
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>Notes</label>
+                            <textarea
+                              value={addLabResultForm.notes}
+                              onChange={(e) => setAddLabResultForm({...addLabResultForm, notes: e.target.value})}
+                              placeholder="Any interpretation or follow-up notes..."
+                              rows={2}
+                            />
+                          </div>
+                          <button type="submit" className="btn btn-secondary" style={{ width: '100%' }} disabled={loading}>
+                            {loading ? 'Saving...' : 'Save Lab Result'}
+                          </button>
+                        </form>
                       </div>
                     </>
                   ) : (

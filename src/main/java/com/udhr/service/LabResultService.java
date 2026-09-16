@@ -4,6 +4,7 @@ import com.udhr.dto.LabResultRequest;
 import com.udhr.model.*;
 import com.udhr.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import java.util.List;
 
@@ -29,14 +30,42 @@ public class LabResultService {
         Patient patient = patientRepository.findById(request.getPatientId())
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
-        Staff staff = staffRepository.findById(request.getStaffId())
-                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Staff staff;
+        if (request.getStaffId() != null) {
+            staff = staffRepository.findById(request.getStaffId())
+                    .orElseThrow(() -> new RuntimeException("Staff not found"));
+        } else {
+            String staffNum = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            staff = staffRepository.findByStaffNumber(staffNum)
+                    .orElseThrow(() -> new RuntimeException("Logged in staff not found"));
+        }
 
-        Facility facility = facilityRepository.findById(request.getFacilityId())
-                .orElseThrow(() -> new RuntimeException("Facility not found"));
+        Facility facility;
+        if (request.getFacilityId() != null) {
+            facility = facilityRepository.findById(request.getFacilityId())
+                    .orElseThrow(() -> new RuntimeException("Facility not found"));
+        } else {
+            facility = staff.getFacility();
+        }
 
-        Visit visit = visitRepository.findById(request.getVisitId())
-                .orElseThrow(() -> new RuntimeException("Visit not found"));
+        Visit visit;
+        if (request.getVisitId() != null) {
+            visit = visitRepository.findById(request.getVisitId())
+                    .orElseThrow(() -> new RuntimeException("Visit not found"));
+        } else {
+            List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
+            if (!visits.isEmpty()) {
+                visit = visits.get(0);
+            } else {
+                visit = new Visit();
+                visit.setPatient(patient);
+                visit.setStaff(staff);
+                visit.setFacility(facility);
+                visit.setReason("Clinical consultation");
+                visit.setNotes("Automatically created for lab result log.");
+                visit = visitRepository.save(visit);
+            }
+        }
 
         LabResult labResult = new LabResult();
         labResult.setPatient(patient);

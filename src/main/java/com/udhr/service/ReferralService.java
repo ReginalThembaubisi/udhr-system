@@ -1,5 +1,7 @@
 package com.udhr.service;
 
+import com.udhr.dto.FacilityReferralTally;
+import com.udhr.dto.ReferralReportResponse;
 import com.udhr.dto.ReferralRequest;
 import com.udhr.dto.ReferralResponseRequest;
 import com.udhr.model.*;
@@ -8,7 +10,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class ReferralService {
@@ -113,5 +120,53 @@ public class ReferralService {
 
     public List<Referral> getPatientHistory(Long patientId) {
         return referralRepository.findByPatientIdOrderByReferredAtDesc(patientId);
+    }
+
+    public ReferralReportResponse getReport(String staffNumber) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Facility facility = staff.getFacility();
+
+        List<Referral> outgoing = referralRepository.findByFromFacilityIdOrderByReferredAtDesc(facility.getId());
+        List<Referral> incoming = referralRepository.findByToFacilityIdOrderByReferredAtDesc(facility.getId());
+
+        int pendingIncoming = (int) incoming.stream()
+                .filter(r -> r.getStatus() == Referral.Status.PENDING)
+                .count();
+        int emergencyReferrals = (int) Stream.concat(outgoing.stream(), incoming.stream())
+                .filter(r -> r.getUrgency() == Referral.Urgency.EMERGENCY)
+                .count();
+
+        List<FacilityReferralTally> topDestinations = tallyByFacility(outgoing, Referral::getToFacility);
+        List<FacilityReferralTally> topSources = tallyByFacility(incoming, Referral::getFromFacility);
+
+        List<Referral> recentActivity = Stream.concat(outgoing.stream(), incoming.stream())
+                .sorted(Comparator.comparing(Referral::getReferredAt).reversed())
+                .limit(10)
+                .collect(Collectors.toList());
+
+        return new ReferralReportResponse(
+                facility.getName(),
+                outgoing.size(),
+                incoming.size(),
+                pendingIncoming,
+                emergencyReferrals,
+                topDestinations,
+                topSources,
+                recentActivity
+        );
+    }
+
+    private List<FacilityReferralTally> tallyByFacility(List<Referral> referrals, java.util.function.Function<Referral, Facility> facilityOf) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (Referral r : referrals) {
+            String name = facilityOf.apply(r).getName();
+            counts.merge(name, 1, Integer::sum);
+        }
+        return counts.entrySet().stream()
+                .map(e -> new FacilityReferralTally(e.getKey(), e.getValue()))
+                .sorted(Comparator.comparingInt(FacilityReferralTally::getReferralCount).reversed())
+                .limit(5)
+                .collect(Collectors.toList());
     }
 }

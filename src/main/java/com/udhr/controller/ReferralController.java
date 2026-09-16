@@ -1,5 +1,6 @@
 package com.udhr.controller;
 
+import com.udhr.dto.ReferralReportResponse;
 import com.udhr.dto.ReferralRequest;
 import com.udhr.dto.ReferralResponseRequest;
 import com.udhr.model.Referral;
@@ -107,6 +108,21 @@ public class ReferralController {
             return ResponseEntity.ok(history);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/report")
+    public ResponseEntity<?> getReport(HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            ReferralReportResponse report = referralService.getReport(staffNumber);
+            return ResponseEntity.ok(report);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
         }
     }
 }

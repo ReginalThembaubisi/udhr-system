@@ -123,6 +123,7 @@ function App() {
   const [stockHistory, setStockHistory] = useState([]);
   const [stockReport, setStockReport] = useState(null); // admin-only pharmacy stock report
   const [dispenseReport, setDispenseReport] = useState(null); // admin-only pharmacy dispensing report
+  const [referralReport, setReferralReport] = useState(null); // admin-only facility-wide referral report
   const [lowStockAlert, setLowStockAlert] = useState(null); // { items } shown once after login, dismissible
 
   // Setup Authorization headers
@@ -757,6 +758,15 @@ function App() {
       if (response.ok) setDispenseReport(await response.json());
     } catch (err) {
       console.error('Error fetching dispensing report', err);
+    }
+  };
+
+  const fetchReferralReport = async () => {
+    try {
+      const response = await fetch('/api/referrals/report', { headers: getAuthHeaders() });
+      if (response.ok) setReferralReport(await response.json());
+    } catch (err) {
+      console.error('Error fetching referral report', err);
     }
   };
 
@@ -2330,7 +2340,7 @@ function App() {
                 <button
                   className="btn"
                   style={{ flex: 1, background: activeTabStaff === 'staff' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); fetchStockReport(); fetchDispenseReport(); }}
+                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); fetchStockReport(); fetchDispenseReport(); fetchReferralReport(); }}
                 >
                   👥 Staff Management
                 </button>
@@ -4415,6 +4425,85 @@ function App() {
                                 </span>
                               </div>
                             ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {referralReport && (
+                    <div className="glass-card" style={{ textAlign: 'left' }}>
+                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <RefreshCw size={18} /> Facility Referral Report
+                      </h3>
+                      <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{referralReport.facilityName}</p>
+
+                      <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Outgoing Referrals (All-Time)</p>
+                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{referralReport.totalOutgoing}</p>
+                        </div>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Incoming Referrals (All-Time)</p>
+                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{referralReport.totalIncoming}</p>
+                        </div>
+                        <div style={{ background: referralReport.pendingIncoming > 0 ? 'rgba(245, 158, 11, 0.08)' : 'rgba(15, 23, 42, 0.4)', border: `1px solid ${referralReport.pendingIncoming > 0 ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.05)'}`, borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Pending Incoming (Needs Response)</p>
+                          <p style={{ color: referralReport.pendingIncoming > 0 ? 'var(--warning)' : '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{referralReport.pendingIncoming}</p>
+                        </div>
+                        <div style={{ background: referralReport.emergencyReferrals > 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(15, 23, 42, 0.4)', border: `1px solid ${referralReport.emergencyReferrals > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255,255,255,0.05)'}`, borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Emergency Referrals (All-Time)</p>
+                          <p style={{ color: referralReport.emergencyReferrals > 0 ? '#f87171' : '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{referralReport.emergencyReferrals}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2" style={{ gap: '16px', marginBottom: '16px' }}>
+                        {referralReport.topDestinations.length > 0 && (
+                          <div>
+                            <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Destination Facilities</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {referralReport.topDestinations.map(f => (
+                                <div key={f.facilityName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>{f.facilityName}</span>
+                                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{f.referralCount}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {referralReport.topSources.length > 0 && (
+                          <div>
+                            <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Source Facilities</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {referralReport.topSources.map(f => (
+                                <div key={f.facilityName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>{f.facilityName}</span>
+                                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{f.referralCount}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Recent Referral Activity</p>
+                        {referralReport.recentActivity.length === 0 ? (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No referral activity recorded yet.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {referralReport.recentActivity.map(r => {
+                              const isOutgoing = r.fromFacility?.name === referralReport.facilityName;
+                              return (
+                                <div key={r.id} style={{ fontSize: '0.8rem' }}>
+                                  <span className={`badge ${isOutgoing ? 'badge-yellow' : 'badge-green'}`} style={{ marginRight: '6px' }}>{isOutgoing ? '↗ Sent' : '↙ Received'}</span>
+                                  <span className={`badge ${r.urgency === 'EMERGENCY' ? 'badge-red' : r.urgency === 'URGENT' ? 'badge-yellow' : 'badge-green'}`} style={{ marginRight: '6px' }}>{r.urgency}</span>
+                                  <span className="text-muted">
+                                    {r.patient?.firstName} {r.patient?.lastName} {isOutgoing ? `to ${r.toFacility?.name}` : `from ${r.fromFacility?.name}`} — {r.reason} — {new Date(r.referredAt).toLocaleString()} — <span style={{ fontWeight: 600 }}>{r.status}</span>
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>

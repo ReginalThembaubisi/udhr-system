@@ -71,8 +71,8 @@ public class AuthController {
         }
 
         try {
-            authService.changePassword(staffNumber, request);
-            return ResponseEntity.ok().build();
+            LoginResponse response = authService.changePassword(staffNumber, request);
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }

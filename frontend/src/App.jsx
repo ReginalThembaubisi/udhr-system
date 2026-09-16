@@ -198,13 +198,19 @@ function App() {
           newPassword: changePasswordForm.newPassword
         })
       });
+      const data = await response.json().catch(() => null);
       if (!response.ok) {
-        const data = await response.json().catch(() => null);
         throw new Error(typeof data === 'string' ? data : data?.message || 'Failed to update password');
       }
-      setSuccessMessage('Password updated. Welcome to UDHR.');
-      setMustChangePassword(false);
+
+      // The old token's mustChangePassword claim is baked in and permanent —
+      // swap in the freshly issued token or every subsequent request keeps
+      // getting rejected by the filter even though the password did change.
+      localStorage.setItem('token', data.token);
       localStorage.setItem('mustChangePassword', 'false');
+      setToken(data.token);
+      setMustChangePassword(false);
+      setSuccessMessage('Password updated. Welcome to UDHR.');
       setChangePasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (err) {
       setErrorMessage(err.message);
@@ -213,16 +219,17 @@ function App() {
     }
   };
 
-  // Fetch data on login
+  // Fetch data on login (skip while a forced password change is pending —
+  // the API would reject these calls anyway until it's done)
   useEffect(() => {
-    if (token) {
+    if (token && !mustChangePassword) {
       if (userRole === 'PATIENT') {
         fetchPatientPortalData();
       } else {
         fetchClinicalAlerts();
       }
     }
-  }, [token, userRole]);
+  }, [token, userRole, mustChangePassword]);
 
   const fetchPatientPortalData = async () => {
     setLoading(true);

@@ -39,24 +39,55 @@ public class PatientService {
     @Autowired
     private StaffRepository staffRepository;
 
+    @Autowired
+    private FacilityRepository facilityRepository;
+
     public Patient findByIdNumber(String idNumber) {
         return patientRepository.findByIdNumber(idNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
     }
 
+    public Patient findByUhid(String uhid) {
+        return patientRepository.findByUhid(uhid)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+    }
+
     public Patient registerPatient(PatientRequest request, String staffNumber) {
-        if (patientRepository.existsByIdNumber(request.getIdNumber())) {
+        boolean hasIdNumber = request.getIdNumber() != null && !request.getIdNumber().isBlank();
+        boolean hasPassport = request.getPassportNumber() != null && !request.getPassportNumber().isBlank();
+
+        if (hasIdNumber && patientRepository.existsByIdNumber(request.getIdNumber())) {
+            throw new RuntimeException("Patient already registered");
+        }
+        if (hasPassport && patientRepository.findByPassportNumber(request.getPassportNumber()).isPresent()) {
             throw new RuntimeException("Patient already registered");
         }
 
         Patient patient = new Patient();
-        patient.setIdNumber(request.getIdNumber());
+        // A national ID or passport number is not required at registration time:
+        // newborns and undocumented patients still need a file. The permanent
+        // identifier for every patient is the UHID generated on save.
+        patient.setIdNumber(hasIdNumber ? request.getIdNumber() : null);
+        patient.setPassportNumber(hasPassport ? request.getPassportNumber() : null);
         patient.setFirstName(request.getFirstName());
         patient.setLastName(request.getLastName());
         patient.setDateOfBirth(LocalDate.parse(request.getDateOfBirth()));
         patient.setGender(request.getGender());
         patient.setContactNumber(request.getContactNumber());
         patient.setAddress(request.getAddress());
+
+        if (request.getMotherIdNumber() != null && !request.getMotherIdNumber().isBlank()) {
+            patientRepository.findByIdNumber(request.getMotherIdNumber())
+                    .ifPresent(patient::setMotherPatient);
+        }
+        if (request.getBirthFacilityId() != null) {
+            facilityRepository.findById(request.getBirthFacilityId())
+                    .ifPresent(patient::setBirthFacility);
+        }
+        patient.setBirthWeightGrams(request.getBirthWeightGrams());
+        patient.setBirthLengthCm(request.getBirthLengthCm());
+        patient.setApgarScore1Min(request.getApgarScore1Min());
+        patient.setApgarScore5Min(request.getApgarScore5Min());
 
         Patient savedPatient = patientRepository.save(patient);
 
@@ -67,7 +98,8 @@ public class PatientService {
             auditLog.setStaff(staff);
             auditLog.setPatient(savedPatient);
             auditLog.setAction("REGISTER_PATIENT");
-            auditLog.setDescription("Registered new patient: " + request.getIdNumber());
+            auditLog.setDescription("Registered new patient: " + savedPatient.getUhid()
+                    + (hasIdNumber ? " (ID: " + request.getIdNumber() + ")" : " (no ID number yet)"));
             auditLogRepository.save(auditLog);
         }
 
@@ -77,7 +109,16 @@ public class PatientService {
     public PatientRecordResponse getFullRecord(String idNumber, String staffNumber) {
         Patient patient = patientRepository.findByIdNumber(idNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
+        return buildFullRecord(patient, staffNumber, "Viewed full record of patient: " + idNumber);
+    }
 
+    public PatientRecordResponse getFullRecordByUhid(String uhid, String staffNumber) {
+        Patient patient = patientRepository.findByUhid(uhid)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        return buildFullRecord(patient, staffNumber, "Viewed full record of patient: " + uhid);
+    }
+
+    private PatientRecordResponse buildFullRecord(Patient patient, String staffNumber, String auditDescription) {
         List<Allergy> allergies = allergyRepository.findByPatientId(patient.getId());
         List<ChronicCondition> chronicConditions = chronicConditionRepository.findByPatientId(patient.getId());
         List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
@@ -92,7 +133,7 @@ public class PatientService {
             auditLog.setStaff(staff);
             auditLog.setPatient(patient);
             auditLog.setAction("VIEW_RECORD");
-            auditLog.setDescription("Viewed full record of patient: " + idNumber);
+            auditLog.setDescription(auditDescription);
             auditLogRepository.save(auditLog);
         }
 

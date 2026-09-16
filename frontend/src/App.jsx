@@ -845,6 +845,16 @@ function App() {
     return startDate ? `From ${startDate}` : `Through ${endDate}`;
   };
 
+  // Short suffix for individual stat labels (e.g. "Units Received (...)").
+  // Stays "All-Time" when unfiltered; once a range is applied the exact
+  // dates are already shown in the filter bar (and the PDF header), so this
+  // just flags that the number is scoped rather than repeating them in
+  // every tile.
+  const reportRangeSuffix = () => {
+    const { startDate, endDate } = reportDateRange;
+    return (!startDate && !endDate) ? 'All-Time' : 'Selected Range';
+  };
+
   // Shared header (title/facility/range/generated-at) every report PDF
   // starts with, so each export function only has to lay out its own body.
   const startPdfDoc = (title, facilityName) => {
@@ -884,9 +894,9 @@ function App() {
     let y = addSectionTable(doc, 42, 'Summary', ['Metric', 'Value'], [
       ['Medications Tracked', String(stockReport.totalMedicationsTracked)],
       ['Low Stock Items', String(stockReport.lowStockCount)],
-      ['Units Received (All-Time)', String(stockReport.totalUnitsReceived)],
-      ['Units Dispensed (All-Time)', String(stockReport.totalUnitsDispensed)],
-      ['Units Written Off (All-Time)', String(stockReport.totalUnitsWrittenOff)],
+      [`Units Received (${reportRangeSuffix()})`, String(stockReport.totalUnitsReceived)],
+      [`Units Dispensed (${reportRangeSuffix()})`, String(stockReport.totalUnitsDispensed)],
+      [`Units Written Off (${reportRangeSuffix()})`, String(stockReport.totalUnitsWrittenOff)],
     ]);
     if (stockReport.lowStockItems.length > 0) {
       y = addSectionTable(doc, y, 'Needs Reordering', ['Medication', 'On Hand', 'Reorder Level', 'Unit'],
@@ -926,10 +936,10 @@ function App() {
     if (!referralReport) return;
     const doc = startPdfDoc('Facility Referral Report', referralReport.facilityName);
     let y = addSectionTable(doc, 42, 'Summary', ['Metric', 'Value'], [
-      ['Outgoing Referrals (All-Time)', String(referralReport.totalOutgoing)],
-      ['Incoming Referrals (All-Time)', String(referralReport.totalIncoming)],
+      [`Outgoing Referrals (${reportRangeSuffix()})`, String(referralReport.totalOutgoing)],
+      [`Incoming Referrals (${reportRangeSuffix()})`, String(referralReport.totalIncoming)],
       ['Pending Incoming (Needs Response)', String(referralReport.pendingIncoming)],
-      ['Emergency Referrals (All-Time)', String(referralReport.emergencyReferrals)],
+      [`Emergency Referrals (${reportRangeSuffix()})`, String(referralReport.emergencyReferrals)],
     ]);
     if (referralReport.topDestinations.length > 0) {
       y = addSectionTable(doc, y, 'Top Destination Facilities', ['Facility', 'Referrals'],
@@ -956,7 +966,7 @@ function App() {
     if (!prescriptionReport) return;
     const doc = startPdfDoc('Facility Prescription Report', prescriptionReport.facilityName);
     let y = addSectionTable(doc, 42, 'Summary', ['Metric', 'Value'], [
-      ['Total Prescriptions (All-Time)', String(prescriptionReport.totalPrescriptions)],
+      [`Total Prescriptions (${reportRangeSuffix()})`, String(prescriptionReport.totalPrescriptions)],
       ['Active Prescriptions', String(prescriptionReport.activePrescriptions)],
       ['Issued Today', String(prescriptionReport.issuedToday)],
       ['Unique Patients Prescribed', String(prescriptionReport.uniquePatientsPrescribed)],
@@ -982,7 +992,7 @@ function App() {
     if (!labResultReport) return;
     const doc = startPdfDoc('Facility Lab Results Report', labResultReport.facilityName);
     let y = addSectionTable(doc, 42, 'Summary', ['Metric', 'Value'], [
-      ['Total Lab Results (All-Time)', String(labResultReport.totalLabResults)],
+      [`Total Lab Results (${reportRangeSuffix()})`, String(labResultReport.totalLabResults)],
       ['Results Today', String(labResultReport.resultsToday)],
       ['Unique Patients Tested', String(labResultReport.uniquePatientsTested)],
       ['Unique Test Types', String(labResultReport.uniqueTestTypes)],
@@ -4636,15 +4646,15 @@ function App() {
                           <p style={{ color: stockReport.lowStockCount > 0 ? '#f87171' : '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{stockReport.lowStockCount}</p>
                         </div>
                         <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Units Received (All-Time)</p>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Units Received ({reportRangeSuffix()})</p>
                           <p style={{ color: 'var(--success)', fontSize: '1.4rem', fontWeight: 'bold' }}>+{stockReport.totalUnitsReceived}</p>
                         </div>
                         <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Units Dispensed (All-Time)</p>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Units Dispensed ({reportRangeSuffix()})</p>
                           <p style={{ color: '#0ea5e9', fontSize: '1.4rem', fontWeight: 'bold' }}>-{stockReport.totalUnitsDispensed}</p>
                         </div>
                         <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Units Written Off (All-Time)</p>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Units Written Off ({reportRangeSuffix()})</p>
                           <p style={{ color: 'var(--warning)', fontSize: '1.4rem', fontWeight: 'bold' }}>-{stockReport.totalUnitsWrittenOff}</p>
                         </div>
                       </div>
@@ -4773,11 +4783,11 @@ function App() {
 
                       <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
                         <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Outgoing Referrals (All-Time)</p>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Outgoing Referrals ({reportRangeSuffix()})</p>
                           <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{referralReport.totalOutgoing}</p>
                         </div>
                         <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Incoming Referrals (All-Time)</p>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Incoming Referrals ({reportRangeSuffix()})</p>
                           <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{referralReport.totalIncoming}</p>
                         </div>
                         <div style={{ background: referralReport.pendingIncoming > 0 ? 'rgba(245, 158, 11, 0.08)' : 'rgba(15, 23, 42, 0.4)', border: `1px solid ${referralReport.pendingIncoming > 0 ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.05)'}`, borderRadius: '12px', padding: '12px' }}>
@@ -4785,7 +4795,7 @@ function App() {
                           <p style={{ color: referralReport.pendingIncoming > 0 ? 'var(--warning)' : '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{referralReport.pendingIncoming}</p>
                         </div>
                         <div style={{ background: referralReport.emergencyReferrals > 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(15, 23, 42, 0.4)', border: `1px solid ${referralReport.emergencyReferrals > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255,255,255,0.05)'}`, borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Emergency Referrals (All-Time)</p>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Emergency Referrals ({reportRangeSuffix()})</p>
                           <p style={{ color: referralReport.emergencyReferrals > 0 ? '#f87171' : '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{referralReport.emergencyReferrals}</p>
                         </div>
                       </div>
@@ -4862,7 +4872,7 @@ function App() {
 
                       <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
                         <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Total Prescriptions (All-Time)</p>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Total Prescriptions ({reportRangeSuffix()})</p>
                           <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{prescriptionReport.totalPrescriptions}</p>
                         </div>
                         <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
@@ -4947,7 +4957,7 @@ function App() {
 
                       <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
                         <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Total Lab Results (All-Time)</p>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Total Lab Results ({reportRangeSuffix()})</p>
                           <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{labResultReport.totalLabResults}</p>
                         </div>
                         <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>

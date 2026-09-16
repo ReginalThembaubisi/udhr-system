@@ -86,7 +86,7 @@ function App() {
   const [staffList, setStaffList] = useState([]);
   const [facilitiesList, setFacilitiesList] = useState([]);
   const [staffRegForm, setStaffRegForm] = useState({
-    staffNumber: '', firstName: '', lastName: '', role: 'NURSE', facilityId: '', email: '', password: ''
+    staffNumber: '', firstName: '', lastName: '', role: 'NURSE', facilityId: '', email: '', contactNumber: '', password: ''
   });
   const [facilityRegForm, setFacilityRegForm] = useState({
     name: '', type: 'CLINIC', province: 'Mpumalanga', address: ''
@@ -397,7 +397,7 @@ function App() {
       setSuccessMessage(`Staff member '${data.firstName} ${data.lastName}' (${data.staffNumber}) registered successfully!`);
       setStaffRegForm({
         staffNumber: '', firstName: '', lastName: '', role: 'NURSE',
-        facilityId: facilitiesList.length > 0 ? String(facilitiesList[0].id) : '', email: '', password: ''
+        facilityId: facilitiesList.length > 0 ? String(facilitiesList[0].id) : '', email: '', contactNumber: '', password: ''
       });
       fetchStaffList();
     } catch (err) {
@@ -3913,6 +3913,9 @@ function App() {
                               </div>
                               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                 {isLow && <span className="badge badge-red">Low Stock</span>}
+                                {s.lowStockNotified && (
+                                  <span className="badge badge-yellow" title="Admins at this facility have been notified">🔔 Alert Sent</span>
+                                )}
                                 <button
                                   className="btn btn-secondary"
                                   onClick={() => { setReceiveFormFor(receiveFormFor === s.id ? null : s.id); setReceiveForm({ type: 'RECEIVE', quantityChange: '', notes: '' }); }}
@@ -4258,6 +4261,15 @@ function App() {
                         />
                       </div>
                       <div className="form-group">
+                        <label>Contact Number (optional)</label>
+                        <input
+                          type="text"
+                          value={staffRegForm.contactNumber}
+                          onChange={(e) => setStaffRegForm({...staffRegForm, contactNumber: e.target.value})}
+                          placeholder="e.g. 0731234567 — for SMS alerts (admins only)"
+                        />
+                      </div>
+                      <div className="form-group">
                         <label>Temporary Password</label>
                         <input
                           type="password"
@@ -4311,7 +4323,10 @@ function App() {
                             {stockReport.lowStockItems.map(item => (
                               <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
                                 <span style={{ color: '#fff', fontSize: '0.85rem' }}>{item.medicationName}</span>
-                                <span className="badge badge-red">{item.quantityOnHand} / {item.reorderLevel} {item.unit}</span>
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                  {item.lowStockNotified && <span className="badge badge-yellow">🔔 Alert Sent</span>}
+                                  <span className="badge badge-red">{item.quantityOnHand} / {item.reorderLevel} {item.unit}</span>
+                                </div>
                               </div>
                             ))}
                           </div>

@@ -30,6 +30,13 @@ public class StockItem {
     @Column(name = "reorder_level", nullable = false)
     private Integer reorderLevel = 0;
 
+    // Tracks whether a reorder alert has already gone out for the current
+    // low-stock dip, so admins get one notification per dip rather than one
+    // per transaction while it stays low. Resets when stock is replenished
+    // back above the reorder level.
+    @Column(name = "low_stock_notified", nullable = false)
+    private Boolean lowStockNotified = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

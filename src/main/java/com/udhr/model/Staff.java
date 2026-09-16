@@ -40,6 +40,10 @@ public class Staff {
     @Column(unique = true, nullable = false)
     private String email;
 
+    // Optional: only needed for staff to receive SMS alerts (e.g. reorder notifications).
+    @Column(name = "contact_number")
+    private String contactNumber;
+
     @Column(nullable = false)
     private String password;
 

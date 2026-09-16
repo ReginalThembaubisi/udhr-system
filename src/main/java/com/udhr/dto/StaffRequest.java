@@ -10,5 +10,6 @@ public class StaffRequest {
     private String role; // "ADMIN", "DOCTOR", "NURSE"
     private Long facilityId;
     private String email;
+    private String contactNumber;
     private String password;
 }

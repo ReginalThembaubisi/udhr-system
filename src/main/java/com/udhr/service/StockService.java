@@ -29,6 +29,9 @@ public class StockService {
     @Autowired
     private StaffRepository staffRepository;
 
+    @Autowired
+    private AfricasTalkingService africasTalkingService;
+
     @Transactional
     public StockItem addStockItem(StockItemRequest request, String staffNumber) {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
@@ -165,6 +168,11 @@ public class StockService {
     private StockItem applyTransaction(StockItem item, StockTransaction.Type type, int quantityChange, Staff staff, String notes) {
         item.setQuantityOnHand(item.getQuantityOnHand() + quantityChange);
         item.setUpdatedAt(LocalDateTime.now());
+
+        boolean isLow = item.getQuantityOnHand() <= item.getReorderLevel();
+        boolean justCrossedIntoLowStock = isLow && !Boolean.TRUE.equals(item.getLowStockNotified());
+        item.setLowStockNotified(isLow);
+
         StockItem savedItem = stockItemRepository.save(item);
 
         StockTransaction tx = new StockTransaction();
@@ -175,6 +183,37 @@ public class StockService {
         tx.setNotes(notes);
         stockTransactionRepository.save(tx);
 
+        // Fires once per dip below the reorder level, not on every
+        // transaction while it stays low — resets above, via lowStockNotified,
+        // whenever the item is next replenished past the reorder level.
+        if (justCrossedIntoLowStock) {
+            sendReorderAlerts(savedItem);
+        }
+
         return savedItem;
+    }
+
+    private void sendReorderAlerts(StockItem item) {
+        List<Staff> admins = staffRepository.findByFacilityIdAndRole(item.getFacility().getId(), "ADMIN");
+        if (admins.isEmpty()) {
+            return;
+        }
+
+        String subject = "Reorder Alert: " + item.getMedicationName() + " low at " + item.getFacility().getName();
+        String message = String.format(
+                "UDHR Reorder Alert: %s is at %d %s at %s, at or below the reorder level of %d %s. Please arrange to restock.",
+                item.getMedicationName(), item.getQuantityOnHand(), item.getUnit(), item.getFacility().getName(),
+                item.getReorderLevel(), item.getUnit()
+        );
+
+        for (Staff admin : admins) {
+            if (admin.getContactNumber() != null && !admin.getContactNumber().isBlank()) {
+                africasTalkingService.sendSMS(admin.getContactNumber(), message);
+            }
+            if (admin.getEmail() != null && !admin.getEmail().isBlank()) {
+                System.out.println(String.format("[Email Dispatcher] Sending email reorder alert to: %s | Subject: %s | Body: %s",
+                        admin.getEmail(), subject, message));
+            }
+        }
     }
 }

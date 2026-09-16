@@ -88,6 +88,7 @@ public class DataSeeder implements CommandLineRunner {
             admin.setRole("ADMIN");
             admin.setFacility(facility);
             admin.setEmail("admin@udhr.gov.za");
+            admin.setContactNumber("0731234567");
             admin.setPassword(passwordEncoder.encode("Admin@123"));
             admin.setActive(true);
             admin.setMustChangePassword(false); // documented demo login, not a real temp password

@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface StockTransactionRepository extends JpaRepository<StockTransaction, Long> {
     List<StockTransaction> findByStockItemIdOrderByCreatedAtDesc(Long stockItemId);
+    List<StockTransaction> findByStockItem_FacilityIdOrderByCreatedAtDesc(Long facilityId);
 }

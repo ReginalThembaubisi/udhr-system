@@ -121,6 +121,7 @@ function App() {
   const [receiveForm, setReceiveForm] = useState({ type: 'RECEIVE', quantityChange: '', notes: '' });
   const [stockHistoryFor, setStockHistoryFor] = useState(null); // stock item id currently showing its transaction history
   const [stockHistory, setStockHistory] = useState([]);
+  const [stockReport, setStockReport] = useState(null); // admin-only pharmacy stock report
 
   // Setup Authorization headers
   const getAuthHeaders = () => {
@@ -720,6 +721,15 @@ function App() {
       if (response.ok) setStockList(await response.json());
     } catch (err) {
       console.error('Error fetching stock list', err);
+    }
+  };
+
+  const fetchStockReport = async () => {
+    try {
+      const response = await fetch('/api/stock/report', { headers: getAuthHeaders() });
+      if (response.ok) setStockReport(await response.json());
+    } catch (err) {
+      console.error('Error fetching stock report', err);
     }
   };
 
@@ -2275,7 +2285,7 @@ function App() {
                 <button
                   className="btn"
                   style={{ flex: 1, background: activeTabStaff === 'staff' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); }}
+                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); fetchStockReport(); }}
                 >
                   👥 Staff Management
                 </button>
@@ -4229,6 +4239,71 @@ function App() {
                 </div>
 
                 <div className="dashboard-main">
+                  {stockReport && (
+                    <div className="glass-card" style={{ textAlign: 'left' }}>
+                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Pill size={18} /> Pharmacy Stock Report
+                      </h3>
+                      <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{stockReport.facilityName}</p>
+
+                      <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Medications Tracked</p>
+                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{stockReport.totalMedicationsTracked}</p>
+                        </div>
+                        <div style={{ background: stockReport.lowStockCount > 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(15, 23, 42, 0.4)', border: `1px solid ${stockReport.lowStockCount > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255,255,255,0.05)'}`, borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Low Stock Items</p>
+                          <p style={{ color: stockReport.lowStockCount > 0 ? '#f87171' : '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{stockReport.lowStockCount}</p>
+                        </div>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Units Received (All-Time)</p>
+                          <p style={{ color: 'var(--success)', fontSize: '1.4rem', fontWeight: 'bold' }}>+{stockReport.totalUnitsReceived}</p>
+                        </div>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Units Dispensed (All-Time)</p>
+                          <p style={{ color: '#0ea5e9', fontSize: '1.4rem', fontWeight: 'bold' }}>-{stockReport.totalUnitsDispensed}</p>
+                        </div>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Units Written Off (All-Time)</p>
+                          <p style={{ color: 'var(--warning)', fontSize: '1.4rem', fontWeight: 'bold' }}>-{stockReport.totalUnitsWrittenOff}</p>
+                        </div>
+                      </div>
+
+                      {stockReport.lowStockItems.length > 0 && (
+                        <div style={{ marginBottom: '16px' }}>
+                          <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Needs Reordering</p>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {stockReport.lowStockItems.map(item => (
+                              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                                <span style={{ color: '#fff', fontSize: '0.85rem' }}>{item.medicationName}</span>
+                                <span className="badge badge-red">{item.quantityOnHand} / {item.reorderLevel} {item.unit}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Recent Stock Activity</p>
+                        {stockReport.recentTransactions.length === 0 ? (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No stock activity recorded yet.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {stockReport.recentTransactions.map(tx => (
+                              <div key={tx.id} style={{ fontSize: '0.8rem' }}>
+                                <span className={`badge ${tx.type === 'RECEIVED' ? 'badge-green' : tx.type === 'DISPENSED' ? 'badge-yellow' : 'badge-red'}`} style={{ marginRight: '6px' }}>{tx.type}</span>
+                                <span className="text-muted">
+                                  {tx.stockItem?.medicationName}: {tx.quantityChange > 0 ? '+' : ''}{tx.quantityChange} {tx.stockItem?.unit} — {new Date(tx.createdAt).toLocaleString()} by {tx.staff?.firstName} {tx.staff?.lastName}
+                                  {tx.notes ? ` (${tx.notes})` : ''}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="glass-card" style={{ textAlign: 'left' }}>
                     <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <User size={18} /> All Staff ({staffList.length})

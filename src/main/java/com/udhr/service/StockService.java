@@ -2,15 +2,18 @@ package com.udhr.service;
 
 import com.udhr.dto.StockAdjustmentRequest;
 import com.udhr.dto.StockItemRequest;
+import com.udhr.dto.StockReportResponse;
 import com.udhr.model.*;
 import com.udhr.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 public class StockService {
@@ -93,6 +96,44 @@ public class StockService {
 
     public List<StockTransaction> getTransactionHistory(Long stockItemId) {
         return stockTransactionRepository.findByStockItemIdOrderByCreatedAtDesc(stockItemId);
+    }
+
+    public StockReportResponse getReport(String staffNumber) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Facility facility = staff.getFacility();
+
+        List<StockItem> items = stockItemRepository.findByFacilityIdOrderByMedicationNameAsc(facility.getId());
+        List<StockItem> lowStock = items.stream()
+                .filter(i -> i.getQuantityOnHand() <= i.getReorderLevel())
+                .sorted(Comparator.comparing(StockItem::getMedicationName))
+                .collect(Collectors.toList());
+
+        List<StockTransaction> allTransactions = stockTransactionRepository.findByStockItem_FacilityIdOrderByCreatedAtDesc(facility.getId());
+        int totalReceived = allTransactions.stream()
+                .filter(t -> t.getType() == StockTransaction.Type.RECEIVED)
+                .mapToInt(StockTransaction::getQuantityChange)
+                .sum();
+        int totalDispensed = -allTransactions.stream()
+                .filter(t -> t.getType() == StockTransaction.Type.DISPENSED)
+                .mapToInt(StockTransaction::getQuantityChange)
+                .sum();
+        int totalWrittenOff = -allTransactions.stream()
+                .filter(t -> t.getType() == StockTransaction.Type.ADJUSTED)
+                .mapToInt(StockTransaction::getQuantityChange)
+                .sum();
+        List<StockTransaction> recent = allTransactions.stream().limit(10).collect(Collectors.toList());
+
+        return new StockReportResponse(
+                facility.getName(),
+                items.size(),
+                lowStock.size(),
+                lowStock,
+                totalReceived,
+                totalDispensed,
+                totalWrittenOff,
+                recent
+        );
     }
 
     // Called when a prescription is dispensed. Best-effort: if this facility

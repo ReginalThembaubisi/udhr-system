@@ -2,6 +2,7 @@ package com.udhr.controller;
 
 import com.udhr.dto.StockAdjustmentRequest;
 import com.udhr.dto.StockItemRequest;
+import com.udhr.dto.StockReportResponse;
 import com.udhr.model.StockItem;
 import com.udhr.model.StockTransaction;
 import com.udhr.service.StockService;
@@ -91,6 +92,21 @@ public class StockController {
         try {
             StockItem item = stockService.adjustStock(adjustmentRequest, staffNumber);
             return ResponseEntity.ok(item);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/report")
+    public ResponseEntity<?> getReport(HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            StockReportResponse report = stockService.getReport(staffNumber);
+            return ResponseEntity.ok(report);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
         }

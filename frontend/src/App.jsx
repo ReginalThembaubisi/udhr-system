@@ -114,6 +114,14 @@ function App() {
   const [dispenseFormFor, setDispenseFormFor] = useState(null); // prescription id currently showing the dispense form
   const [dispenseForm, setDispenseForm] = useState({ quantityDispensed: '', daysSupply: '', pharmacyNotes: '' });
 
+  // Stock/Inventory state
+  const [stockList, setStockList] = useState([]);
+  const [stockItemForm, setStockItemForm] = useState({ medicationName: '', unit: 'tablets', quantityOnHand: '', reorderLevel: '' });
+  const [receiveFormFor, setReceiveFormFor] = useState(null); // stock item id currently showing the receive form
+  const [receiveForm, setReceiveForm] = useState({ type: 'RECEIVE', quantityChange: '', notes: '' });
+  const [stockHistoryFor, setStockHistoryFor] = useState(null); // stock item id currently showing its transaction history
+  const [stockHistory, setStockHistory] = useState([]);
+
   // Setup Authorization headers
   const getAuthHeaders = () => {
     return {
@@ -702,6 +710,95 @@ function App() {
       setErrorMessage(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Stock / Inventory
+  const fetchStockList = async () => {
+    try {
+      const response = await fetch('/api/stock', { headers: getAuthHeaders() });
+      if (response.ok) setStockList(await response.json());
+    } catch (err) {
+      console.error('Error fetching stock list', err);
+    }
+  };
+
+  const handleAddStockItem = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const payload = {
+        ...stockItemForm,
+        quantityOnHand: stockItemForm.quantityOnHand ? Number(stockItemForm.quantityOnHand) : 0,
+        reorderLevel: stockItemForm.reorderLevel ? Number(stockItemForm.reorderLevel) : 0
+      };
+      const response = await fetch('/api/stock', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || data || 'Failed to add stock item');
+      }
+      setSuccessMessage(`'${data.medicationName}' is now tracked in facility inventory.`);
+      setStockItemForm({ medicationName: '', unit: 'tablets', quantityOnHand: '', reorderLevel: '' });
+      fetchStockList();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStockAdjustment = async (e, stockItemId) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const isReceive = receiveForm.type === 'RECEIVE';
+      const magnitude = Math.abs(Number(receiveForm.quantityChange) || 0);
+      const payload = {
+        stockItemId,
+        quantityChange: isReceive ? magnitude : -magnitude,
+        notes: receiveForm.notes
+      };
+      const response = await fetch(`/api/stock/${isReceive ? 'receive' : 'adjust'}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || data || 'Failed to update stock');
+      }
+      setSuccessMessage(isReceive ? `Stock received: ${data.medicationName} now at ${data.quantityOnHand} ${data.unit}.` : `Stock written off: ${data.medicationName} now at ${data.quantityOnHand} ${data.unit}.`);
+      setReceiveForm({ type: 'RECEIVE', quantityChange: '', notes: '' });
+      setReceiveFormFor(null);
+      fetchStockList();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleStockHistory = async (stockItemId) => {
+    if (stockHistoryFor === stockItemId) {
+      setStockHistoryFor(null);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/stock/${stockItemId}/history`, { headers: getAuthHeaders() });
+      if (response.ok) {
+        setStockHistory(await response.json());
+        setStockHistoryFor(stockItemId);
+      }
+    } catch (err) {
+      console.error('Error fetching stock history', err);
     }
   };
 
@@ -2078,7 +2175,7 @@ function App() {
         {token && !mustChangePassword && userRole !== 'PATIENT' && (
           <div>
             {/* Tab Switcher for Staff */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '900px', margin: '0 auto' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '1040px', margin: '0 auto' }}>
               <button
                 className="btn"
                 style={{ flex: 1, background: activeTabStaff === 'patients' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
@@ -2149,6 +2246,28 @@ function App() {
                 🔄 Referrals {incomingReferrals.filter(r => r.status === 'PENDING').length > 0 && (
                   <span style={{ background: '#0ea5e9', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
                     {incomingReferrals.filter(r => r.status === 'PENDING').length}
+                  </span>
+                )}
+              </button>
+              <button
+                className="btn"
+                style={{
+                  flex: 1,
+                  background: activeTabStaff === 'stock' ? 'var(--primary)' : 'transparent',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  padding: '10px',
+                  fontSize: '0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+                onClick={() => { setActiveTabStaff('stock'); fetchStockList(); }}
+              >
+                📦 Stock {stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length > 0 && (
+                  <span style={{ background: '#ef4444', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                    {stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length}
                   </span>
                 )}
               </button>
@@ -3662,6 +3781,170 @@ function App() {
                       ))}
                     </div>
                   )}
+                </div>
+              </div>
+            ) : activeTabStaff === 'stock' ? (
+              /* Pharmacy: Facility Stock/Inventory */
+              <div className="dashboard-grid">
+                <div className="dashboard-sidebar">
+                  <div className="glass-card" style={{ textAlign: 'left' }}>
+                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <PlusCircle size={18} /> Add Stock Item
+                    </h3>
+                    <form onSubmit={handleAddStockItem}>
+                      <div className="form-group">
+                        <label>Medication Name</label>
+                        <input
+                          type="text"
+                          value={stockItemForm.medicationName}
+                          onChange={(e) => setStockItemForm({...stockItemForm, medicationName: e.target.value})}
+                          placeholder="e.g. Metformin 500mg"
+                          required
+                        />
+                      </div>
+                      <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div>
+                          <label>Unit</label>
+                          <input
+                            type="text"
+                            value={stockItemForm.unit}
+                            onChange={(e) => setStockItemForm({...stockItemForm, unit: e.target.value})}
+                            placeholder="e.g. tablets"
+                          />
+                        </div>
+                        <div>
+                          <label>Reorder Level</label>
+                          <input
+                            type="number"
+                            value={stockItemForm.reorderLevel}
+                            onChange={(e) => setStockItemForm({...stockItemForm, reorderLevel: e.target.value})}
+                            placeholder="e.g. 20"
+                          />
+                        </div>
+                      </div>
+                      <div className="form-group">
+                        <label>Initial Quantity on Hand</label>
+                        <input
+                          type="number"
+                          value={stockItemForm.quantityOnHand}
+                          onChange={(e) => setStockItemForm({...stockItemForm, quantityOnHand: e.target.value})}
+                          placeholder="e.g. 100"
+                        />
+                      </div>
+                      <button type="submit" className="btn btn-secondary" style={{ width: '100%' }} disabled={loading}>
+                        {loading ? 'Adding...' : 'Add Stock Item'}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+                <div className="dashboard-main">
+                  <div className="glass-card" style={{ textAlign: 'left' }}>
+                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Pill size={18} /> Facility Inventory ({stockList.length})
+                    </h3>
+                    {stockList.length === 0 ? (
+                      <p className="text-muted" style={{ fontSize: '0.9rem' }}>No medications tracked at your facility yet. Add one to start.</p>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {stockList.map(s => {
+                          const isLow = s.quantityOnHand <= s.reorderLevel;
+                          return (
+                          <div
+                            key={s.id}
+                            style={{
+                              padding: '12px 16px',
+                              borderRadius: '10px',
+                              background: isLow ? 'rgba(239, 68, 68, 0.05)' : 'rgba(15, 23, 42, 0.4)',
+                              border: `1px solid ${isLow ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255,255,255,0.05)'}`
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                              <div>
+                                <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>{s.medicationName}</p>
+                                <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                  {s.quantityOnHand} {s.unit} on hand | Reorder at {s.reorderLevel} {s.unit}
+                                </p>
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                {isLow && <span className="badge badge-red">Low Stock</span>}
+                                <button
+                                  className="btn btn-secondary"
+                                  onClick={() => { setReceiveFormFor(receiveFormFor === s.id ? null : s.id); setReceiveForm({ type: 'RECEIVE', quantityChange: '', notes: '' }); }}
+                                  style={{ padding: '6px 10px', fontSize: '0.75rem' }}
+                                >
+                                  {receiveFormFor === s.id ? 'Cancel' : 'Adjust'}
+                                </button>
+                                <button
+                                  className="btn"
+                                  onClick={() => toggleStockHistory(s.id)}
+                                  style={{ padding: '6px 10px', fontSize: '0.75rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }}
+                                >
+                                  {stockHistoryFor === s.id ? 'Hide History' : 'History'}
+                                </button>
+                              </div>
+                            </div>
+
+                            {receiveFormFor === s.id && (
+                              <form onSubmit={(e) => handleStockAdjustment(e, s.id)} style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                                <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                                  <div>
+                                    <label>Type</label>
+                                    <select
+                                      value={receiveForm.type}
+                                      onChange={(e) => setReceiveForm({...receiveForm, type: e.target.value})}
+                                    >
+                                      <option value="RECEIVE">Receive Stock</option>
+                                      <option value="ADJUST">Write Off</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label>Quantity</label>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      value={receiveForm.quantityChange}
+                                      onChange={(e) => setReceiveForm({...receiveForm, quantityChange: e.target.value})}
+                                      required
+                                    />
+                                  </div>
+                                  <div>
+                                    <label>Notes</label>
+                                    <input
+                                      type="text"
+                                      value={receiveForm.notes}
+                                      onChange={(e) => setReceiveForm({...receiveForm, notes: e.target.value})}
+                                      placeholder={receiveForm.type === 'RECEIVE' ? 'e.g. Delivery ref #1234' : 'e.g. Expired batch'}
+                                    />
+                                  </div>
+                                </div>
+                                <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+                                  {loading ? 'Saving...' : receiveForm.type === 'RECEIVE' ? 'Confirm Received' : 'Confirm Write-Off'}
+                                </button>
+                              </form>
+                            )}
+
+                            {stockHistoryFor === s.id && (
+                              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {stockHistory.length === 0 ? (
+                                  <p className="text-muted" style={{ fontSize: '0.75rem' }}>No transactions recorded.</p>
+                                ) : stockHistory.map(tx => (
+                                  <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '0.75rem' }}>
+                                    <span className="text-muted">
+                                      <span className={`badge ${tx.type === 'RECEIVED' ? 'badge-green' : tx.type === 'DISPENSED' ? 'badge-yellow' : 'badge-red'}`} style={{ marginRight: '6px' }}>{tx.type}</span>
+                                      {tx.quantityChange > 0 ? '+' : ''}{tx.quantityChange} {s.unit} — {new Date(tx.createdAt).toLocaleString()} by {tx.staff?.firstName} {tx.staff?.lastName}
+                                      {tx.notes ? ` (${tx.notes})` : ''}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : activeTabStaff === 'alerts' ? (

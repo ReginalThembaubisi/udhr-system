@@ -5,6 +5,7 @@ import com.udhr.model.*;
 import com.udhr.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Service
@@ -19,6 +20,10 @@ public class DispenseService {
     @Autowired
     private StaffRepository staffRepository;
 
+    @Autowired
+    private StockService stockService;
+
+    @Transactional
     public Dispense dispense(DispenseRequest request, String staffNumber) {
         Prescription prescription = prescriptionRepository.findById(request.getPrescriptionId())
                 .orElseThrow(() -> new RuntimeException("Prescription not found"));
@@ -28,6 +33,12 @@ public class DispenseService {
 
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
+
+        // Best-effort: draws down facility stock for this medication if it's
+        // being tracked there. Throws (before any Dispense record is
+        // created) if the facility tracks it but doesn't have enough on hand.
+        stockService.decrementForDispense(staff.getFacility(), prescription.getMedication(),
+                request.getQuantityDispensed(), staff, prescription.getId());
 
         Dispense dispense = new Dispense();
         dispense.setPrescription(prescription);

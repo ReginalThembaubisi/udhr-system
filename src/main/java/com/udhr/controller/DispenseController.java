@@ -45,7 +45,7 @@ public class DispenseController {
             Dispense dispense = dispenseService.dispense(dispenseRequest, staffNumber);
             return ResponseEntity.status(HttpStatus.CREATED).body(dispense);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
         }
     }
 
@@ -60,7 +60,7 @@ public class DispenseController {
             List<Dispense> history = dispenseService.getHistoryForPrescription(prescriptionId);
             return ResponseEntity.ok(history);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
         }
     }
 
@@ -75,7 +75,7 @@ public class DispenseController {
             List<Dispense> history = dispenseService.getHistoryForPatient(patientId);
             return ResponseEntity.ok(history);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
         }
     }
 }

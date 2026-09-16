@@ -89,6 +89,10 @@ public class PatientService {
         patient.setGender(request.getGender());
         patient.setContactNumber(request.getContactNumber());
         patient.setAddress(request.getAddress());
+        patient.setNextOfKinFirstName(request.getNextOfKinFirstName());
+        patient.setNextOfKinLastName(request.getNextOfKinLastName());
+        patient.setNextOfKinRelationship(request.getNextOfKinRelationship());
+        patient.setNextOfKinPhone(request.getNextOfKinPhone());
 
         if (request.getMotherIdNumber() != null && !request.getMotherIdNumber().isBlank()) {
             patientRepository.findByIdNumber(request.getMotherIdNumber())

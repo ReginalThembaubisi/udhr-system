@@ -61,6 +61,7 @@ function App() {
   // Forms for Staff
   const [patientRegForm, setPatientRegForm] = useState({
     idNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: '',
+    nextOfKinFirstName: '', nextOfKinLastName: '', nextOfKinRelationship: '', nextOfKinPhone: '',
     motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: ''
   });
   const [isNewbornMode, setIsNewbornMode] = useState(false);
@@ -646,7 +647,11 @@ function App() {
         gender: patientRegForm.gender,
         contactNumber: patientRegForm.contactNumber,
         address: patientRegForm.address,
-        email: patientRegForm.email
+        email: patientRegForm.email,
+        nextOfKinFirstName: patientRegForm.nextOfKinFirstName || undefined,
+        nextOfKinLastName: patientRegForm.nextOfKinLastName || undefined,
+        nextOfKinRelationship: patientRegForm.nextOfKinRelationship || undefined,
+        nextOfKinPhone: patientRegForm.nextOfKinPhone || undefined
       };
       if (isNewbornMode) {
         payload.motherIdNumber = patientRegForm.motherIdNumber || undefined;
@@ -676,6 +681,7 @@ function App() {
       setSearchId(fileReference);
       setPatientRegForm({
         idNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: '',
+        nextOfKinFirstName: '', nextOfKinLastName: '', nextOfKinRelationship: '', nextOfKinPhone: '',
         motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: ''
       });
       setIsNewbornMode(false);
@@ -2082,6 +2088,45 @@ function App() {
                         />
                       </div>
 
+                      <p className="text-muted" style={{ fontSize: '0.8rem', margin: '4px 0 12px', fontWeight: 600 }}>Next of Kin</p>
+                      <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div>
+                          <label>First Name</label>
+                          <input
+                            type="text"
+                            value={patientRegForm.nextOfKinFirstName}
+                            onChange={(e) => setPatientRegForm({...patientRegForm, nextOfKinFirstName: e.target.value})}
+                          />
+                        </div>
+                        <div>
+                          <label>Last Name</label>
+                          <input
+                            type="text"
+                            value={patientRegForm.nextOfKinLastName}
+                            onChange={(e) => setPatientRegForm({...patientRegForm, nextOfKinLastName: e.target.value})}
+                          />
+                        </div>
+                      </div>
+                      <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div>
+                          <label>Relationship</label>
+                          <input
+                            type="text"
+                            value={patientRegForm.nextOfKinRelationship}
+                            onChange={(e) => setPatientRegForm({...patientRegForm, nextOfKinRelationship: e.target.value})}
+                            placeholder="e.g. Parent, spouse, sibling"
+                          />
+                        </div>
+                        <div>
+                          <label>Phone</label>
+                          <input
+                            type="text"
+                            value={patientRegForm.nextOfKinPhone}
+                            onChange={(e) => setPatientRegForm({...patientRegForm, nextOfKinPhone: e.target.value})}
+                          />
+                        </div>
+                      </div>
+
                       {isNewbornMode && (
                         <>
                           <div className="form-group">
@@ -2176,6 +2221,13 @@ function App() {
                           {searchedPatientRecord.patient.birthWeightGrams && (
                             <p className="text-muted" style={{ marginTop: '4px' }}>
                               🍼 Born at {searchedPatientRecord.patient.birthFacility?.name || 'N/A'}: {searchedPatientRecord.patient.birthWeightGrams}g, {searchedPatientRecord.patient.birthLengthCm}cm, Apgar {searchedPatientRecord.patient.apgarScore1Min}/{searchedPatientRecord.patient.apgarScore5Min}
+                            </p>
+                          )}
+                          {searchedPatientRecord.patient.nextOfKinFirstName && (
+                            <p className="text-muted" style={{ marginTop: '4px' }}>
+                              🆘 Next of Kin: {searchedPatientRecord.patient.nextOfKinFirstName} {searchedPatientRecord.patient.nextOfKinLastName}
+                              {searchedPatientRecord.patient.nextOfKinRelationship && ` (${searchedPatientRecord.patient.nextOfKinRelationship})`}
+                              {searchedPatientRecord.patient.nextOfKinPhone && ` — ${searchedPatientRecord.patient.nextOfKinPhone}`}
                             </p>
                           )}
                           <p className="text-muted" style={{ marginTop: '4px' }}>

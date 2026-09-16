@@ -62,6 +62,18 @@ public class Patient {
     @Column(columnDefinition = "TEXT")
     private String address;
 
+    @Column(name = "next_of_kin_first_name")
+    private String nextOfKinFirstName;
+
+    @Column(name = "next_of_kin_last_name")
+    private String nextOfKinLastName;
+
+    @Column(name = "next_of_kin_relationship")
+    private String nextOfKinRelationship;
+
+    @Column(name = "next_of_kin_phone")
+    private String nextOfKinPhone;
+
     // Links a newborn's file to the mother's existing patient record so
     // birth/maternal history is reachable from the child's file.
     @ManyToOne

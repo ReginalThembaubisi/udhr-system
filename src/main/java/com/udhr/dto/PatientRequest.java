@@ -14,6 +14,12 @@ public class PatientRequest {
     private String contactNumber;
     private String address;
 
+    // Next of kin, all optional
+    private String nextOfKinFirstName;
+    private String nextOfKinLastName;
+    private String nextOfKinRelationship;
+    private String nextOfKinPhone;
+
     // Newborn / birth-record fields, all optional
     private String motherIdNumber; // links this file to the mother's existing record
     private Long birthFacilityId;

@@ -125,6 +125,7 @@ function App() {
   const [dispenseReport, setDispenseReport] = useState(null); // admin-only pharmacy dispensing report
   const [referralReport, setReferralReport] = useState(null); // admin-only facility-wide referral report
   const [prescriptionReport, setPrescriptionReport] = useState(null); // admin-only facility-wide prescription report
+  const [labResultReport, setLabResultReport] = useState(null); // admin-only facility-wide lab result report
   const [lowStockAlert, setLowStockAlert] = useState(null); // { items } shown once after login, dismissible
 
   // Setup Authorization headers
@@ -777,6 +778,15 @@ function App() {
       if (response.ok) setPrescriptionReport(await response.json());
     } catch (err) {
       console.error('Error fetching prescription report', err);
+    }
+  };
+
+  const fetchLabResultReport = async () => {
+    try {
+      const response = await fetch('/api/lab-results/report', { headers: getAuthHeaders() });
+      if (response.ok) setLabResultReport(await response.json());
+    } catch (err) {
+      console.error('Error fetching lab result report', err);
     }
   };
 
@@ -2350,7 +2360,7 @@ function App() {
                 <button
                   className="btn"
                   style={{ flex: 1, background: activeTabStaff === 'staff' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); fetchStockReport(); fetchDispenseReport(); fetchReferralReport(); fetchPrescriptionReport(); }}
+                  onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); fetchStockReport(); fetchDispenseReport(); fetchReferralReport(); fetchPrescriptionReport(); fetchLabResultReport(); }}
                 >
                   👥 Staff Management
                 </button>
@@ -4586,6 +4596,80 @@ function App() {
                                 {!p.active && <span className="badge badge-red" style={{ marginRight: '6px' }}>INACTIVE</span>}
                                 <span className="text-muted">
                                   <span style={{ color: '#fff' }}>{p.medication}</span> ({p.dosage}, {p.frequency}) for {p.patient?.firstName} {p.patient?.lastName} — {new Date(p.createdAt).toLocaleString()} by Dr. {p.doctor?.firstName} {p.doctor?.lastName}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {labResultReport && (
+                    <div className="glass-card" style={{ textAlign: 'left' }}>
+                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FileSpreadsheet size={18} /> Facility Lab Results Report
+                      </h3>
+                      <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{labResultReport.facilityName}</p>
+
+                      <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Total Lab Results (All-Time)</p>
+                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{labResultReport.totalLabResults}</p>
+                        </div>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Results Today</p>
+                          <p style={{ color: '#0ea5e9', fontSize: '1.4rem', fontWeight: 'bold' }}>{labResultReport.resultsToday}</p>
+                        </div>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Unique Patients Tested</p>
+                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{labResultReport.uniquePatientsTested}</p>
+                        </div>
+                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Unique Test Types</p>
+                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{labResultReport.uniqueTestTypes}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2" style={{ gap: '16px', marginBottom: '16px' }}>
+                        {labResultReport.topTestTypes.length > 0 && (
+                          <div>
+                            <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Test Types</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {labResultReport.topTestTypes.map(t => (
+                                <div key={t.testName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>{t.testName}</span>
+                                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{t.testCount}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {labResultReport.topOrderingStaff.length > 0 && (
+                          <div>
+                            <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Ordering Staff</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {labResultReport.topOrderingStaff.map(s => (
+                                <div key={s.staffName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>{s.staffName}</span>
+                                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{s.testCount}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Recent Lab Results</p>
+                        {labResultReport.recentResults.length === 0 ? (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No lab results recorded yet.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {labResultReport.recentResults.map(r => (
+                              <div key={r.id} style={{ fontSize: '0.8rem' }}>
+                                <span className="text-muted">
+                                  <span style={{ color: '#fff' }}>{r.testName}</span>: {r.result}{r.unit ? ` ${r.unit}` : ''}{r.normalRange ? ` (normal: ${r.normalRange})` : ''} for {r.patient?.firstName} {r.patient?.lastName} — {new Date(r.testDate).toLocaleString()} by {r.staff?.firstName} {r.staff?.lastName}
                                 </span>
                               </div>
                             ))}

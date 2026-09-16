@@ -1,12 +1,20 @@
 package com.udhr.service;
 
+import com.udhr.dto.LabResultReportResponse;
 import com.udhr.dto.LabResultRequest;
+import com.udhr.dto.LabStaffTally;
+import com.udhr.dto.TestTypeTally;
 import com.udhr.model.*;
 import com.udhr.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class LabResultService {
@@ -83,5 +91,56 @@ public class LabResultService {
 
     public List<LabResult> getLabResultsByPatient(Long patientId) {
         return labResultRepository.findByPatientIdOrderByTestDateDesc(patientId);
+    }
+
+    public LabResultReportResponse getReport(String staffNumber) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Facility facility = staff.getFacility();
+
+        List<LabResult> all = labResultRepository.findByFacilityIdOrderByTestDateDesc(facility.getId());
+
+        LocalDate today = LocalDate.now();
+        int resultsToday = (int) all.stream()
+                .filter(r -> r.getTestDate().toLocalDate().equals(today))
+                .count();
+
+        long uniquePatients = all.stream()
+                .map(r -> r.getPatient().getId())
+                .distinct()
+                .count();
+
+        Map<String, Integer> testTypeCounts = new LinkedHashMap<>();
+        Map<String, Integer> staffCounts = new LinkedHashMap<>();
+        for (LabResult r : all) {
+            testTypeCounts.merge(r.getTestName(), 1, Integer::sum);
+            String staffName = r.getStaff().getFirstName() + " " + r.getStaff().getLastName();
+            staffCounts.merge(staffName, 1, Integer::sum);
+        }
+
+        List<TestTypeTally> topTestTypes = testTypeCounts.entrySet().stream()
+                .map(e -> new TestTypeTally(e.getKey(), e.getValue()))
+                .sorted(Comparator.comparingInt(TestTypeTally::getTestCount).reversed())
+                .limit(5)
+                .collect(Collectors.toList());
+
+        List<LabStaffTally> topOrderingStaff = staffCounts.entrySet().stream()
+                .map(e -> new LabStaffTally(e.getKey(), e.getValue()))
+                .sorted(Comparator.comparingInt(LabStaffTally::getTestCount).reversed())
+                .limit(5)
+                .collect(Collectors.toList());
+
+        List<LabResult> recent = all.stream().limit(10).collect(Collectors.toList());
+
+        return new LabResultReportResponse(
+                facility.getName(),
+                all.size(),
+                resultsToday,
+                (int) uniquePatients,
+                testTypeCounts.size(),
+                topTestTypes,
+                topOrderingStaff,
+                recent
+        );
     }
 }

@@ -12,6 +12,7 @@ function App() {
   const [userRole, setUserRole] = useState(localStorage.getItem('role') || '');
   const [userIdNumber, setUserIdNumber] = useState(localStorage.getItem('idNumber') || '');
   const [userName, setUserName] = useState(localStorage.getItem('userName') || '');
+  const [userFacilityId, setUserFacilityId] = useState(localStorage.getItem('facilityId') || '');
   
   const [loginRole, setLoginRole] = useState('patient'); // 'patient' or 'staff'
   const [staffNumber, setStaffNumber] = useState('DOC001');
@@ -57,8 +58,10 @@ function App() {
   
   // Forms for Staff
   const [patientRegForm, setPatientRegForm] = useState({
-    idNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: ''
+    idNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: '',
+    motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: ''
   });
+  const [isNewbornMode, setIsNewbornMode] = useState(false);
   const [addDiagnosisForm, setAddDiagnosisForm] = useState({
     patientId: '', conditionName: '', notes: ''
   });
@@ -110,11 +113,13 @@ function App() {
       localStorage.setItem('role', data.role);
       localStorage.setItem('idNumber', data.idNumber || data.staffNumber);
       localStorage.setItem('userName', data.fullName);
+      localStorage.setItem('facilityId', data.facilityId || '');
 
       setToken(data.token);
       setUserRole(data.role);
       setUserIdNumber(data.idNumber || data.staffNumber);
       setUserName(data.fullName);
+      setUserFacilityId(data.facilityId || '');
       setSuccessMessage('Logged in successfully!');
     } catch (err) {
       setErrorMessage(err.message);
@@ -129,10 +134,12 @@ function App() {
     localStorage.removeItem('role');
     localStorage.removeItem('idNumber');
     localStorage.removeItem('userName');
+    localStorage.removeItem('facilityId');
     setToken('');
     setUserRole('');
     setUserIdNumber('');
     setUserName('');
+    setUserFacilityId('');
     setPatientProfile(null);
     setPatientRecord(null);
     setHealthGuidance(null);
@@ -247,7 +254,12 @@ function App() {
     setPatientTimeline(null);
 
     try {
-      const response = await fetch(`/api/patients/${searchId}/record`, { headers: getAuthHeaders() });
+      let response = await fetch(`/api/patients/${searchId}/record`, { headers: getAuthHeaders() });
+      if (response.status === 404) {
+        // Not found by ID number — this may be a UHID file number, e.g. a
+        // newborn who has no national ID number yet.
+        response = await fetch(`/api/patients/uhid/${searchId}/record`, { headers: getAuthHeaders() });
+      }
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.message || 'Patient record not found');
@@ -329,7 +341,7 @@ function App() {
     }
   };
 
-  // Staff registers new patient
+  // Staff registers new patient (adult, or newborn with birth details)
   const handleRegisterPatient = async (e) => {
     e.preventDefault();
     setErrorMessage('');
@@ -337,24 +349,121 @@ function App() {
     setLoading(true);
 
     try {
+      const payload = {
+        idNumber: patientRegForm.idNumber,
+        firstName: patientRegForm.firstName,
+        lastName: patientRegForm.lastName,
+        dateOfBirth: patientRegForm.dateOfBirth,
+        gender: patientRegForm.gender,
+        contactNumber: patientRegForm.contactNumber,
+        address: patientRegForm.address,
+        email: patientRegForm.email
+      };
+      if (isNewbornMode) {
+        payload.motherIdNumber = patientRegForm.motherIdNumber || undefined;
+        payload.birthFacilityId = userFacilityId ? Number(userFacilityId) : undefined;
+        payload.birthWeightGrams = patientRegForm.birthWeightGrams ? parseInt(patientRegForm.birthWeightGrams, 10) : undefined;
+        payload.birthLengthCm = patientRegForm.birthLengthCm ? parseFloat(patientRegForm.birthLengthCm) : undefined;
+        payload.apgarScore1Min = patientRegForm.apgarScore1Min ? parseInt(patientRegForm.apgarScore1Min, 10) : undefined;
+        payload.apgarScore5Min = patientRegForm.apgarScore5Min ? parseInt(patientRegForm.apgarScore5Min, 10) : undefined;
+      }
+
       const response = await fetch('/api/patients', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify(patientRegForm)
+        body: JSON.stringify(payload)
       });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.message || 'Registration failed');
       }
-      setSuccessMessage(`Patient '${data.firstName} ${data.lastName}' registered successfully!`);
-      setSearchId(data.idNumber);
+
+      const fileReference = data.idNumber || data.uhid;
+      setSuccessMessage(
+        data.idNumber
+          ? `Patient '${data.firstName} ${data.lastName}' registered successfully!`
+          : `Newborn '${data.firstName} ${data.lastName}' registered successfully! No ID number yet — their permanent file number is ${data.uhid}. Note this down; it is the only way to find this file until Home Affairs issues an ID number.`
+      );
+      setSearchId(fileReference);
       setPatientRegForm({
-        idNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: ''
+        idNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: '',
+        motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: ''
       });
-      // Load the newly registered patient record
-      setSearchedPatientRecord({
-        patient: data, allergies: [], chronicConditions: [], visits: [], diagnoses: [], prescriptions: [], labResults: []
+      setIsNewbornMode(false);
+
+      if (isNewbornMode) {
+        // Re-fetch the full record so the auto-generated EPI schedule shows up immediately.
+        const recordRes = await fetch(`/api/patients/uhid/${data.uhid}/record`, { headers: getAuthHeaders() });
+        setSearchedPatientRecord(recordRes.ok ? await recordRes.json() : {
+          patient: data, allergies: [], chronicConditions: [], visits: [], diagnoses: [], prescriptions: [], labResults: [], immunizations: []
+        });
+      } else {
+        // Load the newly registered patient record
+        setSearchedPatientRecord({
+          patient: data, allergies: [], chronicConditions: [], visits: [], diagnoses: [], prescriptions: [], labResults: [], immunizations: []
+        });
+      }
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Generate/refresh a patient's EPI immunization schedule
+  const handleGenerateImmunizationSchedule = async (patientId) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/immunizations/patient/${patientId}/schedule`, {
+        method: 'POST',
+        headers: getAuthHeaders()
       });
+      if (!response.ok) throw new Error('Failed to generate immunization schedule');
+      setSuccessMessage('EPI immunization schedule generated.');
+      handleSearchPatient();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Mark an immunization dose as administered
+  const handleAdministerDose = async (immunizationId) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/immunizations/${immunizationId}/administer`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({})
+      });
+      if (!response.ok) throw new Error('Failed to record immunization dose');
+      setSuccessMessage('Dose marked as given.');
+      handleSearchPatient();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Mark an immunization dose as missed
+  const handleMissDose = async (immunizationId) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/immunizations/${immunizationId}/miss`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) throw new Error('Failed to update immunization dose');
+      setSuccessMessage('Dose marked as missed.');
+      handleSearchPatient();
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -1429,14 +1538,14 @@ function App() {
                     </h3>
                     <form onSubmit={handleSearchPatient}>
                       <div className="form-group" style={{ marginBottom: '12px' }}>
-                        <label htmlFor="searchId">ID Number</label>
-                        <input 
-                          type="text" 
-                          id="searchId" 
-                          value={searchId} 
-                          onChange={(e) => setSearchId(e.target.value)} 
-                          placeholder="Enter patient ID number"
-                          required 
+                        <label htmlFor="searchId">ID Number or File Number (UHID)</label>
+                        <input
+                          type="text"
+                          id="searchId"
+                          value={searchId}
+                          onChange={(e) => setSearchId(e.target.value)}
+                          placeholder="ID number, or UDHR-... file number for a newborn"
+                          required
                         />
                       </div>
                       <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
@@ -1451,14 +1560,24 @@ function App() {
                       <PlusCircle size={18} /> Register Patient
                     </h3>
                     <form onSubmit={handleRegisterPatient}>
+                      <div
+                        style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.2)', borderRadius: '10px', padding: '10px 12px', cursor: 'pointer' }}
+                        onClick={() => setIsNewbornMode(!isNewbornMode)}
+                      >
+                        <input type="checkbox" checked={isNewbornMode} onChange={() => {}} style={{ width: '16px', height: '16px', pointerEvents: 'none' }} />
+                        <div>
+                          <p style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>Register a newborn</p>
+                          <p className="text-muted" style={{ fontSize: '0.75rem', margin: 0 }}>No ID number needed yet — opens a file from birth and starts the EPI vaccine schedule.</p>
+                        </div>
+                      </div>
                       <div className="form-group">
-                        <label>ID Number</label>
-                        <input 
-                          type="text" 
-                          value={patientRegForm.idNumber} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, idNumber: e.target.value})} 
-                          required 
-                          placeholder="SA ID number"
+                        <label>{isNewbornMode ? 'ID Number (leave blank — not yet issued)' : 'ID Number'}</label>
+                        <input
+                          type="text"
+                          value={patientRegForm.idNumber}
+                          onChange={(e) => setPatientRegForm({...patientRegForm, idNumber: e.target.value})}
+                          required={!isNewbornMode}
+                          placeholder={isNewbornMode ? 'Leave blank if not yet registered with Home Affairs' : 'SA ID number'}
                         />
                       </div>
                       <div className="form-group">
@@ -1518,14 +1637,77 @@ function App() {
                       </div>
                       <div className="form-group">
                         <label>Address</label>
-                        <textarea 
-                          value={patientRegForm.address} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, address: e.target.value})} 
+                        <textarea
+                          value={patientRegForm.address}
+                          onChange={(e) => setPatientRegForm({...patientRegForm, address: e.target.value})}
                           rows={2}
                         />
                       </div>
+
+                      {isNewbornMode && (
+                        <>
+                          <div className="form-group">
+                            <label>Mother's ID Number</label>
+                            <input
+                              type="text"
+                              value={patientRegForm.motherIdNumber}
+                              onChange={(e) => setPatientRegForm({...patientRegForm, motherIdNumber: e.target.value})}
+                              placeholder="Links this file to the mother's record"
+                            />
+                          </div>
+                          <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            <div>
+                              <label>Birth Weight (g)</label>
+                              <input
+                                type="number"
+                                value={patientRegForm.birthWeightGrams}
+                                onChange={(e) => setPatientRegForm({...patientRegForm, birthWeightGrams: e.target.value})}
+                                placeholder="e.g. 3200"
+                              />
+                            </div>
+                            <div>
+                              <label>Birth Length (cm)</label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                value={patientRegForm.birthLengthCm}
+                                onChange={(e) => setPatientRegForm({...patientRegForm, birthLengthCm: e.target.value})}
+                                placeholder="e.g. 49.5"
+                              />
+                            </div>
+                          </div>
+                          <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                            <div>
+                              <label>Apgar Score (1 min)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="10"
+                                value={patientRegForm.apgarScore1Min}
+                                onChange={(e) => setPatientRegForm({...patientRegForm, apgarScore1Min: e.target.value})}
+                              />
+                            </div>
+                            <div>
+                              <label>Apgar Score (5 min)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="10"
+                                value={patientRegForm.apgarScore5Min}
+                                onChange={(e) => setPatientRegForm({...patientRegForm, apgarScore5Min: e.target.value})}
+                              />
+                            </div>
+                          </div>
+                          <div style={{ background: 'rgba(14, 165, 233, 0.1)', padding: '10px', borderRadius: '8px', marginBottom: '16px' }}>
+                            <p style={{ fontSize: '0.75rem', color: '#7dd3fc' }}>
+                              💡 Birth facility is recorded as your current facility. The EPI immunization schedule (BCG, OPV, Rotavirus, PCV...) is generated automatically on save.
+                            </p>
+                          </div>
+                        </>
+                      )}
+
                       <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
-                        Create Record
+                        {isNewbornMode ? 'Open Newborn File' : 'Create Record'}
                       </button>
                     </form>
                   </div>
@@ -1540,8 +1722,24 @@ function App() {
                         <div>
                           <h2 style={{ color: '#fff' }}>Patient File: {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}</h2>
                           <p className="text-muted" style={{ marginTop: '4px' }}>
-                            ID Number: {searchedPatientRecord.patient.idNumber} | Gender: {searchedPatientRecord.patient.gender} | DOB: {searchedPatientRecord.patient.dateOfBirth}
+                            File Number (UHID): <strong style={{ color: '#fff' }}>{searchedPatientRecord.patient.uhid}</strong>
+                            {!searchedPatientRecord.patient.idNumber && (
+                              <span style={{ color: '#fde047', marginLeft: '8px' }}>⚠️ No ID number registered yet</span>
+                            )}
                           </p>
+                          <p className="text-muted" style={{ marginTop: '4px' }}>
+                            ID Number: {searchedPatientRecord.patient.idNumber || 'Not yet issued'} | Gender: {searchedPatientRecord.patient.gender} | DOB: {searchedPatientRecord.patient.dateOfBirth}
+                          </p>
+                          {searchedPatientRecord.patient.motherPatient && (
+                            <p className="text-muted" style={{ marginTop: '4px', color: '#c7d2fe' }}>
+                              👶 Mother: {searchedPatientRecord.patient.motherPatient.firstName} {searchedPatientRecord.patient.motherPatient.lastName} (ID: {searchedPatientRecord.patient.motherPatient.idNumber || searchedPatientRecord.patient.motherPatient.uhid})
+                            </p>
+                          )}
+                          {searchedPatientRecord.patient.birthWeightGrams && (
+                            <p className="text-muted" style={{ marginTop: '4px' }}>
+                              🍼 Born at {searchedPatientRecord.patient.birthFacility?.name || 'N/A'}: {searchedPatientRecord.patient.birthWeightGrams}g, {searchedPatientRecord.patient.birthLengthCm}cm, Apgar {searchedPatientRecord.patient.apgarScore1Min}/{searchedPatientRecord.patient.apgarScore5Min}
+                            </p>
+                          )}
                           <p className="text-muted" style={{ marginTop: '4px' }}>
                             Contact: {searchedPatientRecord.patient.contactNumber || 'N/A'} | Email: {searchedPatientRecord.patient.email || 'N/A'}
                           </p>
@@ -1793,6 +1991,69 @@ function App() {
                                   {d.diagnosis} {d.icd10Code && <span style={{ color: '#38bdf8', fontSize: '0.75rem', fontWeight: 'normal', background: 'rgba(56, 189, 248, 0.1)', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' }}>ICD-10: {d.icd10Code}</span>}
                                 </p>
                                 <p className="text-muted" style={{ fontSize: '0.8rem' }}>Diagnosed: {new Date(d.diagnosedAt).toLocaleString()} | Notes: {d.notes}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Immunization Schedule (EPI) */}
+                      <div className="glass-card" style={{ textAlign: 'left' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                          <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                            <Shield /> Immunization Schedule (EPI)
+                          </h3>
+                          {(!searchedPatientRecord.immunizations || searchedPatientRecord.immunizations.length === 0) && (
+                            <button
+                              className="btn btn-secondary"
+                              onClick={() => handleGenerateImmunizationSchedule(searchedPatientRecord.patient.id)}
+                              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                              disabled={loading}
+                            >
+                              Generate EPI Schedule
+                            </button>
+                          )}
+                        </div>
+
+                        {(!searchedPatientRecord.immunizations || searchedPatientRecord.immunizations.length === 0) ? (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No immunization schedule on file. Generate one to start tracking EPI doses for this patient.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {searchedPatientRecord.immunizations.map(dose => (
+                              <div
+                                key={dose.id}
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                  padding: '10px 12px',
+                                  borderRadius: '8px',
+                                  background: dose.status === 'GIVEN' ? 'rgba(16, 185, 129, 0.06)' : dose.status === 'MISSED' ? 'rgba(239, 68, 68, 0.06)' : 'rgba(15, 23, 42, 0.4)',
+                                  border: '1px solid rgba(255,255,255,0.05)'
+                                }}
+                              >
+                                <div>
+                                  <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
+                                    {dose.vaccineName} {dose.doseNumber != null && `(Dose ${dose.doseNumber})`}
+                                  </p>
+                                  <p className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                    Scheduled: {dose.scheduledDate}{dose.administeredDate && ` | Given: ${dose.administeredDate}`}
+                                  </p>
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                  {dose.status === 'DUE' ? (
+                                    <>
+                                      <button className="btn btn-success" onClick={() => handleAdministerDose(dose.id)} style={{ padding: '6px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }} disabled={loading}>
+                                        <CheckCircle size={14} /> Given
+                                      </button>
+                                      <button className="btn btn-danger" onClick={() => handleMissDose(dose.id)} style={{ padding: '6px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }} disabled={loading}>
+                                        <XCircle size={14} /> Missed
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <span className={`badge ${dose.status === 'GIVEN' ? 'badge-green' : 'badge-red'}`}>{dose.status}</span>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>

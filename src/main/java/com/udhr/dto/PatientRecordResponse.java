@@ -3,6 +3,7 @@ package com.udhr.dto;
 import com.udhr.model.Allergy;
 import com.udhr.model.ChronicCondition;
 import com.udhr.model.Diagnosis;
+import com.udhr.model.Dispense;
 import com.udhr.model.Immunization;
 import com.udhr.model.LabResult;
 import com.udhr.model.Patient;
@@ -29,4 +30,5 @@ public class PatientRecordResponse {
     private List<Immunization> immunizations;
     private List<Vitals> vitals;
     private List<Referral> referrals;
+    private List<Dispense> dispenses;
 }

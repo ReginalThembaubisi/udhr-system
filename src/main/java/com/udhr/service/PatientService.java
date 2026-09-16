@@ -54,6 +54,9 @@ public class PatientService {
     @Autowired
     private ReferralRepository referralRepository;
 
+    @Autowired
+    private DispenseRepository dispenseRepository;
+
     public Patient findById(Long id) {
         return patientRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
@@ -159,6 +162,7 @@ public class PatientService {
         List<Immunization> immunizations = immunizationRepository.findByPatientIdOrderByScheduledDateAsc(patient.getId());
         List<Vitals> vitals = vitalsRepository.findByPatientIdOrderByRecordedAtDesc(patient.getId());
         List<Referral> referrals = referralRepository.findByPatientIdOrderByReferredAtDesc(patient.getId());
+        List<Dispense> dispenses = dispenseRepository.findByPatientIdOrderByDispensedAtDesc(patient.getId());
 
         // Log the view action in AuditLog
         Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
@@ -181,7 +185,8 @@ public class PatientService {
                 labResults,
                 immunizations,
                 vitals,
-                referrals
+                referrals,
+                dispenses
         );
     }
 }

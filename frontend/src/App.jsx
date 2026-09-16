@@ -110,6 +110,10 @@ function App() {
   const [incomingReferrals, setIncomingReferrals] = useState([]);
   const [outgoingReferrals, setOutgoingReferrals] = useState([]);
 
+  // Pharmacy Dispensing state
+  const [dispenseFormFor, setDispenseFormFor] = useState(null); // prescription id currently showing the dispense form
+  const [dispenseForm, setDispenseForm] = useState({ quantityDispensed: '', daysSupply: '', pharmacyNotes: '' });
+
   // Setup Authorization headers
   const getAuthHeaders = () => {
     return {
@@ -665,6 +669,39 @@ function App() {
       fetchOutgoingReferrals();
     } catch (err) {
       setErrorMessage(err.message);
+    }
+  };
+
+  // Pharmacy: dispense a prescription
+  const handleDispense = async (e, prescriptionId) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const payload = {
+        prescriptionId,
+        quantityDispensed: dispenseForm.quantityDispensed,
+        daysSupply: dispenseForm.daysSupply ? Number(dispenseForm.daysSupply) : undefined,
+        pharmacyNotes: dispenseForm.pharmacyNotes
+      };
+      const response = await fetch('/api/dispensing', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || data || 'Failed to record dispensing');
+      }
+      setSuccessMessage(`${data.quantityDispensed} dispensed successfully.`);
+      setDispenseForm({ quantityDispensed: '', daysSupply: '', pharmacyNotes: '' });
+      setDispenseFormFor(null);
+      handleSearchPatient(); // Refresh record
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -2745,13 +2782,85 @@ function App() {
                               <p className="text-muted" style={{ fontSize: '0.85rem' }}>No prescriptions active.</p>
                             ) : (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                {searchedPatientRecord.prescriptions.map(p => (
+                                {searchedPatientRecord.prescriptions.map(p => {
+                                  const dispenseHistory = (searchedPatientRecord.dispenses || []).filter(d => d.prescription?.id === p.id);
+                                  return (
                                   <div key={p.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
-                                    <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{p.medication}</p>
-                                    <p className="text-muted" style={{ fontSize: '0.75rem' }}>Dosage: {p.dosage} | Frequency: {p.frequency} | Duration: {p.durationDays} days</p>
-                                    <p className="text-muted" style={{ fontSize: '0.7rem', marginTop: '2px' }}>Notes: {p.notes}</p>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
+                                      <div>
+                                        <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{p.medication}</p>
+                                        <p className="text-muted" style={{ fontSize: '0.75rem' }}>Dosage: {p.dosage} | Frequency: {p.frequency} | Duration: {p.durationDays} days</p>
+                                        <p className="text-muted" style={{ fontSize: '0.7rem', marginTop: '2px' }}>Notes: {p.notes}</p>
+                                      </div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {dispenseHistory.length > 0 && (
+                                          <span className="badge badge-green">Dispensed x{dispenseHistory.length}</span>
+                                        )}
+                                        {p.active && (
+                                          <button
+                                            className="btn btn-secondary"
+                                            onClick={() => { setDispenseFormFor(dispenseFormFor === p.id ? null : p.id); setDispenseForm({ quantityDispensed: '', daysSupply: '', pharmacyNotes: '' }); }}
+                                            style={{ padding: '6px 10px', fontSize: '0.75rem' }}
+                                          >
+                                            {dispenseFormFor === p.id ? 'Cancel' : 'Dispense'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {dispenseFormFor === p.id && (
+                                      <form onSubmit={(e) => handleDispense(e, p.id)} style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
+                                          <div>
+                                            <label>Quantity Dispensed</label>
+                                            <input
+                                              type="text"
+                                              value={dispenseForm.quantityDispensed}
+                                              onChange={(e) => setDispenseForm({...dispenseForm, quantityDispensed: e.target.value})}
+                                              placeholder="e.g. 30 tablets"
+                                              required
+                                            />
+                                          </div>
+                                          <div>
+                                            <label>Days Supply</label>
+                                            <input
+                                              type="number"
+                                              value={dispenseForm.daysSupply}
+                                              onChange={(e) => setDispenseForm({...dispenseForm, daysSupply: e.target.value})}
+                                              placeholder="e.g. 30"
+                                            />
+                                          </div>
+                                        </div>
+                                        <div className="form-group">
+                                          <label>Pharmacy Notes</label>
+                                          <textarea
+                                            value={dispenseForm.pharmacyNotes}
+                                            onChange={(e) => setDispenseForm({...dispenseForm, pharmacyNotes: e.target.value})}
+                                            placeholder="Counselling given, generic substitution, stock notes..."
+                                            rows={2}
+                                          />
+                                        </div>
+                                        <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+                                          {loading ? 'Recording...' : 'Confirm Dispensed'}
+                                        </button>
+                                      </form>
+                                    )}
+
+                                    {dispenseHistory.length > 0 && (
+                                      <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {dispenseHistory.map(d => (
+                                          <div key={d.id} style={{ fontSize: '0.75rem' }}>
+                                            <p className="text-muted">
+                                              {d.quantityDispensed}{d.daysSupply ? ` (${d.daysSupply} days)` : ''} — {new Date(d.dispensedAt).toLocaleString()} by {d.dispensedBy?.firstName} {d.dispensedBy?.lastName} at {d.facility?.name}
+                                            </p>
+                                            {d.pharmacyNotes && <p className="text-muted" style={{ fontStyle: 'italic' }}>{d.pharmacyNotes}</p>}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -3794,6 +3903,7 @@ function App() {
                           <option value="ADMIN">Admin</option>
                           <option value="DOCTOR">Doctor</option>
                           <option value="NURSE">Nurse</option>
+                          <option value="PHARMACIST">Pharmacist</option>
                         </select>
                       </div>
                       <div className="form-group">

@@ -60,6 +60,9 @@ public class PatientService {
     @Autowired
     private QueueEntryRepository queueEntryRepository;
 
+    @Autowired
+    private QueueService queueService;
+
     public Patient findById(Long id) {
         return patientRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
@@ -167,17 +170,29 @@ public class PatientService {
         List<Referral> referrals = referralRepository.findByPatientIdOrderByReferredAtDesc(patient.getId());
         List<Dispense> dispenses = dispenseRepository.findByPatientIdOrderByDispensedAtDesc(patient.getId());
 
+        Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
+
+        // "Current location" — the patient's active queue entry today, scoped
+        // to the logged-in staff's own facility (a queue entry elsewhere
+        // isn't "here" and would show the wrong department/doctor).
         LocalDate today = LocalDate.now();
         List<QueueEntry.Status> activeStatuses = List.of(
                 QueueEntry.Status.WAITING, QueueEntry.Status.IN_CONSULTATION, QueueEntry.Status.AWAITING_PHARMACY);
-        QueueEntry activeQueueEntry = queueEntryRepository.findByPatientIdOrderByCheckedInAtDesc(patient.getId())
-                .stream()
-                .filter(qe -> qe.getQueueDate().equals(today) && activeStatuses.contains(qe.getStatus()))
-                .findFirst()
-                .orElse(null);
+        QueueEntry activeQueueEntry = null;
+        if (staff != null) {
+            activeQueueEntry = queueEntryRepository.findByPatientIdOrderByCheckedInAtDesc(patient.getId())
+                    .stream()
+                    .filter(qe -> qe.getQueueDate().equals(today)
+                            && activeStatuses.contains(qe.getStatus())
+                            && qe.getFacility().getId().equals(staff.getFacility().getId()))
+                    .findFirst()
+                    .orElse(null);
+            if (activeQueueEntry != null) {
+                activeQueueEntry.setQueuePosition(queueService.getWaitingPosition(activeQueueEntry));
+            }
+        }
 
         // Log the view action in AuditLog
-        Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
         if (staff != null) {
             AuditLog auditLog = new AuditLog();
             auditLog.setStaff(staff);

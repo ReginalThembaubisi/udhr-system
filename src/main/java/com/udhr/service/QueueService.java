@@ -80,6 +80,27 @@ public class QueueService {
         return entries;
     }
 
+    // 1-indexed rank of a WAITING entry within its own facility's WAITING
+    // queue for that day, ordered the same way getTodayQueue is (urgency,
+    // then arrival). Null for any entry that isn't currently WAITING.
+    public Integer getWaitingPosition(QueueEntry entry) {
+        if (entry.getStatus() != QueueEntry.Status.WAITING) {
+            return null;
+        }
+        List<QueueEntry> waitingToday = queueEntryRepository.findByFacilityIdAndQueueDateAndStatusInOrderByQueueNumberAsc(
+                entry.getFacility().getId(), entry.getQueueDate(), List.of(QueueEntry.Status.WAITING));
+        waitingToday.sort(Comparator
+                .comparing((QueueEntry e) -> URGENCY_PRIORITY.get(e.getUrgency()))
+                .thenComparing(QueueEntry::getQueueNumber));
+
+        for (int i = 0; i < waitingToday.size(); i++) {
+            if (waitingToday.get(i).getId().equals(entry.getId())) {
+                return i + 1;
+            }
+        }
+        return null;
+    }
+
     @Transactional
     public QueueEntry updateUrgency(Long id, String urgency) {
         QueueEntry entry = queueEntryRepository.findById(id)
@@ -133,6 +154,23 @@ public class QueueService {
         entry.setStatus(QueueEntry.Status.COMPLETED);
         entry.setCompletedAt(LocalDateTime.now());
         return queueEntryRepository.save(entry);
+    }
+
+    // Best-effort: closes out whatever active queue entry a patient has
+    // today at a given facility (e.g. on discharge), so they stop showing
+    // as "currently here" once the episode is actually over. A no-op if
+    // there's no such entry — most discharges won't have one.
+    @Transactional
+    public void completeActiveEntryForPatientAtFacility(Long patientId, Long facilityId) {
+        LocalDate today = LocalDate.now();
+        List<QueueEntry.Status> activeStatuses = List.of(
+                QueueEntry.Status.WAITING, QueueEntry.Status.IN_CONSULTATION, QueueEntry.Status.AWAITING_PHARMACY);
+        queueEntryRepository.findByPatientIdOrderByCheckedInAtDesc(patientId).stream()
+                .filter(qe -> qe.getQueueDate().equals(today)
+                        && activeStatuses.contains(qe.getStatus())
+                        && qe.getFacility().getId().equals(facilityId))
+                .findFirst()
+                .ifPresent(qe -> complete(qe.getId()));
     }
 
     @Transactional

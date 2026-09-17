@@ -31,6 +31,9 @@ public class VisitService {
     @Autowired
     private FacilityRepository facilityRepository;
 
+    @Autowired
+    private QueueService queueService;
+
     public Visit addVisit(VisitRequest request) {
         Patient patient = patientRepository.findById(request.getPatientId())
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
@@ -79,6 +82,8 @@ public class VisitService {
         visit.setDischargedBy(staff);
         visit.setDischargedAt(LocalDateTime.now());
 
-        return visitRepository.save(visit);
+        Visit saved = visitRepository.save(visit);
+        queueService.completeActiveEntryForPatientAtFacility(saved.getPatient().getId(), staff.getFacility().getId());
+        return saved;
     }
 }

@@ -77,6 +77,12 @@ public class QueueEntry {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
+    // Not persisted — computed on demand (e.g. for the patient file's
+    // "current location" banner) as this entry's 1-indexed rank within
+    // today's WAITING queue at its facility.
+    @Transient
+    private Integer queuePosition;
+
     @PrePersist
     protected void onCreate() {
         this.checkedInAt = LocalDateTime.now();

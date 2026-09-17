@@ -517,6 +517,7 @@ function App() {
       if (!response.ok) throw new Error('Failed to complete queue entry');
       setSuccessMessage('Marked as completed.');
       fetchPharmacyQueue();
+      if (searchedPatientRecord) handleSearchPatient(); // Keep the "current location" banner in sync
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -539,6 +540,9 @@ function App() {
       setShowCheckInForm(false);
       setCheckInForm({ department: 'GP', reason: '', urgency: 'GREEN' });
       fetchTodayQueue();
+      if (searchedPatientRecord && searchedPatientRecord.patient.id === patientId) {
+        handleSearchPatient(); // Refresh so the "current location" banner reflects the new queue entry
+      }
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -568,6 +572,7 @@ function App() {
       if (!response.ok) throw new Error('Failed to call patient in');
       setSuccessMessage('Patient called into consultation.');
       fetchTodayQueue();
+      if (searchedPatientRecord) handleSearchPatient(); // Keep the "current location" banner in sync
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -581,6 +586,7 @@ function App() {
       if (!response.ok) throw new Error('Failed to complete queue entry');
       setSuccessMessage('Marked as completed.');
       fetchTodayQueue();
+      if (searchedPatientRecord) handleSearchPatient(); // Keep the "current location" banner in sync
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -594,6 +600,7 @@ function App() {
       if (!response.ok) throw new Error('Failed to cancel queue entry');
       setSuccessMessage('Queue entry cancelled.');
       fetchTodayQueue();
+      if (searchedPatientRecord) handleSearchPatient(); // Keep the "current location" banner in sync
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -667,6 +674,7 @@ function App() {
       setShowDischargeForm(false);
       setDischargeForm({ dischargeOutcome: 'HOME', dischargeSummary: '', followUpDate: '' });
       handleSearchPatient();
+      fetchTodayQueue(); // Discharge also closes out any active queue entry for today
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -2841,6 +2849,35 @@ function App() {
                       {/* Demographics Card */}
                       <Card className="text-left">
                         <CardContent className="flex flex-wrap justify-between gap-5 p-6">
+                        {searchedPatientRecord.activeQueueEntry && (() => {
+                          const aqe = searchedPatientRecord.activeQueueEntry;
+                          const dept = aqe.department.replace('_', ' ');
+                          let text = null;
+                          let variant = 'success';
+                          if (aqe.status === 'WAITING') {
+                            const urgencyLabel = aqe.urgency.charAt(0) + aqe.urgency.slice(1).toLowerCase();
+                            text = `Waiting in ${dept} queue — position ${aqe.queuePosition ?? '?'}, ${urgencyLabel} urgency`;
+                            variant = 'success';
+                          } else if (aqe.status === 'IN_CONSULTATION') {
+                            const attending = aqe.attendingStaff;
+                            const name = attending
+                              ? `${attending.role === 'DOCTOR' ? 'Dr. ' : ''}${attending.firstName} ${attending.lastName}`
+                              : 'staff';
+                            text = `In Consultation — ${name}, ${dept}`;
+                            variant = 'warning';
+                          } else if (aqe.status === 'AWAITING_PHARMACY') {
+                            text = 'Awaiting Pharmacy';
+                            variant = 'warning';
+                          }
+                          if (!text) return null;
+                          return (
+                            <div className="w-full">
+                              <Badge variant={variant} className="px-3 py-1.5 text-sm">
+                                Currently: {text}
+                              </Badge>
+                            </div>
+                          );
+                        })()}
                         <div>
                           <h2 className="text-xl font-semibold">Patient File: {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}</h2>
                           <p className="mt-1 text-sm text-muted-foreground">

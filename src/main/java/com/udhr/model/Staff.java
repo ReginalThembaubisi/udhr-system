@@ -40,11 +40,20 @@ public class Staff {
     @Column(unique = true, nullable = false)
     private String email;
 
+    // Optional: only needed for staff to receive SMS alerts (e.g. reorder notifications).
+    @Column(name = "contact_number")
+    private String contactNumber;
+
     @Column(nullable = false)
     private String password;
 
     @Column(nullable = false)
     private Boolean active = true;
+
+    // New staff are created with a temporary password and must set their own
+    // before they can use the rest of the system.
+    @Column(name = "must_change_password", nullable = false)
+    private Boolean mustChangePassword = true;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

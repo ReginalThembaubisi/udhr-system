@@ -1,13 +1,22 @@
 package com.udhr.service;
 
+import com.udhr.dto.MedicationPrescriptionTally;
+import com.udhr.dto.PrescriberTally;
+import com.udhr.dto.PrescriptionReportResponse;
 import com.udhr.dto.PrescriptionRequest;
 import com.udhr.model.*;
 import com.udhr.repository.*;
+import com.udhr.util.CsvUtil;
+import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class PrescriptionService {
@@ -113,5 +122,97 @@ public class PrescriptionService {
 
     public List<Prescription> getActivePrescriptionsByPatient(Long patientId) {
         return prescriptionRepository.findByPatientIdAndActiveTrue(patientId);
+    }
+
+    public PrescriptionReportResponse getReport(String staffNumber, String startDateStr, String endDateStr) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Facility facility = staff.getFacility();
+        LocalDate startDate = DateRangeUtil.parseOrNull(startDateStr);
+        LocalDate endDate = DateRangeUtil.parseOrNull(endDateStr);
+
+        List<Prescription> allEver = prescriptionRepository.findByFacilityIdOrderByCreatedAtDesc(facility.getId());
+
+        // "Issued Today" is an always-live pulse metric, independent of
+        // whatever historical range is being browsed.
+        LocalDate today = LocalDate.now();
+        int issuedToday = (int) allEver.stream()
+                .filter(p -> p.getCreatedAt().toLocalDate().equals(today))
+                .count();
+
+        List<Prescription> all = allEver.stream()
+                .filter(p -> DateRangeUtil.isWithinRange(p.getCreatedAt(), startDate, endDate))
+                .collect(Collectors.toList());
+
+        int activeCount = (int) all.stream().filter(Prescription::getActive).count();
+
+        long uniquePatients = all.stream()
+                .map(p -> p.getPatient().getId())
+                .distinct()
+                .count();
+
+        Map<String, Integer> medicationCounts = new LinkedHashMap<>();
+        Map<String, Integer> prescriberCounts = new LinkedHashMap<>();
+        for (Prescription p : all) {
+            medicationCounts.merge(p.getMedication(), 1, Integer::sum);
+            String prescriberName = p.getDoctor().getFirstName() + " " + p.getDoctor().getLastName();
+            prescriberCounts.merge(prescriberName, 1, Integer::sum);
+        }
+
+        List<MedicationPrescriptionTally> topMedications = medicationCounts.entrySet().stream()
+                .map(e -> new MedicationPrescriptionTally(e.getKey(), e.getValue()))
+                .sorted(Comparator.comparingInt(MedicationPrescriptionTally::getPrescriptionCount).reversed())
+                .limit(5)
+                .collect(Collectors.toList());
+
+        List<PrescriberTally> topPrescribers = prescriberCounts.entrySet().stream()
+                .map(e -> new PrescriberTally(e.getKey(), e.getValue()))
+                .sorted(Comparator.comparingInt(PrescriberTally::getPrescriptionCount).reversed())
+                .limit(5)
+                .collect(Collectors.toList());
+
+        List<Prescription> recent = all.stream().limit(10).collect(Collectors.toList());
+
+        return new PrescriptionReportResponse(
+                facility.getName(),
+                all.size(),
+                activeCount,
+                issuedToday,
+                (int) uniquePatients,
+                topMedications,
+                topPrescribers,
+                recent
+        );
+    }
+
+    public String exportCsv(String staffNumber, String startDateStr, String endDateStr) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Facility facility = staff.getFacility();
+        LocalDate startDate = DateRangeUtil.parseOrNull(startDateStr);
+        LocalDate endDate = DateRangeUtil.parseOrNull(endDateStr);
+
+        List<Prescription> prescriptions = prescriptionRepository.findByFacilityIdOrderByCreatedAtDesc(facility.getId())
+                .stream()
+                .filter(p -> DateRangeUtil.isWithinRange(p.getCreatedAt(), startDate, endDate))
+                .collect(Collectors.toList());
+
+        List<String> headers = List.of("Date", "Medication", "Dosage", "Frequency", "Patient", "Doctor", "Active", "Start Date", "End Date", "Notes");
+        List<List<String>> rows = prescriptions.stream()
+                .map(p -> List.of(
+                        p.getCreatedAt().toString(),
+                        p.getMedication(),
+                        p.getDosage() != null ? p.getDosage() : "",
+                        p.getFrequency() != null ? p.getFrequency() : "",
+                        p.getPatient().getFirstName() + " " + p.getPatient().getLastName(),
+                        p.getDoctor().getFirstName() + " " + p.getDoctor().getLastName(),
+                        p.getActive() ? "Yes" : "No",
+                        p.getStartDate() != null ? p.getStartDate().toString() : "",
+                        p.getEndDate() != null ? p.getEndDate().toString() : "",
+                        p.getNotes() != null ? p.getNotes() : ""
+                ))
+                .collect(Collectors.toList());
+
+        return CsvUtil.buildCsv(headers, rows);
     }
 }

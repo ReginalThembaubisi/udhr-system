@@ -49,6 +49,36 @@ public class PatientController {
         }
     }
 
+    @GetMapping("/uhid/{uhid}")
+    public ResponseEntity<?> getPatientByUhid(@PathVariable String uhid, HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            Patient patient = patientService.findByUhid(uhid);
+            return ResponseEntity.ok(patient);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/uhid/{uhid}/record")
+    public ResponseEntity<?> getFullPatientRecordByUhid(@PathVariable String uhid, HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            PatientRecordResponse record = patientService.getFullRecordByUhid(uhid, staffNumber);
+            return ResponseEntity.ok(record);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        }
+    }
+
     @PostMapping
     public ResponseEntity<?> registerPatient(@RequestBody PatientRequest patientRequest, HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);

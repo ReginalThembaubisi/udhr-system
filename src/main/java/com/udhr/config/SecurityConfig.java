@@ -38,15 +38,16 @@ public class SecurityConfig {
 
                 // ---- Clinical / prescribing: DOCTOR + NURSE only, never ADMIN ----
                 .requestMatchers("/api/clinical-alerts/drug-food-audit", "/api/clinical-alerts/my-alerts").hasRole("PATIENT")
-                // Reading a patient's alert/adherence/symptom-check timeline is shared/read (same
-                // bucket as viewing the rest of the patient record), so ADMIN keeps this one path.
-                .requestMatchers(HttpMethod.GET, "/api/clinical-alerts/patient/*").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
-                // Everything else here (the alert feed, resolving, creating, and triggering CDS
-                // evaluation) is clinical alert management — no ADMIN.
+                // A patient's alert/adherence/symptom-check timeline is clinical detail
+                // (symptom urgency, medication names, alert messages) — same as the rest
+                // of clinical-alerts, no ADMIN. (Previously carved out as shared/read;
+                // reclassified after the Clinical tab's own read views were locked down.)
                 .requestMatchers("/api/clinical-alerts/**").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/reminders/patient").hasRole("PATIENT")
                 .requestMatchers("/api/reminders/adherence/**").hasRole("PATIENT")
-                .requestMatchers("/api/reminders/patient/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
+                // Reveals medication names and adherence detail per dose — clinical, no ADMIN
+                // (reclassified alongside the Clinical tab's Patient Adherence History card).
+                .requestMatchers("/api/reminders/patient/**").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/symptoms").hasAnyRole("PATIENT", "DOCTOR", "NURSE", "ADMIN")
                 // Patient lookup/registration/record-view is shared/read + clerical intake, not a
                 // clinical decision, so it stays open to ADMIN (consistent with Staff Management

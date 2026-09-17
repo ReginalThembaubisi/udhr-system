@@ -159,18 +159,23 @@ public class PatientService {
     }
 
     private PatientRecordResponse buildFullRecord(Patient patient, String staffNumber, String auditDescription) {
-        List<Allergy> allergies = allergyRepository.findByPatientId(patient.getId());
-        List<ChronicCondition> chronicConditions = chronicConditionRepository.findByPatientId(patient.getId());
-        List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
-        List<Diagnosis> diagnoses = diagnosisRepository.findByPatientIdOrderByDiagnosedAtDesc(patient.getId());
-        List<Prescription> prescriptions = prescriptionRepository.findByPatientIdOrderByCreatedAtDesc(patient.getId());
-        List<LabResult> labResults = labResultRepository.findByPatientIdOrderByTestDateDesc(patient.getId());
-        List<Immunization> immunizations = immunizationRepository.findByPatientIdOrderByScheduledDateAsc(patient.getId());
-        List<Vitals> vitals = vitalsRepository.findByPatientIdOrderByRecordedAtDesc(patient.getId());
-        List<Referral> referrals = referralRepository.findByPatientIdOrderByReferredAtDesc(patient.getId());
-        List<Dispense> dispenses = dispenseRepository.findByPatientIdOrderByDispensedAtDesc(patient.getId());
-
         Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
+        // ADMIN has no clinical role and cannot act on diagnoses, prescriptions,
+        // allergies, chronic conditions, lab results, vitals, or dispensing
+        // history (see SecurityConfig) — the same data must not be readable
+        // through this aggregate endpoint either, not just blocked on write.
+        boolean isAdmin = staff != null && "ADMIN".equals(staff.getRole());
+
+        List<Allergy> allergies = isAdmin ? List.of() : allergyRepository.findByPatientId(patient.getId());
+        List<ChronicCondition> chronicConditions = isAdmin ? List.of() : chronicConditionRepository.findByPatientId(patient.getId());
+        List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
+        List<Diagnosis> diagnoses = isAdmin ? List.of() : diagnosisRepository.findByPatientIdOrderByDiagnosedAtDesc(patient.getId());
+        List<Prescription> prescriptions = isAdmin ? List.of() : prescriptionRepository.findByPatientIdOrderByCreatedAtDesc(patient.getId());
+        List<LabResult> labResults = isAdmin ? List.of() : labResultRepository.findByPatientIdOrderByTestDateDesc(patient.getId());
+        List<Immunization> immunizations = immunizationRepository.findByPatientIdOrderByScheduledDateAsc(patient.getId());
+        List<Vitals> vitals = isAdmin ? List.of() : vitalsRepository.findByPatientIdOrderByRecordedAtDesc(patient.getId());
+        List<Referral> referrals = referralRepository.findByPatientIdOrderByReferredAtDesc(patient.getId());
+        List<Dispense> dispenses = isAdmin ? List.of() : dispenseRepository.findByPatientIdOrderByDispensedAtDesc(patient.getId());
 
         // "Current location" — the patient's active queue entry today, scoped
         // to the logged-in staff's own facility (a queue entry elsewhere

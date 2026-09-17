@@ -1273,24 +1273,30 @@ function App() {
       setAddAlertForm(prev => ({ ...prev, patientId: data.patient.id }));
       setAddLabResultForm(prev => ({ ...prev, patientId: data.patient.id }));
 
-      // Trigger automatic CDS evaluation on patient file search to generate alerts in real time
-      await fetch(`/api/clinical-alerts/patient/${data.patient.id}/evaluate`, {
-        method: 'POST',
-        headers: getAuthHeaders()
-      });
+      // ADMIN has no clinical role: skip CDS evaluation and the clinical-alerts
+      // timeline fetch entirely rather than firing calls the backend now 403s.
+      if (userRole !== 'ADMIN') {
+        // Trigger automatic CDS evaluation on patient file search to generate alerts in real time
+        await fetch(`/api/clinical-alerts/patient/${data.patient.id}/evaluate`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
 
-      // Fetch Adherence Logs
-      const adherenceRes = await fetch(`/api/reminders/patient/${data.patient.id}/adherence`, { headers: getAuthHeaders() });
-      if (adherenceRes.ok) {
-        const adherenceData = await adherenceRes.json();
-        setPatientAdherence(adherenceData);
+        // Fetch patient timeline data (adherence logs, symptom checks, alerts, food conflicts)
+        const timelineRes = await fetch(`/api/clinical-alerts/patient/${data.patient.id}`, { headers: getAuthHeaders() });
+        if (timelineRes.ok) {
+          const timelineData = await timelineRes.json();
+          setPatientTimeline(timelineData);
+        }
       }
 
-      // Fetch patient timeline data (adherence logs, symptom checks, alerts, food conflicts)
-      const timelineRes = await fetch(`/api/clinical-alerts/patient/${data.patient.id}`, { headers: getAuthHeaders() });
-      if (timelineRes.ok) {
-        const timelineData = await timelineRes.json();
-        setPatientTimeline(timelineData);
+      // Fetch Adherence Logs — reveals medication names, so skip for ADMIN too
+      if (userRole !== 'ADMIN') {
+        const adherenceRes = await fetch(`/api/reminders/patient/${data.patient.id}/adherence`, { headers: getAuthHeaders() });
+        if (adherenceRes.ok) {
+          const adherenceData = await adherenceRes.json();
+          setPatientAdherence(adherenceData);
+        }
       }
     } catch (err) {
       setErrorMessage(err.message);
@@ -3329,8 +3335,9 @@ function App() {
                         </TabsList>
 
                       <TabsContent value="overview" className="flex flex-col gap-6">
-                      {/* Treatment Response Timeline (CDS View) */}
-                      {patientTimeline ? (
+                      {/* Treatment Response Timeline (CDS View) — clinical detail (symptom
+                          urgency, medication adherence, alert messages), not an admin function */}
+                      {userRole === 'ADMIN' ? null : patientTimeline ? (
                         <Card className="text-left">
                           <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-lg">
@@ -3441,7 +3448,8 @@ function App() {
                       {/* Medical Record sections */}
                       <div className="grid grid-cols-2 gap-6">
 
-                        {/* Active Conditions and Allergies */}
+                        {/* Active Conditions and Allergies — clinical data, not an admin function */}
+                        {userRole !== 'ADMIN' && (
                         <Card className="text-left">
                           <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-base">
@@ -3480,10 +3488,12 @@ function App() {
                           )}
                           </CardContent>
                         </Card>
+                        )}
 
                         {/* Prescriptions and Adherence */}
                         <div className="flex flex-col gap-5">
-                          {/* Active Prescriptions */}
+                          {/* Active Prescriptions — clinical data, not an admin function */}
+                          {userRole !== 'ADMIN' && (
                           <Card className="text-left">
                             <CardHeader>
                               <CardTitle className="flex items-center gap-2 text-base">
@@ -3578,9 +3588,11 @@ function App() {
                             )}
                             </CardContent>
                           </Card>
+                          )}
 
-                          {/* Medication Adherence Logs (Doctor view) */}
-                          {patientAdherence && patientAdherence.stats.totalDoses > 0 && (
+                          {/* Medication Adherence Logs (Doctor view) — reveals medication names,
+                              same as Active Prescriptions above, not an admin function */}
+                          {userRole !== 'ADMIN' && patientAdherence && patientAdherence.stats.totalDoses > 0 && (
                             <Card className="text-left">
                               <CardHeader>
                                 <CardTitle className="flex items-center gap-2 text-base">
@@ -3627,7 +3639,8 @@ function App() {
                         </div>
                       </div>
 
-                      {/* Diagnostic Logs */}
+                      {/* Diagnostic Logs — clinical data, not an admin function */}
+                      {userRole !== 'ADMIN' && (
                       <Card className="text-left">
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2 text-base">
@@ -3651,6 +3664,7 @@ function App() {
                         )}
                         </CardContent>
                       </Card>
+                      )}
                       </TabsContent>
 
                       <TabsContent value="visits" className="flex flex-col gap-6">
@@ -3743,7 +3757,11 @@ function App() {
                       </TabsContent>
 
                       <TabsContent value="labs" className="flex flex-col gap-6">
-                      {/* Laboratory Results */}
+                      {userRole === 'ADMIN' && (
+                        <p className="text-sm text-muted-foreground">Lab results and vitals are clinical data and aren't visible to your role.</p>
+                      )}
+                      {/* Laboratory Results — actual test values, not an admin function */}
+                      {userRole !== 'ADMIN' && (
                       <Card className="text-left">
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2 text-base">
@@ -3774,8 +3792,10 @@ function App() {
                         )}
                         </CardContent>
                       </Card>
+                      )}
 
-                      {/* Vitals History */}
+                      {/* Vitals History — actual readings, not an admin function */}
+                      {userRole !== 'ADMIN' && (
                       <Card className="text-left">
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2 text-base">
@@ -3810,6 +3830,7 @@ function App() {
                         )}
                         </CardContent>
                       </Card>
+                      )}
                       </TabsContent>
 
                       <TabsContent value="immunizations" className="flex flex-col gap-6">

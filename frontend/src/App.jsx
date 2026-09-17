@@ -2,11 +2,22 @@ import React, { useState, useEffect } from 'react';
 import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
-  Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode, Building2
+  Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode, Building2, X,
+  Download, BellRing
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import './App.css';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 
 function App() {
   // Authentication State
@@ -1522,11 +1533,11 @@ function App() {
   // Map urgency level string to color class
   const getUrgencyBadge = (level) => {
     if (level === 'RED') {
-      return <span className="badge badge-red"><ShieldAlert size={14} />🔴 High (Go to Emergency)</span>;
+      return <Badge variant="destructive"><ShieldAlert size={14} />🔴 High (Go to Emergency)</Badge>;
     } else if (level === 'YELLOW') {
-      return <span className="badge badge-yellow"><AlertTriangle size={14} />🟡 Moderate (Visit Clinic within 24h)</span>;
+      return <Badge variant="warning"><AlertTriangle size={14} />🟡 Moderate (Visit Clinic within 24h)</Badge>;
     } else {
-      return <span className="badge badge-green"><CheckCircle size={14} />🟢 Low (Rest & Monitor at Home)</span>;
+      return <Badge variant="success"><CheckCircle size={14} />🟢 Low (Rest & Monitor at Home)</Badge>;
     }
   };
 
@@ -1637,845 +1648,835 @@ function App() {
   };
 
   return (
-    <div className="app-container">
+    <div className="min-h-screen bg-background">
+    <div className="mx-auto flex max-w-7xl flex-col gap-8 px-4 py-8 md:px-6">
       {/* Header */}
-      <header className="app-header">
-        <div className="logo-container">
-          <Activity size={32} className="text-secondary" style={{ color: '#0ea5e9' }} />
-          <span className="logo-text">Universal Digital Health Record</span>
+      <header className="flex items-center justify-between border-b pb-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Activity size={22} />
+          </div>
+          <span className="text-xl font-semibold tracking-tight">Universal Digital Health Record</span>
         </div>
         {token && (
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p style={{ color: '#fff', fontWeight: 600 }}>{userName}</p>
-              <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+              <p className="text-sm font-semibold leading-tight">{userName}</p>
+              <p className="text-xs text-muted-foreground">
                 {userRole === 'PATIENT' ? 'Patient Portal' : `Staff: ${userRole}`}
               </p>
             </div>
-            <button className="btn btn-secondary" onClick={handleLogout} style={{ padding: '8px 16px' }}>
+            <Button variant="outline" size="sm" onClick={handleLogout}>
               <LogOut size={16} /> Logout
-            </button>
+            </Button>
           </div>
         )}
       </header>
 
       {/* Main Content Area */}
-      <main style={{ minHeight: '60vh', display: 'flex', flexDirection: 'column', gap: '32px' }}>
-        
+      <main className="flex min-h-[60vh] flex-col gap-8">
+
         {/* Alerts */}
         {errorMessage && (
-          <div className="glass-card" style={{ borderLeft: '4px solid var(--danger)', padding: '16px', background: 'rgba(239, 68, 68, 0.1)', display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <AlertCircle color="#ef4444" />
-            <p style={{ color: '#ef4444', textAlign: 'left', flex: 1 }}>{errorMessage}</p>
-            <button onClick={() => setErrorMessage('')} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold' }}>X</button>
-          </div>
+          <Alert variant="destructive" className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <AlertDescription className="text-left">{errorMessage}</AlertDescription>
+            </div>
+            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => setErrorMessage('')}>
+              <X className="h-4 w-4" />
+            </Button>
+          </Alert>
         )}
 
         {successMessage && (
-          <div className="glass-card" style={{ borderLeft: '4px solid var(--success)', padding: '16px', background: 'rgba(16, 185, 129, 0.1)', display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <CheckCircle color="#10b981" />
-            <p style={{ color: '#10b981', textAlign: 'left', flex: 1 }}>{successMessage}</p>
-            <button onClick={() => setSuccessMessage('')} style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', fontWeight: 'bold' }}>X</button>
-          </div>
+          <Alert variant="success" className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <AlertDescription className="text-left">{successMessage}</AlertDescription>
+            </div>
+            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => setSuccessMessage('')}>
+              <X className="h-4 w-4" />
+            </Button>
+          </Alert>
         )}
 
         {lowStockAlert && (
-          <div className="glass-card" style={{ borderLeft: '4px solid var(--warning)', padding: '16px', background: 'rgba(245, 158, 11, 0.1)', display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <AlertTriangle color="#f59e0b" />
-            <p style={{ color: '#f59e0b', textAlign: 'left', flex: 1 }}>
-              {lowStockAlert.items.length} medication{lowStockAlert.items.length > 1 ? 's' : ''} running low at your facility: {lowStockAlert.items.slice(0, 3).map(i => i.medicationName).join(', ')}
-              {lowStockAlert.items.length > 3 ? ` and ${lowStockAlert.items.length - 3} more` : ''}.
-            </p>
-            <button
-              className="btn"
-              style={{ background: 'rgba(245, 158, 11, 0.2)', color: '#f59e0b', padding: '6px 12px', fontSize: '0.8rem' }}
-              onClick={() => { setActiveTabStaff('stock'); fetchStockList(); setLowStockAlert(null); }}
-            >
-              View Stock
-            </button>
-            <button onClick={() => setLowStockAlert(null)} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontWeight: 'bold' }}>X</button>
-          </div>
+          <Alert variant="warning" className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <AlertDescription className="text-left">
+                {lowStockAlert.items.length} medication{lowStockAlert.items.length > 1 ? 's' : ''} running low at your facility: {lowStockAlert.items.slice(0, 3).map(i => i.medicationName).join(', ')}
+                {lowStockAlert.items.length > 3 ? ` and ${lowStockAlert.items.length - 3} more` : ''}.
+              </AlertDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setActiveTabStaff('stock'); fetchStockList(); setLowStockAlert(null); }}
+              >
+                View Stock
+              </Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setLowStockAlert(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </Alert>
         )}
 
         {/* 1. Login Page */}
         {!token && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, padding: '20px 0' }}>
-            <div className="glass-card" style={{ width: '450px', maxWidth: '100%', textAlign: 'center' }}>
-              <Heart size={48} color="#4f46e5" style={{ margin: '0 auto 16px' }} />
-              <h2 style={{ marginBottom: '8px' }}>Welcome to UDHR</h2>
-              <p style={{ marginBottom: '24px' }}>Access your electronic health records, check symptoms, and review guidelines.</p>
+          <div className="flex flex-1 items-center justify-center py-6">
+            <Card className="w-full max-w-md text-center">
+              <CardHeader className="items-center">
+                <div className="mb-1 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Heart size={28} />
+                </div>
+                <CardTitle className="text-2xl">Welcome to UDHR</CardTitle>
+                <CardDescription>
+                  Access your electronic health records, check symptoms, and review guidelines.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Tabs value={loginRole} onValueChange={(v) => { setLoginRole(v); setErrorMessage(''); }} className="w-full">
+                  <TabsList className="mb-6 grid w-full grid-cols-2">
+                    <TabsTrigger value="patient">Patient Portal</TabsTrigger>
+                    <TabsTrigger value="staff">Healthcare Staff</TabsTrigger>
+                  </TabsList>
 
-              {/* Login Switcher Tabs */}
-              <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px' }}>
-                <button 
-                  className="btn" 
-                  style={{ flex: 1, background: loginRole === 'patient' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '8px' }}
-                  onClick={() => { setLoginRole('patient'); setErrorMessage(''); }}
-                >
-                  Patient Portal
-                </button>
-                <button 
-                  className="btn" 
-                  style={{ flex: 1, background: loginRole === 'staff' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '8px' }}
-                  onClick={() => { setLoginRole('staff'); setErrorMessage(''); }}
-                >
-                  Healthcare Staff
-                </button>
-              </div>
+                  <form onSubmit={handleLogin} className="text-left">
+                    {loginRole === 'patient' ? (
+                      <>
+                        <div className="mb-4 space-y-1.5">
+                          <Label htmlFor="patientId">South African ID Number</Label>
+                          <Input
+                            type="text"
+                            id="patientId"
+                            value={patientIdNumber}
+                            onChange={(e) => setPatientIdNumber(e.target.value)}
+                            placeholder="e.g. 9001015000083"
+                            required
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label htmlFor="patientDob">Date of Birth</Label>
+                          <Input
+                            type="date"
+                            id="patientDob"
+                            value={patientDob}
+                            onChange={(e) => setPatientDob(e.target.value)}
+                            required
+                          />
+                        </div>
+                        <div className="mb-5 rounded-md border bg-muted/50 p-3">
+                          <p className="text-xs text-muted-foreground">
+                            💡 <strong className="text-foreground">Demo Patient Login:</strong> Use ID <code>9001015000083</code> and Date of Birth <code>1990-01-01</code> to view the pre-seeded patient (diabetic, hypertensive, penicillin allergic).
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="mb-4 space-y-1.5">
+                          <Label htmlFor="staffNum">Staff Number</Label>
+                          <Input
+                            type="text"
+                            id="staffNum"
+                            value={staffNumber}
+                            onChange={(e) => setStaffNumber(e.target.value)}
+                            placeholder="e.g. DOC001 or NUR001"
+                            required
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label htmlFor="staffPass">Password</Label>
+                          <Input
+                            type="password"
+                            id="staffPass"
+                            value={staffPassword}
+                            onChange={(e) => setStaffPassword(e.target.value)}
+                            placeholder="••••••••"
+                            required
+                          />
+                        </div>
+                        <div className="mb-5 rounded-md border bg-muted/50 p-3">
+                          <p className="text-xs text-muted-foreground">
+                            💡 <strong className="text-foreground">Demo Staff Logins:</strong><br />
+                            - Doctor: <code>DOC001</code> / <code>Doctor@123</code><br />
+                            - Nurse: <code>NUR001</code> / <code>Nurse@123</code>
+                          </p>
+                        </div>
+                      </>
+                    )}
 
-              {/* Login Forms */}
-              <form onSubmit={handleLogin}>
-                {loginRole === 'patient' ? (
-                  <>
-                    <div className="form-group">
-                      <label htmlFor="patientId">South African ID Number</label>
-                      <input 
-                        type="text" 
-                        id="patientId" 
-                        value={patientIdNumber} 
-                        onChange={(e) => setPatientIdNumber(e.target.value)} 
-                        placeholder="e.g. 9001015000083" 
-                        required 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label htmlFor="patientDob">Date of Birth</label>
-                      <input 
-                        type="date" 
-                        id="patientDob" 
-                        value={patientDob} 
-                        onChange={(e) => setPatientDob(e.target.value)} 
-                        required 
-                      />
-                    </div>
-                    <div style={{ textAlign: 'left', marginBottom: '20px', background: 'rgba(79, 70, 229, 0.1)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(79, 70, 229, 0.2)' }}>
-                      <p style={{ fontSize: '0.8rem', color: '#a5b4fc' }}>
-                        💡 <strong>Demo Patient Login:</strong> Use ID <code>9001015000083</code> and Date of Birth <code>1990-01-01</code> to view the pre-seeded patient (diabetic, hypertensive, penicillin allergic).
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="form-group">
-                      <label htmlFor="staffNum">Staff Number</label>
-                      <input 
-                        type="text" 
-                        id="staffNum" 
-                        value={staffNumber} 
-                        onChange={(e) => setStaffNumber(e.target.value)} 
-                        placeholder="e.g. DOC001 or NUR001" 
-                        required 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label htmlFor="staffPass">Password</label>
-                      <input 
-                        type="password" 
-                        id="staffPass" 
-                        value={staffPassword} 
-                        onChange={(e) => setStaffPassword(e.target.value)} 
-                        placeholder="••••••••" 
-                        required 
-                      />
-                    </div>
-                    <div style={{ textAlign: 'left', marginBottom: '20px', background: 'rgba(79, 70, 229, 0.1)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(79, 70, 229, 0.2)' }}>
-                      <p style={{ fontSize: '0.8rem', color: '#a5b4fc' }}>
-                        💡 <strong>Demo Staff Logins:</strong><br />
-                        - Doctor: <code>DOC001</code> / <code>Doctor@123</code><br />
-                        - Nurse: <code>NUR001</code> / <code>Nurse@123</code>
-                      </p>
-                    </div>
-                  </>
-                )}
-
-                <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
-                  {loading ? 'Logging in...' : 'Sign In'}
-                </button>
-              </form>
-            </div>
+                    <Button type="submit" className="w-full" disabled={loading}>
+                      {loading ? 'Logging in...' : 'Sign In'}
+                    </Button>
+                  </form>
+                </Tabs>
+              </CardContent>
+            </Card>
           </div>
         )}
 
         {/* 1b. Forced Password Change (new/admin-created staff account) */}
         {token && mustChangePassword && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, padding: '20px 0' }}>
-            <div className="glass-card" style={{ width: '450px', maxWidth: '100%', textAlign: 'center' }}>
-              <ShieldAlert size={48} color="#f59e0b" style={{ margin: '0 auto 16px' }} />
-              <h2 style={{ marginBottom: '8px' }}>Set Your Password</h2>
-              <p style={{ marginBottom: '24px' }}>
-                Your account was created with a temporary password by an administrator. Choose a new password before continuing to the staff workspace.
-              </p>
-              <form onSubmit={handleChangePassword}>
-                <div className="form-group">
-                  <label htmlFor="currentPassword">Temporary Password</label>
-                  <input
-                    type="password"
-                    id="currentPassword"
-                    value={changePasswordForm.currentPassword}
-                    onChange={(e) => setChangePasswordForm({...changePasswordForm, currentPassword: e.target.value})}
-                    required
-                  />
+          <div className="flex flex-1 items-center justify-center py-6">
+            <Card className="w-full max-w-md text-center">
+              <CardHeader className="items-center">
+                <div className="mb-1 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/10 text-amber-600">
+                  <ShieldAlert size={28} />
                 </div>
-                <div className="form-group">
-                  <label htmlFor="newPassword">New Password</label>
-                  <input
-                    type="password"
-                    id="newPassword"
-                    value={changePasswordForm.newPassword}
-                    onChange={(e) => setChangePasswordForm({...changePasswordForm, newPassword: e.target.value})}
-                    minLength={8}
-                    required
-                  />
-                </div>
-                <div className="form-group" style={{ marginBottom: '20px' }}>
-                  <label htmlFor="confirmPassword">Confirm New Password</label>
-                  <input
-                    type="password"
-                    id="confirmPassword"
-                    value={changePasswordForm.confirmPassword}
-                    onChange={(e) => setChangePasswordForm({...changePasswordForm, confirmPassword: e.target.value})}
-                    minLength={8}
-                    required
-                  />
-                </div>
-                <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
-                  {loading ? 'Updating...' : 'Set Password & Continue'}
-                </button>
-              </form>
-            </div>
+                <CardTitle className="text-2xl">Set Your Password</CardTitle>
+                <CardDescription>
+                  Your account was created with a temporary password by an administrator. Choose a new password before continuing to the staff workspace.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleChangePassword} className="text-left">
+                  <div className="mb-4 space-y-1.5">
+                    <Label htmlFor="currentPassword">Temporary Password</Label>
+                    <Input
+                      type="password"
+                      id="currentPassword"
+                      value={changePasswordForm.currentPassword}
+                      onChange={(e) => setChangePasswordForm({...changePasswordForm, currentPassword: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div className="mb-4 space-y-1.5">
+                    <Label htmlFor="newPassword">New Password</Label>
+                    <Input
+                      type="password"
+                      id="newPassword"
+                      value={changePasswordForm.newPassword}
+                      onChange={(e) => setChangePasswordForm({...changePasswordForm, newPassword: e.target.value})}
+                      minLength={8}
+                      required
+                    />
+                  </div>
+                  <div className="mb-5 space-y-1.5">
+                    <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                    <Input
+                      type="password"
+                      id="confirmPassword"
+                      value={changePasswordForm.confirmPassword}
+                      onChange={(e) => setChangePasswordForm({...changePasswordForm, confirmPassword: e.target.value})}
+                      minLength={8}
+                      required
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? 'Updating...' : 'Set Password & Continue'}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
           </div>
         )}
 
         {/* 2. Patient Portal View */}
         {token && !mustChangePassword && userRole === 'PATIENT' && (
-          <div className="dashboard-grid">
-            
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[320px_1fr]">
+
             {/* Sidebar Demographics Card */}
-            <div className="dashboard-sidebar">
-              <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '16px' }}>
-                  <div style={{ background: 'var(--primary)', width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.8rem', fontWeight: 'bold', marginBottom: '12px', alignSelf: 'center' }}>
-                    {patientProfile ? patientProfile.firstName.charAt(0) + patientProfile.lastName.charAt(0) : <User />}
+            <div className="flex flex-col gap-6">
+              <Card>
+                <CardContent className="flex flex-col gap-5 p-6">
+                  <div className="flex flex-col items-center gap-1 border-b pb-4 text-center">
+                    <div className="mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-xl font-bold text-primary-foreground">
+                      {patientProfile ? patientProfile.firstName.charAt(0) + patientProfile.lastName.charAt(0) : <User />}
+                    </div>
+                    <h3 className="font-semibold">{patientProfile?.firstName} {patientProfile?.lastName}</h3>
+                    <p className="text-sm text-muted-foreground">National Health ID: {patientProfile?.idNumber}</p>
                   </div>
-                  <h3 style={{ color: '#fff' }}>{patientProfile?.firstName} {patientProfile?.lastName}</h3>
-                  <p className="text-muted" style={{ fontSize: '0.85rem' }}>National Health ID: {patientProfile?.idNumber}</p>
-                </div>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.9rem', textAlign: 'left' }}>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <Calendar size={16} className="text-muted" />
-                    <div>
-                      <p className="text-muted" style={{ fontSize: '0.75rem' }}>Date of Birth</p>
-                      <p style={{ color: '#fff' }}>{patientProfile?.dateOfBirth}</p>
+
+                  <div className="flex flex-col gap-3 text-left text-sm">
+                    <div className="flex gap-3">
+                      <Calendar size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Date of Birth</p>
+                        <p>{patientProfile?.dateOfBirth}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <Compass size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Gender</p>
+                        <p>{patientProfile?.gender}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <Phone size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Contact Number</p>
+                        <p>{patientProfile?.contactNumber || 'Not provided'}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <MapPin size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="text-xs text-muted-foreground">Address</p>
+                        <p className="text-sm">{patientProfile?.address || 'Not provided'}</p>
+                      </div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <Compass size={16} className="text-muted" />
-                    <div>
-                      <p className="text-muted" style={{ fontSize: '0.75rem' }}>Gender</p>
-                      <p style={{ color: '#fff' }}>{patientProfile?.gender}</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <Phone size={16} className="text-muted" />
-                    <div>
-                      <p className="text-muted" style={{ fontSize: '0.75rem' }}>Contact Number</p>
-                      <p style={{ color: '#fff' }}>{patientProfile?.contactNumber || 'Not provided'}</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <MapPin size={16} className="text-muted" />
-                    <div>
-                      <p className="text-muted" style={{ fontSize: '0.75rem' }}>Address</p>
-                      <p style={{ color: '#fff', fontSize: '0.85rem' }}>{patientProfile?.address || 'Not provided'}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
 
               {/* Triage History List */}
-              <div className="glass-card">
-                <h3 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.2rem', color: '#fff' }}>
-                  <Clock size={18} /> Symptom Check History
-                </h3>
-                {triageHistory.length === 0 ? (
-                  <p className="text-muted" style={{ fontSize: '0.9rem' }}>No symptom checks completed yet.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '350px', overflowY: 'auto' }}>
-                    {triageHistory.map((check) => (
-                      <div key={check.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'left' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            {new Date(check.checkedAt).toLocaleDateString()}
-                          </span>
-                          <span style={{ 
-                            fontSize: '0.7rem', 
-                            fontWeight: 'bold', 
-                            color: check.urgencyLevel === 'RED' ? 'var(--danger)' : check.urgencyLevel === 'YELLOW' ? 'var(--warning)' : 'var(--success)'
-                          }}>
-                            {check.urgencyLevel}
-                          </span>
-                        </div>
-                        <p style={{ fontSize: '0.85rem', color: '#fff', margin: 0 }}>{check.recommendation.split('[')[0]}</p>
-                        {check.details && check.details.length > 0 && (
-                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
-                            {check.details.map((d, idx) => (
-                              <span key={idx} style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#cbd5e1', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem' }}>
-                                🩺 {d.symptom.name}
-                              </span>
-                            ))}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Clock size={18} /> Symptom Check History
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {triageHistory.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No symptom checks completed yet.</p>
+                  ) : (
+                    <div className="flex max-h-[350px] flex-col gap-3 overflow-y-auto">
+                      {triageHistory.map((check) => (
+                        <div key={check.id} className="rounded-lg border bg-muted/40 p-3 text-left">
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(check.checkedAt).toLocaleDateString()}
+                            </span>
+                            <span className={cn(
+                              'text-xs font-bold',
+                              check.urgencyLevel === 'RED' ? 'text-destructive' : check.urgencyLevel === 'YELLOW' ? 'text-amber-600' : 'text-emerald-600'
+                            )}>
+                              {check.urgencyLevel}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                          <p className="text-sm">{check.recommendation.split('[')[0]}</p>
+                          {check.details && check.details.length > 0 && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {check.details.map((d, idx) => (
+                                <span key={idx} className="rounded border bg-background px-2 py-0.5 text-xs text-muted-foreground">
+                                  🩺 {d.symptom.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
 
             {/* Main Portal Panels */}
-            <div className="dashboard-main">
-              
+            <div className="flex flex-col gap-6">
+
               {/* Dynamic Health Guidance Banner */}
-              <div className="glass-card" style={{ borderLeft: '4px solid var(--primary)', background: 'linear-gradient(90deg, rgba(79, 70, 229, 0.1) 0%, rgba(14, 165, 233, 0.05) 100%)', textAlign: 'left' }}>
-                <h2 style={{ fontSize: '1.5rem', marginBottom: '8px', color: '#fff' }}>Personalized Health Guidance Portal</h2>
-                <p style={{ fontSize: '0.95rem', marginBottom: '16px' }}>
-                  Based on your active conditions, we have compiled specialized dietary guidelines and safety warnings.
-                </p>
-                
-                {/* Active Tags */}
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {healthGuidance?.conditions.map((c, i) => (
-                    <span key={i} style={{ background: 'rgba(79, 70, 229, 0.2)', color: '#a5b4fc', border: '1px solid rgba(79, 70, 229, 0.3)', padding: '4px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600 }}>
-                      Condition: {c}
-                    </span>
-                  ))}
-                  {healthGuidance?.allergies.map((a, i) => (
-                    <span key={i} style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '4px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600 }}>
-                      ⚠️ Allergy: {a}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              <Card className="border-l-4 border-l-primary bg-primary/5 text-left">
+                <CardContent className="p-6">
+                  <h2 className="mb-2 text-xl font-semibold">Personalized Health Guidance Portal</h2>
+                  <p className="mb-4 text-sm text-muted-foreground">
+                    Based on your active conditions, we have compiled specialized dietary guidelines and safety warnings.
+                  </p>
+
+                  {/* Active Tags */}
+                  <div className="flex flex-wrap gap-2">
+                    {healthGuidance?.conditions.map((c, i) => (
+                      <Badge key={i} variant="secondary">Condition: {c}</Badge>
+                    ))}
+                    {healthGuidance?.allergies.map((a, i) => (
+                      <Badge key={i} variant="destructive">⚠️ Allergy: {a}</Badge>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Doctor Clinical Warnings Panel */}
               {patientAlerts && patientAlerts.length > 0 && (
-                <div className="glass-card" style={{ borderLeft: '4px solid #f59e0b', background: 'rgba(245, 158, 11, 0.05)', textAlign: 'left' }}>
-                  <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <ShieldAlert color="#f59e0b" /> Clinical Warnings & Doctor's Instructions
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {patientAlerts.map((alert) => (
-                      <div key={alert.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                          <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: alert.severity === 'CRITICAL' ? '#ef4444' : '#f59e0b' }}>
-                            {alert.severity} WARNING
-                          </span>
-                          <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                            {new Date(alert.createdAt).toLocaleDateString()}
-                          </span>
+                <Card className="border-l-4 border-l-amber-500 bg-amber-500/5 text-left">
+                  <CardContent className="p-6">
+                    <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold">
+                      <ShieldAlert className="text-amber-600" size={20} /> Clinical Warnings & Doctor's Instructions
+                    </h3>
+                    <div className="flex flex-col gap-2">
+                      {patientAlerts.map((alert) => (
+                        <div key={alert.id} className="rounded-lg border bg-background p-3">
+                          <div className="mb-1.5 flex items-center justify-between">
+                            <span className={cn('text-xs font-bold', alert.severity === 'CRITICAL' ? 'text-destructive' : 'text-amber-600')}>
+                              {alert.severity} WARNING
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(alert.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-sm leading-relaxed">{alert.message}</p>
                         </div>
-                        <p style={{ color: '#fff', fontSize: '0.85rem', lineHeight: '1.4' }}>{alert.message}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
               )}
 
               {/* Drug-Food Conflict Audit Panel (Patient dashboard warning) */}
               {drugFoodConflicts && drugFoodConflicts.length > 0 && (
-                <div className="glass-card" style={{ borderLeft: '4px solid #ef4444', background: 'rgba(239, 68, 68, 0.05)', textAlign: 'left' }}>
-                  <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <AlertTriangle color="#ef4444" /> Active Drug-Food Interactions Flagged
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {drugFoodConflicts.map((c, i) => (
-                      <div key={i} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                        <p style={{ color: '#fff', fontSize: '0.85rem' }}><strong>Medication:</strong> {c.medication} | <strong>Ingredient:</strong> {c.ingredient}</p>
-                        <p style={{ fontSize: '0.8rem', color: c.severity === 'CRITICAL' ? '#fca5a5' : '#fde047', marginTop: '4px', lineHeight: 1.4 }}>{c.message}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <Card className="border-l-4 border-l-destructive bg-destructive/5 text-left">
+                  <CardContent className="p-6">
+                    <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold">
+                      <AlertTriangle className="text-destructive" size={20} /> Active Drug-Food Interactions Flagged
+                    </h3>
+                    <div className="flex flex-col gap-2">
+                      {drugFoodConflicts.map((c, i) => (
+                        <div key={i} className="rounded-lg border bg-background p-3">
+                          <p className="text-sm"><strong>Medication:</strong> {c.medication} | <strong>Ingredient:</strong> {c.ingredient}</p>
+                          <p className={cn('mt-1 text-sm leading-relaxed', c.severity === 'CRITICAL' ? 'text-destructive' : 'text-amber-600')}>{c.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
               )}
 
               {/* Medication Reminders & Adherence Widget */}
-              <div className="glass-card" style={{ textAlign: 'left' }}>
-                <h2 style={{ fontSize: '1.4rem', color: '#fff', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <AlertCircle className="text-secondary" style={{ color: '#f59e0b' }} /> 🔔 Medication Reminders & Adherence
-                </h2>
-                
-                {/* Adherence Compliance Widget */}
-                {reminderData?.stats && reminderData.stats.totalDoses > 0 && (
-                  <div style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.9rem', color: '#fff', fontWeight: 600 }}>Weekly Adherence Score</span>
-                      <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: reminderData.stats.adherenceScore >= 80 ? 'var(--success)' : reminderData.stats.adherenceScore >= 50 ? 'var(--warning)' : 'var(--danger)' }}>
-                        {reminderData.stats.adherenceScore}%
-                      </span>
+              <Card className="text-left">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <BellRing className="text-amber-600" size={20} /> Medication Reminders & Adherence
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {/* Adherence Compliance Widget */}
+                  {reminderData?.stats && reminderData.stats.totalDoses > 0 && (
+                    <div className="mb-5 rounded-lg border bg-muted/40 p-4">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-semibold">Weekly Adherence Score</span>
+                        <span className={cn(
+                          'text-base font-bold',
+                          reminderData.stats.adherenceScore >= 80 ? 'text-emerald-600' : reminderData.stats.adherenceScore >= 50 ? 'text-amber-600' : 'text-destructive'
+                        )}>
+                          {reminderData.stats.adherenceScore}%
+                        </span>
+                      </div>
+                      <div className="mb-2 h-2.5 overflow-hidden rounded-full bg-muted">
+                        <div className="h-full bg-primary" style={{ width: `${reminderData.stats.adherenceScore}%` }}></div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        You have taken {reminderData.stats.takenDoses} out of {reminderData.stats.totalDoses} scheduled doses this week. Keep it up!
+                      </p>
                     </div>
-                    <div style={{ background: 'rgba(255,255,255,0.1)', height: '10px', borderRadius: '5px', overflow: 'hidden', marginBottom: '8px' }}>
-                      <div style={{ background: 'linear-gradient(90deg, #10b981 0%, #3b82f6 100%)', width: `${reminderData.stats.adherenceScore}%`, height: '100%' }}></div>
-                    </div>
-                    <p className="text-muted" style={{ fontSize: '0.8rem' }}>
-                      You have taken {reminderData.stats.takenDoses} out of {reminderData.stats.totalDoses} scheduled doses this week. Keep it up!
-                    </p>
-                  </div>
-                )}
+                  )}
 
-                {/* Today's Reminders List */}
-                {!reminderData || reminderData.adherenceLogs.length === 0 ? (
-                  <p className="text-muted" style={{ fontSize: '0.95rem' }}>No medication reminders scheduled for today.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {reminderData.adherenceLogs.map((log) => {
-                      const timeString = new Date(log.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                      return (
-                        <div 
-                          key={log.id} 
-                          style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center', 
-                            padding: '16px', 
-                            borderRadius: '12px', 
-                            background: log.status === 'TAKEN' ? 'rgba(16, 185, 129, 0.08)' : log.status === 'MISSED' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(15, 23, 42, 0.4)',
-                            border: `1px solid ${log.status === 'TAKEN' ? 'rgba(16, 185, 129, 0.2)' : log.status === 'MISSED' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)'}`
-                          }}
-                        >
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontSize: '1rem', fontWeight: 600, color: '#fff' }}>{log.reminder.prescription.medication}</span>
-                              <span className="text-muted" style={{ fontSize: '0.8rem' }}>({log.reminder.prescription.dosage})</span>
-                            </div>
-                            <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
-                              Scheduled Time: <strong style={{ color: '#fff' }}>{timeString}</strong> | Frequency: {log.reminder.frequency}
-                            </p>
-                            {log.takenAt && (
-                              <p className="text-muted" style={{ fontSize: '0.7rem', color: '#a7f3d0', marginTop: '2px' }}>
-                                Taken at: {new Date(log.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {/* Today's Reminders List */}
+                  {!reminderData || reminderData.adherenceLogs.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No medication reminders scheduled for today.</p>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {reminderData.adherenceLogs.map((log) => {
+                        const timeString = new Date(log.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        return (
+                          <div
+                            key={log.id}
+                            className={cn(
+                              'flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4',
+                              log.status === 'TAKEN' ? 'border-emerald-500/30 bg-emerald-500/5' : log.status === 'MISSED' ? 'border-destructive/30 bg-destructive/5' : 'bg-muted/40'
+                            )}
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold">{log.reminder.prescription.medication}</span>
+                                <span className="text-sm text-muted-foreground">({log.reminder.prescription.dosage})</span>
+                              </div>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Scheduled Time: <strong className="text-foreground">{timeString}</strong> | Frequency: {log.reminder.frequency}
                               </p>
-                            )}
-                            {log.status === 'PENDING' ? (
-                              <input 
-                                type="text"
-                                placeholder="How does this make you feel? (e.g. side effects, dizzy...)"
-                                value={adherenceNotes[log.id] || ''}
-                                onChange={(e) => setAdherenceNotes({ ...adherenceNotes, [log.id]: e.target.value })}
-                                style={{
-                                  marginTop: '8px',
-                                  width: '100%',
-                                  padding: '6px 10px',
-                                  fontSize: '0.8rem',
-                                  borderRadius: '6px',
-                                  background: 'rgba(255, 255, 255, 0.05)',
-                                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                                  color: '#fff'
-                                }}
-                              />
-                            ) : (
-                              log.notes && (
-                                <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '6px', fontStyle: 'italic', color: '#fca5a5' }}>
-                                  Patient feedback: "{log.notes}"
+                              {log.takenAt && (
+                                <p className="mt-0.5 text-xs text-emerald-600">
+                                  Taken at: {new Date(log.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 </p>
-                              )
-                            )}
-                          </div>
+                              )}
+                              {log.status === 'PENDING' ? (
+                                <Input
+                                  type="text"
+                                  placeholder="How does this make you feel? (e.g. side effects, dizzy...)"
+                                  value={adherenceNotes[log.id] || ''}
+                                  onChange={(e) => setAdherenceNotes({ ...adherenceNotes, [log.id]: e.target.value })}
+                                  className="mt-2 h-8 text-sm"
+                                />
+                              ) : (
+                                log.notes && (
+                                  <p className="mt-1.5 text-xs italic text-muted-foreground">
+                                    Patient feedback: "{log.notes}"
+                                  </p>
+                                )
+                              )}
+                            </div>
 
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            {log.status === 'PENDING' ? (
-                              <>
-                                <button className="btn btn-success" onClick={() => handleUpdateAdherence(log.id, 'TAKEN', adherenceNotes[log.id] || '')} style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <CheckCircle size={14} /> Taken
-                                </button>
-                                <button className="btn btn-danger" onClick={() => handleUpdateAdherence(log.id, 'MISSED', adherenceNotes[log.id] || '')} style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <XCircle size={14} /> Missed
-                                </button>
-                              </>
-                            ) : (
-                              <span className={`badge ${log.status === 'TAKEN' ? 'badge-green' : 'badge-red'}`}>
-                                {log.status}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {log.status === 'PENDING' ? (
+                                <>
+                                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => handleUpdateAdherence(log.id, 'TAKEN', adherenceNotes[log.id] || '')}>
+                                    <CheckCircle size={14} /> Taken
+                                  </Button>
+                                  <Button size="sm" variant="destructive" onClick={() => handleUpdateAdherence(log.id, 'MISSED', adherenceNotes[log.id] || '')}>
+                                    <XCircle size={14} /> Missed
+                                  </Button>
+                                </>
+                              ) : (
+                                <Badge variant={log.status === 'TAKEN' ? 'success' : 'destructive'}>{log.status}</Badge>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Interactive Symptom Checker */}
+              <Card className="text-left">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Heart className="text-primary" size={20} /> Symptom Checker & Care Navigator
+                  </CardTitle>
+                  <CardDescription>
+                    Select the symptoms you are currently experiencing. Our care navigation engine (powered by Infermedica) will recommend the appropriate urgency level. <em>Note: This is not a diagnosis.</em>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* Symptom Checkbox Grid */}
+                  <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {symptomsList.map((symptom) => {
+                      const isSelected = selectedSymptoms.includes(symptom.id);
+                      return (
+                        <div
+                          key={symptom.id}
+                          onClick={() => handleSymptomToggle(symptom.id)}
+                          className={cn(
+                            'flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors',
+                            isSelected ? 'border-primary bg-primary/10' : 'hover:bg-muted/40'
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {}} // Handled by div onClick
+                            className="pointer-events-none h-4 w-4 accent-primary"
+                          />
+                          <div>
+                            <p className="text-sm font-medium">{symptom.name}</p>
+                            <p className="text-xs text-muted-foreground">ICD-10: {symptom.icd10Code || 'N/A'}</p>
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                )}
-              </div>
 
-              {/* Interactive Symptom Checker */}
-              <div className="glass-card" style={{ textAlign: 'left' }}>
-                <h2 style={{ fontSize: '1.4rem', color: '#fff', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Heart className="text-secondary" /> Symptom Checker & Care Navigator
-                </h2>
-                <p className="text-muted" style={{ marginBottom: '20px', fontSize: '0.9rem' }}>
-                  Select the symptoms you are currently experiencing. Our care navigation engine (powered by Infermedica) will recommend the appropriate urgency level. <em>Note: This is not a diagnosis.</em>
-                </p>
+                  <div className="flex justify-end gap-3">
+                    {selectedSymptoms.length > 0 && (
+                      <Button variant="secondary" onClick={() => setSelectedSymptoms([])}>
+                        Clear Selection
+                      </Button>
+                    )}
+                    <Button onClick={handleSymptomCheckSubmit} disabled={selectedSymptoms.length === 0 || loading}>
+                      {loading ? 'Analyzing...' : `Analyze ${selectedSymptoms.length} Symptom(s)`}
+                    </Button>
+                  </div>
 
-                {/* Symptom Checkbox Grid */}
-                <div className="grid grid-cols-3" style={{ gap: '12px', marginBottom: '24px' }}>
-                  {symptomsList.map((symptom) => {
-                    const isSelected = selectedSymptoms.includes(symptom.id);
-                    return (
-                      <div 
-                        key={symptom.id} 
-                        className="flex items-center gap-4"
-                        onClick={() => handleSymptomToggle(symptom.id)}
-                        style={{ 
-                          padding: '12px', 
-                          background: isSelected ? 'rgba(79, 70, 229, 0.25)' : 'rgba(15, 23, 42, 0.4)', 
-                          border: isSelected ? '1px solid var(--primary)' : '1px solid rgba(255,255,255,0.05)',
-                          borderRadius: '12px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        <input 
-                          type="checkbox" 
-                          checked={isSelected}
-                          onChange={() => {}} // Handled by div onClick
-                          style={{ width: '18px', height: '18px', cursor: 'pointer', pointerEvents: 'none' }}
-                        />
-                        <div>
-                          <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 500 }}>{symptom.name}</p>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>ICD-10: {symptom.icd10Code || 'N/A'}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                  {selectedSymptoms.length > 0 && (
-                    <button className="btn btn-secondary" onClick={() => setSelectedSymptoms([])}>
-                      Clear Selection
-                    </button>
-                  )}
-                  <button className="btn btn-primary" onClick={handleSymptomCheckSubmit} disabled={selectedSymptoms.length === 0 || loading}>
-                    {loading ? 'Analyzing...' : `Analyze ${selectedSymptoms.length} Symptom(s)`}
-                  </button>
-                </div>
-
-                {/* Triage Recommendation Output Modal */}
-                {triageResult && (
-                   <div style={{
-                     position: 'fixed',
-                     top: 0,
-                     left: 0,
-                     width: '100%',
-                     height: '100%',
-                     background: 'rgba(15,23,42,0.85)',
-                     display: 'flex',
-                     justifyContent: 'center',
-                     alignItems: 'center',
-                     zIndex: 9999,
-                     backdropFilter: 'blur(8px)',
-                     padding: '20px'
-                   }}>
-                     <div className="glass-card" style={{ 
-                       maxWidth: '550px', 
-                       width: '100%', 
-                       border: '1px solid rgba(255,255,255,0.1)', 
-                       background: '#0f172a',
-                       padding: '24px',
-                       borderRadius: '16px',
-                       boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-                       textAlign: 'left'
-                     }}>
-                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px', marginBottom: '16px' }}>
-                         <h4 style={{ color: '#fff', fontSize: '1.25rem', fontWeight: 'bold' }}>Triage Recommendation</h4>
-                         {getUrgencyBadge(triageResult.urgencyLevel)}
-                       </div>
-                       <p style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 500, lineHeight: 1.6, marginBottom: '16px' }}>
-                         {triageResult.recommendation.split('[')[0]}
-                       </p>
-                       <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '24px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
-                         ⚠️ <strong>Disclaimer:</strong> This tool only provides care recommendations based on symptoms. It does not replace professional medical evaluation. If you feel extremely unwell, seek medical help immediately.
-                       </p>
-                       <button 
-                         className="btn btn-primary" 
-                         onClick={() => setTriageResult(null)} 
-                         style={{ width: '100%', padding: '10px' }}
-                       >
-                         Acknowledge & Close
-                       </button>
-                     </div>
-                   </div>
-                 )}
-              </div>
+                  {/* Triage Recommendation Output Modal */}
+                  <Dialog open={!!triageResult} onOpenChange={(open) => { if (!open) setTriageResult(null); }}>
+                    <DialogContent className="max-w-lg">
+                      {triageResult && (
+                        <>
+                          <DialogHeader>
+                            <div className="flex items-center justify-between gap-3">
+                              <DialogTitle>Triage Recommendation</DialogTitle>
+                              {getUrgencyBadge(triageResult.urgencyLevel)}
+                            </div>
+                          </DialogHeader>
+                          <p className="text-base font-medium leading-relaxed">
+                            {triageResult.recommendation.split('[')[0]}
+                          </p>
+                          <p className="border-t pt-3 text-xs text-muted-foreground">
+                            ⚠️ <strong>Disclaimer:</strong> This tool only provides care recommendations based on symptoms. It does not replace professional medical evaluation. If you feel extremely unwell, seek medical help immediately.
+                          </p>
+                          <Button className="w-full" onClick={() => setTriageResult(null)}>
+                            Acknowledge & Close
+                          </Button>
+                        </>
+                      )}
+                    </DialogContent>
+                  </Dialog>
+                </CardContent>
+              </Card>
 
               {/* Feature 3: Interactive Food Ingredient Checker */}
-              <div className="glass-card" style={{ textAlign: 'left' }}>
-                <h2 style={{ fontSize: '1.4rem', color: '#fff', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileSpreadsheet className="text-secondary" style={{ color: '#0ea5e9' }} /> Food Ingredient Checker & Safety Scanner
-                </h2>
-                <p className="text-muted" style={{ marginBottom: '20px', fontSize: '0.9rem' }}>
-                  Input ingredient lists manually, query items via Open Food Facts, or scan labels from packaging photographs (OCR) to evaluate their safety against your medical records.
-                </p>
-
-                {/* Input Method Selector */}
-                <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '20px', maxWidth: '500px' }}>
-                  <button 
-                    className="btn" 
-                    style={{ flex: 1, background: foodInputMethod === 'type' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '6px 12px', fontSize: '0.85rem' }}
-                    onClick={() => setFoodInputMethod('type')}
-                  >
-                    Type Ingredients
-                  </button>
-                  <button 
-                    className="btn" 
-                    style={{ flex: 1, background: foodInputMethod === 'search' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '6px 12px', fontSize: '0.85rem' }}
-                    onClick={() => setFoodInputMethod('search')}
-                  >
-                    Open Food Facts
-                  </button>
-                  <button 
-                    className="btn" 
-                    style={{ flex: 1, background: foodInputMethod === 'upload' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '6px 12px', fontSize: '0.85rem' }}
-                    onClick={() => setFoodInputMethod('upload')}
-                  >
-                    Upload Label (OCR)
-                  </button>
-                </div>
-
-                {/* Dynamic Inputs based on Selector */}
-                {foodInputMethod === 'type' && (
-                  <div className="form-group">
-                    <label>Ingredients List (separate with commas)</label>
-                    <textarea 
-                      value={ingredientsInput} 
-                      onChange={(e) => setIngredientsInput(e.target.value)} 
-                      placeholder="e.g. Sugar, Wheat Flour, Sodium Chloride, Peanut Butter, Vegetable Fat, Milk..." 
-                      rows={3}
-                    />
-                  </div>
-                )}
-
-                {foodInputMethod === 'search' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                      <div style={{ width: '150px' }}>
-                        <label>Lookup Type</label>
-                        <select value={lookupType} onChange={(e) => setLookupType(e.target.value)} style={{ marginTop: '8px' }}>
-                          <option value="barcode">Barcode</option>
-                          <option value="search">Product Name</option>
-                        </select>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <label>{lookupType === 'barcode' ? 'Product Barcode' : 'Search Terms'}</label>
-                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                          <input 
-                            type="text" 
-                            value={productQuery} 
-                            onChange={(e) => setProductQuery(e.target.value)} 
-                            placeholder={lookupType === 'barcode' ? 'e.g. 737628064502' : 'e.g. wheat bread'} 
-                          />
-                          <button className="btn btn-secondary" onClick={handleProductLookup} disabled={loading} style={{ whiteSpace: 'nowrap' }}>
-                            {lookupType === 'barcode' ? <Barcode size={18} /> : <Search size={18} />} Fetch
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    {ingredientsInput && (
-                      <div className="form-group">
-                        <label>Fetched Ingredients</label>
-                        <textarea value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {foodInputMethod === 'upload' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '20px' }}>
-                    <label>Upload Food Label Photo</label>
-                    <div style={{ border: '2px dashed var(--card-border)', borderRadius: '12px', padding: '24px', textAlign: 'center', background: 'rgba(15, 23, 42, 0.4)', position: 'relative', cursor: 'pointer' }}>
-                      <Upload size={32} className="text-muted" style={{ margin: '0 auto 8px' }} />
-                      <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Choose label file or drag it here</p>
-                      <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>PNG, JPG or JPEG. Max size 5MB.</p>
-                      <input 
-                        type="file" 
-                        accept="image/*"
-                        onChange={handleOcrUpload}
-                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
-                      />
-                    </div>
-                    {ingredientsInput && (
-                      <div className="form-group">
-                        <label>Extracted Ingredients (OCR Text)</label>
-                        <textarea value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} />
-                      </div>
-                    )}
-                    <div style={{ background: 'rgba(14, 165, 233, 0.1)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(14, 165, 233, 0.2)' }}>
-                      <p style={{ fontSize: '0.8rem', color: '#7dd3fc' }}>
-                        💡 <strong>OCR Demo Trigger:</strong> Select any file. If the file name contains <code>juice</code>, <code>chips</code>, or <code>bread</code>, it will automatically extract matching condition-specific ingredients!
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {ingredientsInput && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-                    <button className="btn btn-primary" onClick={handleCheckIngredients} disabled={loading}>
-                      {loading ? 'Analyzing...' : 'Analyze Safety Profiles'}
+              <Card className="text-left">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <FileSpreadsheet className="text-sky-600" size={20} /> Food Ingredient Checker & Safety Scanner
+                  </CardTitle>
+                  <CardDescription>
+                    Input ingredient lists manually, query items via Open Food Facts, or scan labels from packaging photographs (OCR) to evaluate their safety against your medical records.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* Input Method Selector */}
+                  <div className="mb-5 flex max-w-md gap-1 rounded-lg bg-muted p-1">
+                    <button
+                      className={cn('flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors', foodInputMethod === 'type' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+                      onClick={() => setFoodInputMethod('type')}
+                    >
+                      Type Ingredients
+                    </button>
+                    <button
+                      className={cn('flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors', foodInputMethod === 'search' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+                      onClick={() => setFoodInputMethod('search')}
+                    >
+                      Open Food Facts
+                    </button>
+                    <button
+                      className={cn('flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors', foodInputMethod === 'upload' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+                      onClick={() => setFoodInputMethod('upload')}
+                    >
+                      Upload Label (OCR)
                     </button>
                   </div>
-                )}
 
-                {/* Analysis Results Display */}
-                {checkResults.length > 0 && (
-                  <div style={{ marginTop: '24px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '20px' }}>
-                    <h4 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Scanned Ingredients Analysis</h4>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {checkResults.map((res, i) => (
-                        <div 
-                          key={i} 
-                          style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center', 
-                            padding: '12px 16px', 
-                            borderRadius: '12px',
-                            background: res.status === 'DANGER' ? 'rgba(239, 68, 68, 0.08)' : res.status === 'CAUTION' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(16, 185, 129, 0.08)',
-                            border: `1px solid ${res.status === 'DANGER' ? 'rgba(239, 68, 68, 0.2)' : res.status === 'CAUTION' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)'}`
-                          }}
-                        >
-                          <div>
-                            <span style={{ fontWeight: 600, color: '#fff', fontSize: '0.95rem' }}>{res.name}</span>
-                            <p style={{ 
-                              fontSize: '0.8rem', 
-                              color: res.status === 'DANGER' ? '#fca5a5' : res.status === 'CAUTION' ? '#fde047' : '#a7f3d0',
-                              marginTop: '2px' 
-                            }}>
-                              {res.reason}
-                            </p>
-                          </div>
-                          
-                          <span className={`badge ${res.status === 'DANGER' ? 'badge-red' : res.status === 'CAUTION' ? 'badge-yellow' : 'badge-green'}`}>
-                            {res.status}
-                          </span>
-                        </div>
-                      ))}
+                  {/* Dynamic Inputs based on Selector */}
+                  {foodInputMethod === 'type' && (
+                    <div className="mb-5 space-y-1.5">
+                      <Label>Ingredients List (separate with commas)</Label>
+                      <Textarea
+                        value={ingredientsInput}
+                        onChange={(e) => setIngredientsInput(e.target.value)}
+                        placeholder="e.g. Sugar, Wheat Flour, Sodium Chloride, Peanut Butter, Vegetable Fat, Milk..."
+                        rows={3}
+                      />
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+
+                  {foodInputMethod === 'search' && (
+                    <div className="mb-5 flex flex-col gap-4">
+                      <div className="flex gap-3">
+                        <div className="w-40 space-y-1.5">
+                          <Label>Lookup Type</Label>
+                          <Select value={lookupType} onValueChange={setLookupType}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="barcode">Barcode</SelectItem>
+                              <SelectItem value="search">Product Name</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex-1 space-y-1.5">
+                          <Label>{lookupType === 'barcode' ? 'Product Barcode' : 'Search Terms'}</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              type="text"
+                              value={productQuery}
+                              onChange={(e) => setProductQuery(e.target.value)}
+                              placeholder={lookupType === 'barcode' ? 'e.g. 737628064502' : 'e.g. wheat bread'}
+                            />
+                            <Button variant="secondary" onClick={handleProductLookup} disabled={loading} className="whitespace-nowrap">
+                              {lookupType === 'barcode' ? <Barcode size={18} /> : <Search size={18} />} Fetch
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                      {ingredientsInput && (
+                        <div className="space-y-1.5">
+                          <Label>Fetched Ingredients</Label>
+                          <Textarea value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {foodInputMethod === 'upload' && (
+                    <div className="mb-5 flex flex-col gap-4">
+                      <Label>Upload Food Label Photo</Label>
+                      <div className="relative cursor-pointer rounded-lg border-2 border-dashed bg-muted/40 p-6 text-center">
+                        <Upload size={32} className="mx-auto mb-2 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">Choose label file or drag it here</p>
+                        <p className="mt-1 text-xs text-muted-foreground">PNG, JPG or JPEG. Max size 5MB.</p>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleOcrUpload}
+                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                        />
+                      </div>
+                      {ingredientsInput && (
+                        <div className="space-y-1.5">
+                          <Label>Extracted Ingredients (OCR Text)</Label>
+                          <Textarea value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} />
+                        </div>
+                      )}
+                      <Alert className="border-sky-500/30 bg-sky-500/5">
+                        <AlertDescription className="text-xs">
+                          💡 <strong>OCR Demo Trigger:</strong> Select any file. If the file name contains <code>juice</code>, <code>chips</code>, or <code>bread</code>, it will automatically extract matching condition-specific ingredients!
+                        </AlertDescription>
+                      </Alert>
+                    </div>
+                  )}
+
+                  {ingredientsInput && (
+                    <div className="mt-4 flex justify-end">
+                      <Button onClick={handleCheckIngredients} disabled={loading}>
+                        {loading ? 'Analyzing...' : 'Analyze Safety Profiles'}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Analysis Results Display */}
+                  {checkResults.length > 0 && (
+                    <div className="mt-6 border-t pt-5">
+                      <h4 className="mb-4 font-semibold">Scanned Ingredients Analysis</h4>
+
+                      <div className="flex flex-col gap-3">
+                        {checkResults.map((res, i) => (
+                          <div
+                            key={i}
+                            className={cn(
+                              'flex items-center justify-between gap-3 rounded-lg border p-3',
+                              res.status === 'DANGER' ? 'border-destructive/30 bg-destructive/5' : res.status === 'CAUTION' ? 'border-amber-500/30 bg-amber-500/5' : 'border-emerald-500/30 bg-emerald-500/5'
+                            )}
+                          >
+                            <div>
+                              <span className="font-semibold">{res.name}</span>
+                              <p className={cn('mt-0.5 text-sm', res.status === 'DANGER' ? 'text-destructive' : res.status === 'CAUTION' ? 'text-amber-600' : 'text-emerald-600')}>
+                                {res.reason}
+                              </p>
+                            </div>
+
+                            <Badge variant={res.status === 'DANGER' ? 'destructive' : res.status === 'CAUTION' ? 'warning' : 'success'}>
+                              {res.status}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
               {/* Health Guidance Details */}
-              <div className="grid grid-cols-2">
-                
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+
                 {/* Dietary Guidelines Panel */}
-                <div className="glass-card" style={{ textAlign: 'left' }}>
-                  <h3 style={{ fontSize: '1.25rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Compass style={{ color: '#10b981' }} /> Personal Dietary Guidelines
-                  </h3>
-                  
-                  {healthGuidance?.dietaryGuidelines.length === 0 ? (
-                    <p className="text-muted" style={{ fontSize: '0.9rem' }}>No dietary guidelines matching your conditions.</p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      {/* Foods to Eat */}
-                      <div>
-                        <h4 style={{ fontSize: '0.9rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                          <CheckCircle size={16} /> Recommended Foods to Eat
-                        </h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {healthGuidance?.dietaryGuidelines.filter(g => g.foodType === 'EAT').map((item) => (
-                            <div key={item.id} style={{ background: 'rgba(16, 185, 129, 0.05)', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                              <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>{item.foodItem}</p>
-                              <p className="text-muted" style={{ fontSize: '0.8rem' }}>{item.description}</p>
-                              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Source: {item.source} (ICD-10 Aligned)</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Foods to Avoid */}
-                      <div>
-                        <h4 style={{ fontSize: '0.9rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                          <XCircle size={16} /> Foods to Strict Limit / Avoid
-                        </h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {healthGuidance?.dietaryGuidelines.filter(g => g.foodType === 'AVOID').map((item) => (
-                            <div key={item.id} style={{ background: 'rgba(239, 68, 68, 0.05)', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
-                              <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>{item.foodItem}</p>
-                              <p className="text-muted" style={{ fontSize: '0.8rem' }}>{item.description}</p>
-                              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Source: {item.source} (ICD-10 Aligned)</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Health & Lifestyle Tips Panel */}
-                <div className="glass-card" style={{ textAlign: 'left' }}>
-                  <h3 style={{ fontSize: '1.25rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Clipboard style={{ color: '#f59e0b' }} /> Lifestyle & Management Tips
-                  </h3>
-                  
-                  {healthGuidance?.healthTips.length === 0 ? (
-                    <p className="text-muted" style={{ fontSize: '0.9rem' }}>No custom health tips available.</p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {healthGuidance?.healthTips.map((tip) => (
-                        <div key={tip.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--warning)', fontWeight: 600, background: 'rgba(245, 158, 11, 0.1)', padding: '2px 8px', borderRadius: '4px', float: 'right' }}>
-                            {tip.tipType}
-                          </span>
-                          <h4 style={{ color: '#fff', fontSize: '0.95rem', fontWeight: 600, marginBottom: '6px' }}>{tip.title}</h4>
-                          <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '6px' }}>{tip.description}</p>
-                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Source: {tip.source} (SA Dept of Health)</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* FDA Medication Warnings Panel */}
-              <div className="glass-card" style={{ textAlign: 'left' }}>
-                <h3 style={{ fontSize: '1.25rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ShieldAlert className="text-danger" style={{ color: '#ef4444' }} /> Medication Allergy & OpenFDA Safety Warnings
-                </h3>
-
-                {healthGuidance?.medicationWarnings && Object.keys(healthGuidance.medicationWarnings).length === 0 ? (
-                  <p className="text-muted" style={{ fontSize: '0.9rem' }}>No medication allergies registered.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    {healthGuidance?.medicationWarnings && Object.entries(healthGuidance.medicationWarnings).map(([allergen, warnings]) => (
-                      <div key={allergen} style={{ border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '12px', padding: '16px', background: 'rgba(239, 68, 68, 0.02)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                          <span style={{ background: '#ef4444', color: '#fff', padding: '4px 10px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                            ALLERGEN: {allergen.toUpperCase()}
-                          </span>
-                          <span className="text-muted" style={{ fontSize: '0.85rem' }}>Medication cross-reactivity and warnings from OpenFDA:</span>
-                        </div>
-
-                        {warnings.length === 0 ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No FDA alerts found for this allergen. Consult your doctor.</p>
-                        ) : (
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
-                            {warnings.map((w, idx) => (
-                              <div key={idx} style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>
-                                  ⚠️ Avoid: <span style={{ color: '#fca5a5' }}>{w.genericName}</span> ({w.brandName})
-                                </p>
-                                <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '4px', lineHeight: 1.4, background: 'rgba(0,0,0,0.2)', padding: '8px', borderRadius: '6px', fontStyle: 'italic' }}>
-                                  {w.warningText}
-                                </p>
+                <Card className="text-left">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Compass className="text-emerald-600" size={18} /> Personal Dietary Guidelines
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {healthGuidance?.dietaryGuidelines.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No dietary guidelines matching your conditions.</p>
+                    ) : (
+                      <div className="flex flex-col gap-4">
+                        {/* Foods to Eat */}
+                        <div>
+                          <h4 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-emerald-600">
+                            <CheckCircle size={16} /> Recommended Foods to Eat
+                          </h4>
+                          <div className="flex flex-col gap-2">
+                            {healthGuidance?.dietaryGuidelines.filter(g => g.foodType === 'EAT').map((item) => (
+                              <div key={item.id} className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2.5">
+                                <p className="text-sm font-semibold">{item.foodItem}</p>
+                                <p className="text-sm text-muted-foreground">{item.description}</p>
+                                <span className="text-xs text-muted-foreground">Source: {item.source} (ICD-10 Aligned)</span>
                               </div>
                             ))}
                           </div>
-                        )}
+                        </div>
+
+                        {/* Foods to Avoid */}
+                        <div>
+                          <h4 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-destructive">
+                            <XCircle size={16} /> Foods to Strict Limit / Avoid
+                          </h4>
+                          <div className="flex flex-col gap-2">
+                            {healthGuidance?.dietaryGuidelines.filter(g => g.foodType === 'AVOID').map((item) => (
+                              <div key={item.id} className="rounded-lg border border-destructive/20 bg-destructive/5 p-2.5">
+                                <p className="text-sm font-semibold">{item.foodItem}</p>
+                                <p className="text-sm text-muted-foreground">{item.description}</p>
+                                <span className="text-xs text-muted-foreground">Source: {item.source} (ICD-10 Aligned)</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Health & Lifestyle Tips Panel */}
+                <Card className="text-left">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Clipboard className="text-amber-600" size={18} /> Lifestyle & Management Tips
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {healthGuidance?.healthTips.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No custom health tips available.</p>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {healthGuidance?.healthTips.map((tip) => (
+                          <div key={tip.id} className="rounded-lg border bg-muted/40 p-3">
+                            <Badge variant="warning" className="float-right">{tip.tipType}</Badge>
+                            <h4 className="mb-1.5 text-sm font-semibold">{tip.title}</h4>
+                            <p className="mb-1.5 text-sm text-muted-foreground">{tip.description}</p>
+                            <span className="text-xs text-muted-foreground">Source: {tip.source} (SA Dept of Health)</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
+
+              {/* FDA Medication Warnings Panel */}
+              <Card className="text-left">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <ShieldAlert className="text-destructive" size={18} /> Medication Allergy & OpenFDA Safety Warnings
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {healthGuidance?.medicationWarnings && Object.keys(healthGuidance.medicationWarnings).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No medication allergies registered.</p>
+                  ) : (
+                    <div className="flex flex-col gap-5">
+                      {healthGuidance?.medicationWarnings && Object.entries(healthGuidance.medicationWarnings).map(([allergen, warnings]) => (
+                        <div key={allergen} className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+                          <div className="mb-3 flex flex-wrap items-center gap-2">
+                            <Badge variant="destructive">ALLERGEN: {allergen.toUpperCase()}</Badge>
+                            <span className="text-sm text-muted-foreground">Medication cross-reactivity and warnings from OpenFDA:</span>
+                          </div>
+
+                          {warnings.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No FDA alerts found for this allergen. Consult your doctor.</p>
+                          ) : (
+                            <div className="grid grid-cols-1 gap-3">
+                              {warnings.map((w, idx) => (
+                                <div key={idx} className="rounded-lg border bg-background p-3">
+                                  <p className="text-sm font-semibold">
+                                    ⚠️ Avoid: <span className="text-destructive">{w.genericName}</span> ({w.brandName})
+                                  </p>
+                                  <p className="mt-1 rounded-md bg-muted/50 p-2 text-sm italic leading-relaxed text-muted-foreground">
+                                    {w.warningText}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           </div>
         )}
@@ -2484,106 +2485,48 @@ function App() {
         {token && !mustChangePassword && userRole !== 'PATIENT' && (
           <div>
             {/* Tab Switcher for Staff */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '1040px', margin: '0 auto' }}>
+            <div className="mx-auto mb-6 flex max-w-4xl flex-wrap gap-1 rounded-lg bg-muted p-1">
               <button
-                className="btn"
-                style={{ flex: 1, background: activeTabStaff === 'patients' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
+                className={cn('flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'patients' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
                 onClick={() => setActiveTabStaff('patients')}
               >
                 Locate & Manage Patients
               </button>
               <button
-                className="btn"
-                style={{
-                  flex: 1,
-                  background: activeTabStaff === 'queue' ? 'var(--primary)' : 'transparent',
-                  color: '#fff',
-                  borderRadius: '10px',
-                  padding: '10px',
-                  fontSize: '0.9rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px'
-                }}
+                className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'queue' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
                 onClick={() => { setActiveTabStaff('queue'); fetchTodayQueue(); }}
               >
                 🕐 Queue {todayQueue && todayQueue.length > 0 && (
-                  <span style={{ background: '#0ea5e9', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
-                    {todayQueue.length}
-                  </span>
+                  <Badge className="px-1.5">{todayQueue.length}</Badge>
                 )}
               </button>
               <button
-                className="btn"
-                style={{
-                  flex: 1, 
-                  background: activeTabStaff === 'alerts' ? 'var(--primary)' : 'transparent', 
-                  color: '#fff', 
-                  borderRadius: '10px', 
-                  padding: '10px', 
-                  fontSize: '0.9rem',
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  gap: '6px'
-                }}
+                className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'alerts' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
                 onClick={() => { setActiveTabStaff('alerts'); fetchClinicalAlerts(); }}
               >
                 🚨 Clinical Alerts {clinicalAlerts && clinicalAlerts.length > 0 && (
-                  <span style={{ background: '#ef4444', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
-                    {clinicalAlerts.length}
-                  </span>
+                  <Badge variant="destructive" className="px-1.5">{clinicalAlerts.length}</Badge>
                 )}
               </button>
               <button
-                className="btn"
-                style={{
-                  flex: 1,
-                  background: activeTabStaff === 'referrals' ? 'var(--primary)' : 'transparent',
-                  color: '#fff',
-                  borderRadius: '10px',
-                  padding: '10px',
-                  fontSize: '0.9rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px'
-                }}
+                className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'referrals' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
                 onClick={() => { setActiveTabStaff('referrals'); fetchIncomingReferrals(); fetchOutgoingReferrals(); }}
               >
                 🔄 Referrals {incomingReferrals.filter(r => r.status === 'PENDING').length > 0 && (
-                  <span style={{ background: '#0ea5e9', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
-                    {incomingReferrals.filter(r => r.status === 'PENDING').length}
-                  </span>
+                  <Badge className="px-1.5">{incomingReferrals.filter(r => r.status === 'PENDING').length}</Badge>
                 )}
               </button>
               <button
-                className="btn"
-                style={{
-                  flex: 1,
-                  background: activeTabStaff === 'stock' ? 'var(--primary)' : 'transparent',
-                  color: '#fff',
-                  borderRadius: '10px',
-                  padding: '10px',
-                  fontSize: '0.9rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px'
-                }}
+                className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'stock' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
                 onClick={() => { setActiveTabStaff('stock'); fetchStockList(); }}
               >
                 📦 Stock {stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length > 0 && (
-                  <span style={{ background: '#ef4444', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
-                    {stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length}
-                  </span>
+                  <Badge variant="destructive" className="px-1.5">{stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length}</Badge>
                 )}
               </button>
               {userRole === 'ADMIN' && (
                 <button
-                  className="btn"
-                  style={{ flex: 1, background: activeTabStaff === 'staff' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
+                  className={cn('flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'staff' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
                   onClick={() => { setActiveTabStaff('staff'); fetchStaffList(); fetchFacilitiesList(); fetchAllReports(reportDateRange.startDate, reportDateRange.endDate); }}
                 >
                   👥 Staff Management
@@ -2592,493 +2535,499 @@ function App() {
             </div>
 
             {activeTabStaff === 'patients' ? (
-              <div className="dashboard-grid">
-                
+              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[320px_1fr]">
+
                 {/* Search Patient & Register Panel */}
-                <div className="dashboard-sidebar">
-                  
+                <div className="flex flex-col gap-6">
+
                   {/* Search Card */}
-                  <div className="glass-card" style={{ textAlign: 'left' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Search size={18} /> Locate Patient File
-                    </h3>
-                    <form onSubmit={handleSearchPatient}>
-                      <div className="form-group" style={{ marginBottom: '12px' }}>
-                        <label htmlFor="searchId">ID Number or File Number (UHID)</label>
-                        <input
-                          type="text"
-                          id="searchId"
-                          value={searchId}
-                          onChange={(e) => setSearchId(e.target.value)}
-                          placeholder="ID number, or UDHR-... file number for a newborn"
-                          required
-                        />
-                      </div>
-                      <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
-                        <Search size={16} /> {loading ? 'Searching...' : 'Search Record'}
-                      </button>
-                    </form>
-                  </div>
+                  <Card className="text-left">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Search size={18} /> Locate Patient File
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleSearchPatient}>
+                        <div className="mb-3 space-y-1.5">
+                          <Label htmlFor="searchId">ID Number or File Number (UHID)</Label>
+                          <Input
+                            type="text"
+                            id="searchId"
+                            value={searchId}
+                            onChange={(e) => setSearchId(e.target.value)}
+                            placeholder="ID number, or UDHR-... file number for a newborn"
+                            required
+                          />
+                        </div>
+                        <Button type="submit" className="w-full" disabled={loading}>
+                          <Search size={16} /> {loading ? 'Searching...' : 'Search Record'}
+                        </Button>
+                      </form>
+                    </CardContent>
+                  </Card>
 
                   {/* Quick Register Card */}
-                  <div className="glass-card" style={{ textAlign: 'left' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <PlusCircle size={18} /> Register Patient
-                    </h3>
-                    <form onSubmit={handleRegisterPatient}>
-                      <div
-                        style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', background: 'rgba(14, 165, 233, 0.08)', border: '1px solid rgba(14, 165, 233, 0.2)', borderRadius: '10px', padding: '10px 12px', cursor: 'pointer' }}
-                        onClick={() => setIsNewbornMode(!isNewbornMode)}
-                      >
-                        <input type="checkbox" checked={isNewbornMode} onChange={() => {}} style={{ width: '16px', height: '16px', pointerEvents: 'none' }} />
-                        <div>
-                          <p style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>Register a newborn</p>
-                          <p className="text-muted" style={{ fontSize: '0.75rem', margin: 0 }}>No ID number needed yet — opens a file from birth and starts the EPI vaccine schedule.</p>
-                        </div>
-                      </div>
-                      <div className="form-group">
-                        <label>{isNewbornMode ? 'ID Number (leave blank — not yet issued)' : 'ID Number'}</label>
-                        <input
-                          type="text"
-                          value={patientRegForm.idNumber}
-                          onChange={(e) => setPatientRegForm({...patientRegForm, idNumber: e.target.value})}
-                          required={!isNewbornMode}
-                          placeholder={isNewbornMode ? 'Leave blank if not yet registered with Home Affairs' : 'SA ID number'}
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>First Name</label>
-                        <input 
-                          type="text" 
-                          value={patientRegForm.firstName} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, firstName: e.target.value})} 
-                          required 
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Last Name</label>
-                        <input 
-                          type="text" 
-                          value={patientRegForm.lastName} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, lastName: e.target.value})} 
-                          required 
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Date of Birth</label>
-                        <input 
-                          type="date" 
-                          value={patientRegForm.dateOfBirth} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, dateOfBirth: e.target.value})} 
-                          required 
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Gender</label>
-                        <select 
-                          value={patientRegForm.gender} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, gender: e.target.value})}
+                  <Card className="text-left">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <PlusCircle size={18} /> Register Patient
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleRegisterPatient}>
+                        <div
+                          className="mb-4 flex cursor-pointer items-center gap-2.5 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3"
+                          onClick={() => setIsNewbornMode(!isNewbornMode)}
                         >
-                          <option value="MALE">Male</option>
-                          <option value="FEMALE">Female</option>
-                          <option value="OTHER">Other</option>
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label>Contact Number</label>
-                        <input 
-                          type="text" 
-                          value={patientRegForm.contactNumber} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, contactNumber: e.target.value})} 
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Email Address</label>
-                        <input 
-                          type="email" 
-                          value={patientRegForm.email} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, email: e.target.value})} 
-                          placeholder="patient@gmail.com"
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Address</label>
-                        <textarea
-                          value={patientRegForm.address}
-                          onChange={(e) => setPatientRegForm({...patientRegForm, address: e.target.value})}
-                          rows={2}
-                        />
-                      </div>
+                          <input type="checkbox" checked={isNewbornMode} onChange={() => {}} className="pointer-events-none h-4 w-4 accent-primary" />
+                          <div>
+                            <p className="text-sm font-semibold">Register a newborn</p>
+                            <p className="text-xs text-muted-foreground">No ID number needed yet — opens a file from birth and starts the EPI vaccine schedule.</p>
+                          </div>
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>{isNewbornMode ? 'ID Number (leave blank — not yet issued)' : 'ID Number'}</Label>
+                          <Input
+                            type="text"
+                            value={patientRegForm.idNumber}
+                            onChange={(e) => setPatientRegForm({...patientRegForm, idNumber: e.target.value})}
+                            required={!isNewbornMode}
+                            placeholder={isNewbornMode ? 'Leave blank if not yet registered with Home Affairs' : 'SA ID number'}
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>First Name</Label>
+                          <Input
+                            type="text"
+                            value={patientRegForm.firstName}
+                            onChange={(e) => setPatientRegForm({...patientRegForm, firstName: e.target.value})}
+                            required
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Last Name</Label>
+                          <Input
+                            type="text"
+                            value={patientRegForm.lastName}
+                            onChange={(e) => setPatientRegForm({...patientRegForm, lastName: e.target.value})}
+                            required
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Date of Birth</Label>
+                          <Input
+                            type="date"
+                            value={patientRegForm.dateOfBirth}
+                            onChange={(e) => setPatientRegForm({...patientRegForm, dateOfBirth: e.target.value})}
+                            required
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Gender</Label>
+                          <Select value={patientRegForm.gender} onValueChange={(v) => setPatientRegForm({...patientRegForm, gender: v})}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="MALE">Male</SelectItem>
+                              <SelectItem value="FEMALE">Female</SelectItem>
+                              <SelectItem value="OTHER">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Contact Number</Label>
+                          <Input
+                            type="text"
+                            value={patientRegForm.contactNumber}
+                            onChange={(e) => setPatientRegForm({...patientRegForm, contactNumber: e.target.value})}
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Email Address</Label>
+                          <Input
+                            type="email"
+                            value={patientRegForm.email}
+                            onChange={(e) => setPatientRegForm({...patientRegForm, email: e.target.value})}
+                            placeholder="patient@gmail.com"
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Address</Label>
+                          <Textarea
+                            value={patientRegForm.address}
+                            onChange={(e) => setPatientRegForm({...patientRegForm, address: e.target.value})}
+                            rows={2}
+                          />
+                        </div>
 
-                      <p className="text-muted" style={{ fontSize: '0.8rem', margin: '4px 0 12px', fontWeight: 600 }}>Next of Kin</p>
-                      <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div>
-                          <label>First Name</label>
-                          <input
-                            type="text"
-                            value={patientRegForm.nextOfKinFirstName}
-                            onChange={(e) => setPatientRegForm({...patientRegForm, nextOfKinFirstName: e.target.value})}
-                          />
-                        </div>
-                        <div>
-                          <label>Last Name</label>
-                          <input
-                            type="text"
-                            value={patientRegForm.nextOfKinLastName}
-                            onChange={(e) => setPatientRegForm({...patientRegForm, nextOfKinLastName: e.target.value})}
-                          />
-                        </div>
-                      </div>
-                      <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div>
-                          <label>Relationship</label>
-                          <input
-                            type="text"
-                            value={patientRegForm.nextOfKinRelationship}
-                            onChange={(e) => setPatientRegForm({...patientRegForm, nextOfKinRelationship: e.target.value})}
-                            placeholder="e.g. Parent, spouse, sibling"
-                          />
-                        </div>
-                        <div>
-                          <label>Phone</label>
-                          <input
-                            type="text"
-                            value={patientRegForm.nextOfKinPhone}
-                            onChange={(e) => setPatientRegForm({...patientRegForm, nextOfKinPhone: e.target.value})}
-                          />
-                        </div>
-                      </div>
-
-                      {isNewbornMode && (
-                        <>
-                          <div className="form-group">
-                            <label>Mother's ID Number</label>
-                            <input
+                        <p className="mb-3 mt-1 text-xs font-semibold text-muted-foreground">Next of Kin</p>
+                        <div className="mb-4 grid grid-cols-2 gap-2.5">
+                          <div className="space-y-1.5">
+                            <Label>First Name</Label>
+                            <Input
                               type="text"
-                              value={patientRegForm.motherIdNumber}
-                              onChange={(e) => setPatientRegForm({...patientRegForm, motherIdNumber: e.target.value})}
-                              placeholder="Links this file to the mother's record"
+                              value={patientRegForm.nextOfKinFirstName}
+                              onChange={(e) => setPatientRegForm({...patientRegForm, nextOfKinFirstName: e.target.value})}
                             />
                           </div>
-                          <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                            <div>
-                              <label>Birth Weight (g)</label>
-                              <input
-                                type="number"
-                                value={patientRegForm.birthWeightGrams}
-                                onChange={(e) => setPatientRegForm({...patientRegForm, birthWeightGrams: e.target.value})}
-                                placeholder="e.g. 3200"
-                              />
-                            </div>
-                            <div>
-                              <label>Birth Length (cm)</label>
-                              <input
-                                type="number"
-                                step="0.1"
-                                value={patientRegForm.birthLengthCm}
-                                onChange={(e) => setPatientRegForm({...patientRegForm, birthLengthCm: e.target.value})}
-                                placeholder="e.g. 49.5"
-                              />
-                            </div>
+                          <div className="space-y-1.5">
+                            <Label>Last Name</Label>
+                            <Input
+                              type="text"
+                              value={patientRegForm.nextOfKinLastName}
+                              onChange={(e) => setPatientRegForm({...patientRegForm, nextOfKinLastName: e.target.value})}
+                            />
                           </div>
-                          <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                            <div>
-                              <label>Apgar Score (1 min)</label>
-                              <input
-                                type="number"
-                                min="0"
-                                max="10"
-                                value={patientRegForm.apgarScore1Min}
-                                onChange={(e) => setPatientRegForm({...patientRegForm, apgarScore1Min: e.target.value})}
-                              />
-                            </div>
-                            <div>
-                              <label>Apgar Score (5 min)</label>
-                              <input
-                                type="number"
-                                min="0"
-                                max="10"
-                                value={patientRegForm.apgarScore5Min}
-                                onChange={(e) => setPatientRegForm({...patientRegForm, apgarScore5Min: e.target.value})}
-                              />
-                            </div>
+                        </div>
+                        <div className="mb-4 grid grid-cols-2 gap-2.5">
+                          <div className="space-y-1.5">
+                            <Label>Relationship</Label>
+                            <Input
+                              type="text"
+                              value={patientRegForm.nextOfKinRelationship}
+                              onChange={(e) => setPatientRegForm({...patientRegForm, nextOfKinRelationship: e.target.value})}
+                              placeholder="e.g. Parent, spouse, sibling"
+                            />
                           </div>
-                          <div style={{ background: 'rgba(14, 165, 233, 0.1)', padding: '10px', borderRadius: '8px', marginBottom: '16px' }}>
-                            <p style={{ fontSize: '0.75rem', color: '#7dd3fc' }}>
-                              💡 Birth facility is recorded as your current facility. The EPI immunization schedule (BCG, OPV, Rotavirus, PCV...) is generated automatically on save.
-                            </p>
+                          <div className="space-y-1.5">
+                            <Label>Phone</Label>
+                            <Input
+                              type="text"
+                              value={patientRegForm.nextOfKinPhone}
+                              onChange={(e) => setPatientRegForm({...patientRegForm, nextOfKinPhone: e.target.value})}
+                            />
                           </div>
-                        </>
-                      )}
+                        </div>
 
-                      <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
-                        {isNewbornMode ? 'Open Newborn File' : 'Create Record'}
-                      </button>
-                    </form>
-                  </div>
+                        {isNewbornMode && (
+                          <>
+                            <div className="mb-4 space-y-1.5">
+                              <Label>Mother's ID Number</Label>
+                              <Input
+                                type="text"
+                                value={patientRegForm.motherIdNumber}
+                                onChange={(e) => setPatientRegForm({...patientRegForm, motherIdNumber: e.target.value})}
+                                placeholder="Links this file to the mother's record"
+                              />
+                            </div>
+                            <div className="mb-4 grid grid-cols-2 gap-2.5">
+                              <div className="space-y-1.5">
+                                <Label>Birth Weight (g)</Label>
+                                <Input
+                                  type="number"
+                                  value={patientRegForm.birthWeightGrams}
+                                  onChange={(e) => setPatientRegForm({...patientRegForm, birthWeightGrams: e.target.value})}
+                                  placeholder="e.g. 3200"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Birth Length (cm)</Label>
+                                <Input
+                                  type="number"
+                                  step="0.1"
+                                  value={patientRegForm.birthLengthCm}
+                                  onChange={(e) => setPatientRegForm({...patientRegForm, birthLengthCm: e.target.value})}
+                                  placeholder="e.g. 49.5"
+                                />
+                              </div>
+                            </div>
+                            <div className="mb-4 grid grid-cols-2 gap-2.5">
+                              <div className="space-y-1.5">
+                                <Label>Apgar Score (1 min)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="10"
+                                  value={patientRegForm.apgarScore1Min}
+                                  onChange={(e) => setPatientRegForm({...patientRegForm, apgarScore1Min: e.target.value})}
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Apgar Score (5 min)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="10"
+                                  value={patientRegForm.apgarScore5Min}
+                                  onChange={(e) => setPatientRegForm({...patientRegForm, apgarScore5Min: e.target.value})}
+                                />
+                              </div>
+                            </div>
+                            <Alert className="mb-4 border-sky-500/30 bg-sky-500/5">
+                              <AlertDescription className="text-xs">
+                                💡 Birth facility is recorded as your current facility. The EPI immunization schedule (BCG, OPV, Rotavirus, PCV...) is generated automatically on save.
+                              </AlertDescription>
+                            </Alert>
+                          </>
+                        )}
+
+                        <Button type="submit" variant="secondary" className="w-full">
+                          {isNewbornMode ? 'Open Newborn File' : 'Create Record'}
+                        </Button>
+                      </form>
+                    </CardContent>
+                  </Card>
                 </div>
 
                 {/* Patient File display and clinical actions */}
-                <div className="dashboard-main">
+                <div className="flex flex-col gap-6">
                   {searchedPatientRecord ? (
                     <>
                       {/* Demographics Card */}
-                      <div className="glass-card" style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
+                      <Card className="text-left">
+                        <CardContent className="flex flex-wrap justify-between gap-5 p-6">
                         <div>
-                          <h2 style={{ color: '#fff' }}>Patient File: {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}</h2>
-                          <p className="text-muted" style={{ marginTop: '4px' }}>
-                            File Number (UHID): <strong style={{ color: '#fff' }}>{searchedPatientRecord.patient.uhid}</strong>
+                          <h2 className="text-xl font-semibold">Patient File: {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}</h2>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            File Number (UHID): <strong className="text-foreground">{searchedPatientRecord.patient.uhid}</strong>
                             {!searchedPatientRecord.patient.idNumber && (
-                              <span style={{ color: '#fde047', marginLeft: '8px' }}>⚠️ No ID number registered yet</span>
+                              <span className="ml-2 text-amber-600">⚠️ No ID number registered yet</span>
                             )}
                           </p>
-                          <p className="text-muted" style={{ marginTop: '4px' }}>
+                          <p className="mt-1 text-sm text-muted-foreground">
                             ID Number: {searchedPatientRecord.patient.idNumber || 'Not yet issued'} | Gender: {searchedPatientRecord.patient.gender} | DOB: {searchedPatientRecord.patient.dateOfBirth}
                           </p>
                           {searchedPatientRecord.patient.motherPatient && (
-                            <p className="text-muted" style={{ marginTop: '4px', color: '#c7d2fe' }}>
+                            <p className="mt-1 text-sm text-indigo-600">
                               👶 Mother: {searchedPatientRecord.patient.motherPatient.firstName} {searchedPatientRecord.patient.motherPatient.lastName} (ID: {searchedPatientRecord.patient.motherPatient.idNumber || searchedPatientRecord.patient.motherPatient.uhid})
                             </p>
                           )}
                           {searchedPatientRecord.patient.birthWeightGrams && (
-                            <p className="text-muted" style={{ marginTop: '4px' }}>
+                            <p className="mt-1 text-sm text-muted-foreground">
                               🍼 Born at {searchedPatientRecord.patient.birthFacility?.name || 'N/A'}: {searchedPatientRecord.patient.birthWeightGrams}g, {searchedPatientRecord.patient.birthLengthCm}cm, Apgar {searchedPatientRecord.patient.apgarScore1Min}/{searchedPatientRecord.patient.apgarScore5Min}
                             </p>
                           )}
                           {searchedPatientRecord.patient.nextOfKinFirstName && (
-                            <p className="text-muted" style={{ marginTop: '4px' }}>
+                            <p className="mt-1 text-sm text-muted-foreground">
                               🆘 Next of Kin: {searchedPatientRecord.patient.nextOfKinFirstName} {searchedPatientRecord.patient.nextOfKinLastName}
                               {searchedPatientRecord.patient.nextOfKinRelationship && ` (${searchedPatientRecord.patient.nextOfKinRelationship})`}
                               {searchedPatientRecord.patient.nextOfKinPhone && ` — ${searchedPatientRecord.patient.nextOfKinPhone}`}
                             </p>
                           )}
-                          <p className="text-muted" style={{ marginTop: '4px' }}>
+                          <p className="mt-1 text-sm text-muted-foreground">
                             Contact: {searchedPatientRecord.patient.contactNumber || 'N/A'} | Email: {searchedPatientRecord.patient.email || 'N/A'}
                           </p>
-                          <p className="text-muted" style={{ marginTop: '4px' }}>
+                          <p className="mt-1 text-sm text-muted-foreground">
                             Address: {searchedPatientRecord.patient.address || 'N/A'}
                           </p>
                           {(() => {
-                            const lastVisit = searchedPatientRecord.visits && searchedPatientRecord.visits.length > 0 
-                              ? searchedPatientRecord.visits.reduce((latest, current) => 
+                            const lastVisit = searchedPatientRecord.visits && searchedPatientRecord.visits.length > 0
+                              ? searchedPatientRecord.visits.reduce((latest, current) =>
                                   new Date(current.visitDate) > new Date(latest.visitDate) ? current : latest
                                 )
                               : null;
                             return lastVisit ? (
-                              <p className="text-muted" style={{ marginTop: '8px', color: '#c7d2fe', fontSize: '0.85rem' }}>
+                              <p className="mt-2 text-sm text-indigo-600">
                                 📅 <strong>Last Visit:</strong> {new Date(lastVisit.visitDate).toLocaleDateString()} — <em>{lastVisit.reason} {lastVisit.notes ? `(${lastVisit.notes})` : ''}</em>
                               </p>
                             ) : (
-                              <p className="text-muted" style={{ marginTop: '8px', fontSize: '0.85rem' }}>
+                              <p className="mt-2 text-sm text-muted-foreground">
                                 📅 <strong>Last Visit:</strong> No recorded visits
                               </p>
                             );
                           })()}
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
-                          <span className="badge badge-green">Status: Active</span>
-                          <button
-                            className="btn btn-secondary"
-                            onClick={() => setShowCheckInForm(!showCheckInForm)}
-                            style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}
-                          >
+                        <div className="flex flex-col items-end gap-1.5">
+                          <Badge variant="success">Status: Active</Badge>
+                          <Button variant="secondary" size="sm" className="mt-1.5" onClick={() => setShowCheckInForm(!showCheckInForm)}>
                             <Clock size={14} /> {showCheckInForm ? 'Cancel Check-In' : 'Check In to Queue'}
-                          </button>
-                          <button
-                            className="btn btn-secondary"
-                            onClick={() => setShowReferForm(!showReferForm)}
-                            style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                          >
+                          </Button>
+                          <Button variant="secondary" size="sm" onClick={() => setShowReferForm(!showReferForm)}>
                             <FileText size={14} /> {showReferForm ? 'Cancel Referral' : 'Refer to Another Facility'}
-                          </button>
-                          <button
-                            className="btn btn-secondary"
-                            onClick={() => setShowDischargeForm(!showDischargeForm)}
-                            style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                          >
+                          </Button>
+                          <Button variant="secondary" size="sm" onClick={() => setShowDischargeForm(!showDischargeForm)}>
                             <CheckCircle size={14} /> {showDischargeForm ? 'Cancel Discharge' : 'Discharge Patient'}
-                          </button>
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}
-                            style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                          >
+                          </Button>
+                          <Button size="sm" onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}>
                             <RefreshCw size={14} /> Analyze Response (CDS)
-                          </button>
+                          </Button>
                         </div>
-                      </div>
+                        </CardContent>
+                      </Card>
 
                       {/* Discharge Patient */}
                       {showDischargeForm && (
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <CheckCircle size={18} /> Discharge {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}
-                          </h3>
-                          <form onSubmit={(e) => handleDischarge(e, searchedPatientRecord.patient.id)}>
-                            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                              <div>
-                                <label>Outcome</label>
-                                <select
-                                  value={dischargeForm.dischargeOutcome}
-                                  onChange={(e) => setDischargeForm({...dischargeForm, dischargeOutcome: e.target.value})}
-                                >
-                                  <option value="HOME">Discharged Home</option>
-                                  <option value="TRANSFERRED">Transferred</option>
-                                  <option value="ABSCONDED">Absconded</option>
-                                  <option value="DECEASED">Deceased</option>
-                                </select>
+                        <Card className="text-left">
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                              <CheckCircle size={18} /> Discharge {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <form onSubmit={(e) => handleDischarge(e, searchedPatientRecord.patient.id)}>
+                              <div className="mb-4 grid grid-cols-2 gap-2.5">
+                                <div className="space-y-1.5">
+                                  <Label>Outcome</Label>
+                                  <Select value={dischargeForm.dischargeOutcome} onValueChange={(v) => setDischargeForm({...dischargeForm, dischargeOutcome: v})}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="HOME">Discharged Home</SelectItem>
+                                      <SelectItem value="TRANSFERRED">Transferred</SelectItem>
+                                      <SelectItem value="ABSCONDED">Absconded</SelectItem>
+                                      <SelectItem value="DECEASED">Deceased</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Follow-up Date (optional)</Label>
+                                  <Input
+                                    type="date"
+                                    value={dischargeForm.followUpDate}
+                                    onChange={(e) => setDischargeForm({...dischargeForm, followUpDate: e.target.value})}
+                                  />
+                                </div>
                               </div>
-                              <div>
-                                <label>Follow-up Date (optional)</label>
-                                <input
-                                  type="date"
-                                  value={dischargeForm.followUpDate}
-                                  onChange={(e) => setDischargeForm({...dischargeForm, followUpDate: e.target.value})}
+                              <div className="mb-4 space-y-1.5">
+                                <Label>Discharge Summary</Label>
+                                <Textarea
+                                  value={dischargeForm.dischargeSummary}
+                                  onChange={(e) => setDischargeForm({...dischargeForm, dischargeSummary: e.target.value})}
+                                  placeholder="Condition on discharge, instructions given, medication to continue..."
+                                  rows={3}
                                 />
                               </div>
-                            </div>
-                            <div className="form-group">
-                              <label>Discharge Summary</label>
-                              <textarea
-                                value={dischargeForm.dischargeSummary}
-                                onChange={(e) => setDischargeForm({...dischargeForm, dischargeSummary: e.target.value})}
-                                placeholder="Condition on discharge, instructions given, medication to continue..."
-                                rows={3}
-                              />
-                            </div>
-                            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
-                              {loading ? 'Discharging...' : 'Confirm Discharge'}
-                            </button>
-                          </form>
-                        </div>
+                              <Button type="submit" className="w-full" disabled={loading}>
+                                {loading ? 'Discharging...' : 'Confirm Discharge'}
+                              </Button>
+                            </form>
+                          </CardContent>
+                        </Card>
                       )}
 
                       {/* Refer to Another Facility */}
                       {showReferForm && (
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <FileText size={18} /> Refer {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}
-                          </h3>
-                          <form onSubmit={(e) => handleRefer(e, searchedPatientRecord.patient.id)}>
-                            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
-                              <div>
-                                <label>Destination Facility</label>
-                                <select
-                                  value={referForm.toFacilityId}
-                                  onChange={(e) => setReferForm({...referForm, toFacilityId: e.target.value})}
+                        <Card className="text-left">
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                              <FileText size={18} /> Refer {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <form onSubmit={(e) => handleRefer(e, searchedPatientRecord.patient.id)}>
+                              <div className="mb-4 grid grid-cols-[2fr_1fr] gap-2.5">
+                                <div className="space-y-1.5">
+                                  <Label>Destination Facility</Label>
+                                  <Select value={referForm.toFacilityId} onValueChange={(v) => setReferForm({...referForm, toFacilityId: v})} required>
+                                    <SelectTrigger><SelectValue placeholder="Select facility" /></SelectTrigger>
+                                    <SelectContent>
+                                      {facilitiesList
+                                        .filter(f => String(f.id) !== String(userFacilityId))
+                                        .map(f => (
+                                          <SelectItem key={f.id} value={String(f.id)}>{f.name} ({f.province})</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Urgency</Label>
+                                  <Select value={referForm.urgency} onValueChange={(v) => setReferForm({...referForm, urgency: v})}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="ROUTINE">Routine</SelectItem>
+                                      <SelectItem value="URGENT">Urgent</SelectItem>
+                                      <SelectItem value="EMERGENCY">Emergency</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <div className="mb-4 space-y-1.5">
+                                <Label>Reason for Referral</Label>
+                                <Input
+                                  type="text"
+                                  value={referForm.reason}
+                                  onChange={(e) => setReferForm({...referForm, reason: e.target.value})}
+                                  placeholder="e.g. Requires specialist care beyond this facility's capability"
                                   required
-                                >
-                                  <option value="" disabled>Select facility</option>
-                                  {facilitiesList
-                                    .filter(f => String(f.id) !== String(userFacilityId))
-                                    .map(f => (
-                                      <option key={f.id} value={f.id}>{f.name} ({f.province})</option>
-                                    ))}
-                                </select>
+                                />
                               </div>
-                              <div>
-                                <label>Urgency</label>
-                                <select
-                                  value={referForm.urgency}
-                                  onChange={(e) => setReferForm({...referForm, urgency: e.target.value})}
-                                >
-                                  <option value="ROUTINE">Routine</option>
-                                  <option value="URGENT">Urgent</option>
-                                  <option value="EMERGENCY">Emergency</option>
-                                </select>
+                              <div className="mb-4 space-y-1.5">
+                                <Label>Clinical Summary</Label>
+                                <Textarea
+                                  value={referForm.clinicalSummary}
+                                  onChange={(e) => setReferForm({...referForm, clinicalSummary: e.target.value})}
+                                  placeholder="Diagnosis, treatment given, current medications, relevant history..."
+                                  rows={3}
+                                />
                               </div>
-                            </div>
-                            <div className="form-group">
-                              <label>Reason for Referral</label>
-                              <input
-                                type="text"
-                                value={referForm.reason}
-                                onChange={(e) => setReferForm({...referForm, reason: e.target.value})}
-                                placeholder="e.g. Requires specialist care beyond this facility's capability"
-                                required
-                              />
-                            </div>
-                            <div className="form-group">
-                              <label>Clinical Summary</label>
-                              <textarea
-                                value={referForm.clinicalSummary}
-                                onChange={(e) => setReferForm({...referForm, clinicalSummary: e.target.value})}
-                                placeholder="Diagnosis, treatment given, current medications, relevant history..."
-                                rows={3}
-                              />
-                            </div>
-                            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
-                              {loading ? 'Referring...' : 'Send Referral'}
-                            </button>
-                          </form>
-                        </div>
+                              <Button type="submit" className="w-full" disabled={loading}>
+                                {loading ? 'Referring...' : 'Send Referral'}
+                              </Button>
+                            </form>
+                          </CardContent>
+                        </Card>
                       )}
 
                       {/* Reception: Check In to Queue */}
                       {showCheckInForm && (
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Clock size={18} /> Check In {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}
-                          </h3>
-                          <form onSubmit={(e) => handleCheckIn(e, searchedPatientRecord.patient.id)}>
-                            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                              <div>
-                                <label>Department</label>
-                                <select
-                                  value={checkInForm.department}
-                                  onChange={(e) => setCheckInForm({...checkInForm, department: e.target.value})}
-                                >
-                                  <option value="GP">GP</option>
-                                  <option value="DENTAL">Dental</option>
-                                  <option value="MATERNITY">Maternity</option>
-                                  <option value="PEDIATRICS">Pediatrics</option>
-                                  <option value="CASUALTY">Casualty</option>
-                                  <option value="CHRONIC_CLUB">Chronic Medication Club</option>
-                                </select>
+                        <Card className="text-left">
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                              <Clock size={18} /> Check In {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <form onSubmit={(e) => handleCheckIn(e, searchedPatientRecord.patient.id)}>
+                              <div className="mb-4 grid grid-cols-2 gap-2.5">
+                                <div className="space-y-1.5">
+                                  <Label>Department</Label>
+                                  <Select value={checkInForm.department} onValueChange={(v) => setCheckInForm({...checkInForm, department: v})}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="GP">GP</SelectItem>
+                                      <SelectItem value="DENTAL">Dental</SelectItem>
+                                      <SelectItem value="MATERNITY">Maternity</SelectItem>
+                                      <SelectItem value="PEDIATRICS">Pediatrics</SelectItem>
+                                      <SelectItem value="CASUALTY">Casualty</SelectItem>
+                                      <SelectItem value="CHRONIC_CLUB">Chronic Medication Club</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Urgency</Label>
+                                  <Select value={checkInForm.urgency} onValueChange={(v) => setCheckInForm({...checkInForm, urgency: v})}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="GREEN">🟢 Green — Routine</SelectItem>
+                                      <SelectItem value="YELLOW">🟡 Yellow — Moderate</SelectItem>
+                                      <SelectItem value="RED">🔴 Red — Urgent</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                               </div>
-                              <div>
-                                <label>Urgency</label>
-                                <select
-                                  value={checkInForm.urgency}
-                                  onChange={(e) => setCheckInForm({...checkInForm, urgency: e.target.value})}
-                                >
-                                  <option value="GREEN">🟢 Green — Routine</option>
-                                  <option value="YELLOW">🟡 Yellow — Moderate</option>
-                                  <option value="RED">🔴 Red — Urgent</option>
-                                </select>
+                              <div className="mb-4 space-y-1.5">
+                                <Label>Reason for Visit</Label>
+                                <Input
+                                  type="text"
+                                  value={checkInForm.reason}
+                                  onChange={(e) => setCheckInForm({...checkInForm, reason: e.target.value})}
+                                  placeholder="e.g. Follow-up for hypertension, tooth pain, antenatal check"
+                                  required
+                                />
                               </div>
-                            </div>
-                            <div className="form-group">
-                              <label>Reason for Visit</label>
-                              <input
-                                type="text"
-                                value={checkInForm.reason}
-                                onChange={(e) => setCheckInForm({...checkInForm, reason: e.target.value})}
-                                placeholder="e.g. Follow-up for hypertension, tooth pain, antenatal check"
-                                required
-                              />
-                            </div>
-                            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
-                              {loading ? 'Checking in...' : 'Check In to Queue'}
-                            </button>
-                          </form>
-                        </div>
+                              <Button type="submit" className="w-full" disabled={loading}>
+                                {loading ? 'Checking in...' : 'Check In to Queue'}
+                              </Button>
+                            </form>
+                          </CardContent>
+                        </Card>
                       )}
 
                       {/* Treatment Response Timeline (CDS View) */}
                       {patientTimeline && (
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.25rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Clock className="text-secondary" style={{ color: '#0ea5e9' }} /> 📈 Treatment Response Timeline (Past 14 Days)
-                          </h3>
-
+                        <Card className="text-left">
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                              <Clock className="text-sky-600" size={20} /> 📈 Treatment Response Timeline (Past 14 Days)
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
                           {/* Display active alerts if any */}
                           {patientTimeline.activeAlerts && patientTimeline.activeAlerts.length > 0 && (
-                            <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div className="mb-4 flex flex-col gap-2">
                               {patientTimeline.activeAlerts.map(alert => (
-                                <div key={alert.id} style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', padding: '12px' }}>
-                                  <p style={{ color: '#fca5a5', fontSize: '0.85rem', fontWeight: 600 }}>🚨 Clinical Alert: {alert.alertType}</p>
-                                  <p style={{ color: '#fff', fontSize: '0.8rem', marginTop: '2px' }}>{alert.message}</p>
+                                <div key={alert.id} className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
+                                  <p className="text-sm font-semibold text-destructive">🚨 Clinical Alert: {alert.alertType}</p>
+                                  <p className="mt-0.5 text-sm">{alert.message}</p>
                                 </div>
                               ))}
                             </div>
@@ -3086,11 +3035,11 @@ function App() {
 
                           {/* Display Food conflicts if any */}
                           {patientTimeline.foodConflicts && patientTimeline.foodConflicts.length > 0 && (
-                            <div style={{ marginBottom: '16px', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: '8px', padding: '12px' }}>
-                              <p style={{ color: '#fde047', fontSize: '0.85rem', fontWeight: 600 }}>⚠️ Drug-Food Interactions Detected</p>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' }}>
+                            <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                              <p className="text-sm font-semibold text-amber-600">⚠️ Drug-Food Interactions Detected</p>
+                              <div className="mt-1.5 flex flex-col gap-1">
                                 {patientTimeline.foodConflicts.map((c, i) => (
-                                  <p key={i} style={{ fontSize: '0.75rem', color: '#fff' }}>
+                                  <p key={i} className="text-xs">
                                     - <strong>{c.medication}</strong> conflicts with scanned ingredient <strong>{c.ingredient}</strong> ({c.message})
                                   </p>
                                 ))}
@@ -3099,24 +3048,24 @@ function App() {
                           )}
 
                           {/* Timeline Table Grid */}
-                          <div className="grid grid-cols-2" style={{ gap: '16px' }}>
+                          <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <h4 style={{ color: '#a5b4fc', fontSize: '0.9rem', marginBottom: '8px' }}>Medication Doses (Adherence logs)</h4>
+                              <h4 className="mb-2 text-sm font-semibold text-indigo-600">Medication Doses (Adherence logs)</h4>
                               {patientTimeline.adherenceLogs.length === 0 ? (
-                                <p className="text-muted" style={{ fontSize: '0.8rem' }}>No doses logged in last 14 days.</p>
+                                <p className="text-sm text-muted-foreground">No doses logged in last 14 days.</p>
                               ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto', background: 'rgba(15,23,42,0.3)', padding: '8px', borderRadius: '8px' }}>
+                                <div className="flex max-h-[200px] flex-col gap-1.5 overflow-y-auto rounded-lg bg-muted/40 p-2">
                                   {patientTimeline.adherenceLogs.map(log => (
-                                    <div key={log.id} style={{ display: 'flex', flexDirection: 'column', padding: '6px', borderBottom: '1px solid rgba(255,255,255,0.03)', gap: '2px' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', alignItems: 'center' }}>
-                                        <span style={{ color: '#fff' }}>{log.reminder.prescription.medication}</span>
-                                        <span style={{ color: 'var(--text-muted)' }}>{new Date(log.scheduledTime).toLocaleDateString([], { month: 'short', day: 'numeric' })} {log.reminder.reminderTime}</span>
-                                        <span className={`badge ${log.status === 'TAKEN' ? 'badge-green' : log.status === 'MISSED' ? 'badge-red' : 'badge-yellow'}`} style={{ padding: '2px 6px', fontSize: '0.65rem' }}>
+                                    <div key={log.id} className="flex flex-col gap-0.5 border-b p-1.5 last:border-b-0">
+                                      <div className="flex items-center justify-between text-xs">
+                                        <span>{log.reminder.prescription.medication}</span>
+                                        <span className="text-muted-foreground">{new Date(log.scheduledTime).toLocaleDateString([], { month: 'short', day: 'numeric' })} {log.reminder.reminderTime}</span>
+                                        <Badge variant={log.status === 'TAKEN' ? 'success' : log.status === 'MISSED' ? 'destructive' : 'warning'} className="px-1.5 py-0 text-[0.65rem]">
                                           {log.status}
-                                        </span>
+                                        </Badge>
                                       </div>
                                       {log.notes && (
-                                        <p style={{ fontSize: '0.7rem', color: '#fca5a5', fontStyle: 'italic', margin: '0' }}>
+                                        <p className="text-xs italic text-muted-foreground">
                                           Feedback: "{log.notes}"
                                         </p>
                                       )}
@@ -3127,24 +3076,24 @@ function App() {
                             </div>
 
                             <div>
-                              <h4 style={{ color: '#a5b4fc', fontSize: '0.9rem', marginBottom: '8px' }}>Symptom Check History</h4>
+                              <h4 className="mb-2 text-sm font-semibold text-indigo-600">Symptom Check History</h4>
                               {patientTimeline.symptomChecks.length === 0 ? (
-                                <p className="text-muted" style={{ fontSize: '0.8rem' }}>No symptom checks logged in last 14 days.</p>
+                                <p className="text-sm text-muted-foreground">No symptom checks logged in last 14 days.</p>
                               ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto', background: 'rgba(15,23,42,0.3)', padding: '8px', borderRadius: '8px' }}>
+                                <div className="flex max-h-[200px] flex-col gap-1.5 overflow-y-auto rounded-lg bg-muted/40 p-2">
                                   {patientTimeline.symptomChecks.map(check => (
-                                    <div key={check.id} style={{ display: 'flex', flexDirection: 'column', padding: '6px', borderBottom: '1px solid rgba(255,255,255,0.03)', fontSize: '0.75rem', gap: '4px' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: 'var(--text-muted)' }}>{new Date(check.checkedAt).toLocaleDateString()}</span>
-                                        <span style={{ color: check.urgencyLevel === 'RED' ? 'var(--danger)' : check.urgencyLevel === 'YELLOW' ? 'var(--warning)' : 'var(--success)' }}>
+                                    <div key={check.id} className="flex flex-col gap-1 border-b p-1.5 text-xs last:border-b-0">
+                                      <div className="flex justify-between">
+                                        <span className="text-muted-foreground">{new Date(check.checkedAt).toLocaleDateString()}</span>
+                                        <span className={check.urgencyLevel === 'RED' ? 'text-destructive' : check.urgencyLevel === 'YELLOW' ? 'text-amber-600' : 'text-emerald-600'}>
                                           {check.urgencyLevel}
                                         </span>
                                       </div>
-                                      <p style={{ color: '#fff', margin: '0', fontSize: '0.75rem' }}>{check.recommendation.split('[')[0]}</p>
+                                      <p className="text-xs">{check.recommendation.split('[')[0]}</p>
                                       {check.details && check.details.length > 0 && (
-                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '2px' }}>
+                                        <div className="mt-0.5 flex flex-wrap gap-1">
                                           {check.details.map((d, idx) => (
-                                            <span key={idx} style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.08)', padding: '1px 6px', borderRadius: '3px', fontSize: '0.65rem' }}>
+                                            <span key={idx} className="rounded border bg-background px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
                                               🩺 {d.symptom.name}
                                             </span>
                                           ))}
@@ -3156,92 +3105,99 @@ function App() {
                               )}
                             </div>
                           </div>
-                        </div>
+                          </CardContent>
+                        </Card>
                       )}
 
                       {/* Medical Record sections */}
-                      <div className="grid grid-cols-2">
-                        
-                        {/* Active Conditions and Allergies */}
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Clipboard /> Chronic Conditions & Allergies
-                          </h3>
+                      <div className="grid grid-cols-2 gap-6">
 
+                        {/* Active Conditions and Allergies */}
+                        <Card className="text-left">
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-base">
+                              <Clipboard size={18} /> Chronic Conditions & Allergies
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
                           {/* Conditions list */}
-                          <h4 style={{ color: '#a5b4fc', fontSize: '0.9rem', marginBottom: '8px' }}>Active Chronic Conditions</h4>
+                          <h4 className="mb-2 text-sm font-semibold text-indigo-600">Active Chronic Conditions</h4>
                           {searchedPatientRecord.chronicConditions.length === 0 ? (
-                            <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '16px' }}>No registered chronic conditions.</p>
+                            <p className="mb-4 text-sm text-muted-foreground">No registered chronic conditions.</p>
                           ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                            <div className="mb-4 flex flex-col gap-2">
                               {searchedPatientRecord.chronicConditions.map(c => (
-                                <div key={c.id} style={{ background: 'rgba(79, 70, 229, 0.05)', border: '1px solid rgba(79, 70, 229, 0.1)', padding: '10px', borderRadius: '8px' }}>
-                                  <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{c.conditionName}</p>
-                                  <p className="text-muted" style={{ fontSize: '0.75rem' }}>Diagnosed: {c.diagnosedDate} | {c.notes}</p>
+                                <div key={c.id} className="rounded-lg border border-primary/10 bg-primary/5 p-2.5">
+                                  <p className="text-sm font-semibold">{c.conditionName}</p>
+                                  <p className="text-xs text-muted-foreground">Diagnosed: {c.diagnosedDate} | {c.notes}</p>
                                 </div>
                               ))}
                             </div>
                           )}
 
                           {/* Allergies list */}
-                          <h4 style={{ color: '#fca5a5', fontSize: '0.9rem', marginBottom: '8px' }}>Allergies</h4>
+                          <h4 className="mb-2 text-sm font-semibold text-destructive">Allergies</h4>
                           {searchedPatientRecord.allergies.length === 0 ? (
-                            <p className="text-muted" style={{ fontSize: '0.85rem' }}>No registered drug or food allergies.</p>
+                            <p className="text-sm text-muted-foreground">No registered drug or food allergies.</p>
                           ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div className="flex flex-col gap-2">
                               {searchedPatientRecord.allergies.map(a => (
-                                <div key={a.id} style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.1)', padding: '10px', borderRadius: '8px' }}>
-                                  <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{a.allergen}</p>
-                                  <p className="text-muted" style={{ fontSize: '0.75rem' }}>Severity: {a.severity} | {a.notes}</p>
+                                <div key={a.id} className="rounded-lg border border-destructive/10 bg-destructive/5 p-2.5">
+                                  <p className="text-sm font-semibold">{a.allergen}</p>
+                                  <p className="text-xs text-muted-foreground">Severity: {a.severity} | {a.notes}</p>
                                 </div>
                               ))}
                             </div>
                           )}
-                        </div>
+                          </CardContent>
+                        </Card>
 
                         {/* Prescriptions and Adherence */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        <div className="flex flex-col gap-5">
                           {/* Active Prescriptions */}
-                          <div className="glass-card" style={{ textAlign: 'left' }}>
-                            <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <Pill /> Active Prescriptions
-                            </h3>
+                          <Card className="text-left">
+                            <CardHeader>
+                              <CardTitle className="flex items-center gap-2 text-base">
+                                <Pill size={18} /> Active Prescriptions
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
                             {searchedPatientRecord.prescriptions.length === 0 ? (
-                              <p className="text-muted" style={{ fontSize: '0.85rem' }}>No prescriptions active.</p>
+                              <p className="text-sm text-muted-foreground">No prescriptions active.</p>
                             ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <div className="flex flex-col gap-2">
                                 {searchedPatientRecord.prescriptions.map(p => {
                                   const dispenseHistory = (searchedPatientRecord.dispenses || []).filter(d => d.prescription?.id === p.id);
                                   return (
-                                  <div key={p.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', flexWrap: 'wrap' }}>
+                                  <div key={p.id} className="rounded-lg border bg-muted/40 p-2.5">
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
                                       <div>
-                                        <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{p.medication}</p>
-                                        <p className="text-muted" style={{ fontSize: '0.75rem' }}>Dosage: {p.dosage} | Frequency: {p.frequency} | Duration: {p.durationDays} days</p>
-                                        <p className="text-muted" style={{ fontSize: '0.7rem', marginTop: '2px' }}>Notes: {p.notes}</p>
+                                        <p className="text-sm font-semibold">{p.medication}</p>
+                                        <p className="text-xs text-muted-foreground">Dosage: {p.dosage} | Frequency: {p.frequency} | Duration: {p.durationDays} days</p>
+                                        <p className="mt-0.5 text-xs text-muted-foreground">Notes: {p.notes}</p>
                                       </div>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      <div className="flex items-center gap-2">
                                         {dispenseHistory.length > 0 && (
-                                          <span className="badge badge-green">Dispensed x{dispenseHistory.length}</span>
+                                          <Badge variant="success">Dispensed x{dispenseHistory.length}</Badge>
                                         )}
                                         {p.active && (
-                                          <button
-                                            className="btn btn-secondary"
+                                          <Button
+                                            variant="secondary"
+                                            size="sm"
                                             onClick={() => { setDispenseFormFor(dispenseFormFor === p.id ? null : p.id); setDispenseForm({ quantityDispensed: '', daysSupply: '', pharmacyNotes: '' }); }}
-                                            style={{ padding: '6px 10px', fontSize: '0.75rem' }}
                                           >
                                             {dispenseFormFor === p.id ? 'Cancel' : 'Dispense'}
-                                          </button>
+                                          </Button>
                                         )}
                                       </div>
                                     </div>
 
                                     {dispenseFormFor === p.id && (
-                                      <form onSubmit={(e) => handleDispense(e, p.id)} style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
-                                          <div>
-                                            <label>Quantity Dispensed</label>
-                                            <input
+                                      <form onSubmit={(e) => handleDispense(e, p.id)} className="mt-3 border-t pt-3">
+                                        <div className="mb-3 grid grid-cols-[2fr_1fr] gap-2.5">
+                                          <div className="space-y-1.5">
+                                            <Label>Quantity Dispensed</Label>
+                                            <Input
                                               type="text"
                                               value={dispenseForm.quantityDispensed}
                                               onChange={(e) => setDispenseForm({...dispenseForm, quantityDispensed: e.target.value})}
@@ -3249,9 +3205,9 @@ function App() {
                                               required
                                             />
                                           </div>
-                                          <div>
-                                            <label>Days Supply</label>
-                                            <input
+                                          <div className="space-y-1.5">
+                                            <Label>Days Supply</Label>
+                                            <Input
                                               type="number"
                                               value={dispenseForm.daysSupply}
                                               onChange={(e) => setDispenseForm({...dispenseForm, daysSupply: e.target.value})}
@@ -3259,29 +3215,29 @@ function App() {
                                             />
                                           </div>
                                         </div>
-                                        <div className="form-group">
-                                          <label>Pharmacy Notes</label>
-                                          <textarea
+                                        <div className="mb-3 space-y-1.5">
+                                          <Label>Pharmacy Notes</Label>
+                                          <Textarea
                                             value={dispenseForm.pharmacyNotes}
                                             onChange={(e) => setDispenseForm({...dispenseForm, pharmacyNotes: e.target.value})}
                                             placeholder="Counselling given, generic substitution, stock notes..."
                                             rows={2}
                                           />
                                         </div>
-                                        <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+                                        <Button type="submit" className="w-full" disabled={loading}>
                                           {loading ? 'Recording...' : 'Confirm Dispensed'}
-                                        </button>
+                                        </Button>
                                       </form>
                                     )}
 
                                     {dispenseHistory.length > 0 && (
-                                      <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                      <div className="mt-2.5 flex flex-col gap-1.5 border-t pt-2.5">
                                         {dispenseHistory.map(d => (
-                                          <div key={d.id} style={{ fontSize: '0.75rem' }}>
-                                            <p className="text-muted">
+                                          <div key={d.id} className="text-xs">
+                                            <p className="text-muted-foreground">
                                               {d.quantityDispensed}{d.daysSupply ? ` (${d.daysSupply} days)` : ''} — {new Date(d.dispensedAt).toLocaleString()} by {d.dispensedBy?.firstName} {d.dispensedBy?.lastName} at {d.facility?.name}
                                             </p>
-                                            {d.pharmacyNotes && <p className="text-muted" style={{ fontStyle: 'italic' }}>{d.pharmacyNotes}</p>}
+                                            {d.pharmacyNotes && <p className="italic text-muted-foreground">{d.pharmacyNotes}</p>}
                                           </div>
                                         ))}
                                       </div>
@@ -3291,123 +3247,134 @@ function App() {
                                 })}
                               </div>
                             )}
-                          </div>
+                            </CardContent>
+                          </Card>
 
                           {/* Medication Adherence Logs (Doctor view) */}
                           {patientAdherence && patientAdherence.stats.totalDoses > 0 && (
-                            <div className="glass-card" style={{ textAlign: 'left' }}>
-                              <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <AlertCircle style={{ color: '#f59e0b' }} /> Patient Adherence History
-                              </h3>
-                              
-                              <div style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '16px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span style={{ fontSize: '0.85rem', color: '#fff' }}>Adherence Compliance Score</span>
-                                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: patientAdherence.stats.adherenceScore >= 80 ? 'var(--success)' : 'var(--warning)' }}>
+                            <Card className="text-left">
+                              <CardHeader>
+                                <CardTitle className="flex items-center gap-2 text-base">
+                                  <AlertCircle className="text-amber-600" size={18} /> Patient Adherence History
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                              <div className="mb-4 rounded-lg border bg-muted/40 p-3">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm">Adherence Compliance Score</span>
+                                  <span className={cn('text-base font-bold', patientAdherence.stats.adherenceScore >= 80 ? 'text-emerald-600' : 'text-amber-600')}>
                                     {patientAdherence.stats.adherenceScore}%
                                   </span>
                                 </div>
-                                <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+                                <p className="mt-1 text-xs text-muted-foreground">
                                   Taken {patientAdherence.stats.takenDoses} of {patientAdherence.stats.totalDoses} doses this week.
                                 </p>
                               </div>
 
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+                              <div className="flex max-h-[200px] flex-col gap-2 overflow-y-auto">
                                 {patientAdherence.adherenceLogs.map((log) => {
                                   const timeString = new Date(log.scheduledTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
                                   return (
-                                    <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.3)', border: '1px solid rgba(255,255,255,0.03)' }}>
+                                    <div key={log.id} className="flex items-center justify-between rounded-lg border bg-muted/30 p-2.5">
                                       <div>
-                                        <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.8rem' }}>{log.reminder.prescription.medication}</p>
-                                        <p className="text-muted" style={{ fontSize: '0.7rem' }}>Scheduled: {timeString}</p>
+                                        <p className="text-sm font-semibold">{log.reminder.prescription.medication}</p>
+                                        <p className="text-xs text-muted-foreground">Scheduled: {timeString}</p>
                                         {log.notes && (
-                                          <p style={{ fontSize: '0.75rem', color: '#fca5a5', marginTop: '2px', fontStyle: 'italic' }}>
+                                          <p className="mt-0.5 text-xs italic text-muted-foreground">
                                             Patient Feedback: "{log.notes}"
                                           </p>
                                         )}
                                       </div>
-                                      <span className={`badge ${log.status === 'TAKEN' ? 'badge-green' : log.status === 'MISSED' ? 'badge-red' : 'badge-yellow'}`}>
+                                      <Badge variant={log.status === 'TAKEN' ? 'success' : log.status === 'MISSED' ? 'destructive' : 'warning'}>
                                         {log.status}
-                                      </span>
+                                      </Badge>
                                     </div>
                                   );
                                 })}
                               </div>
-                            </div>
+                              </CardContent>
+                            </Card>
                           )}
                         </div>
                       </div>
 
                       {/* Visit History */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Clipboard size={18} /> Visit History
-                        </h3>
+                      <Card className="text-left">
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <Clipboard size={18} /> Visit History
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
                         {(!searchedPatientRecord.visits || searchedPatientRecord.visits.length === 0) ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No visits recorded.</p>
+                          <p className="text-sm text-muted-foreground">No visits recorded.</p>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div className="flex flex-col gap-2.5">
                             {searchedPatientRecord.visits.map(v => (
-                              <div key={v.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                              <div key={v.id} className="rounded-lg border bg-muted/40 p-3">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
                                   <div>
-                                    <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>{v.reason}</p>
-                                    <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                    <p className="text-sm font-semibold">{v.reason}</p>
+                                    <p className="text-sm text-muted-foreground">
                                       {new Date(v.visitDate).toLocaleString()} | {v.facility?.name}
                                     </p>
                                   </div>
-                                  <span className={`badge ${v.status === 'ACTIVE' ? 'badge-green' : v.status === 'REFERRED' ? 'badge-yellow' : 'badge-red'}`}>
+                                  <Badge variant={v.status === 'ACTIVE' ? 'success' : v.status === 'REFERRED' ? 'warning' : 'destructive'}>
                                     {v.status === 'ACTIVE' ? 'Active' : v.status === 'REFERRED' ? 'Referred' : 'Discharged'}
-                                  </span>
+                                  </Badge>
                                 </div>
-                                {v.notes && <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '6px' }}>{v.notes}</p>}
+                                {v.notes && <p className="mt-1.5 text-sm text-muted-foreground">{v.notes}</p>}
                                 {v.status === 'DISCHARGED' && (
-                                  <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                                    <p style={{ fontSize: '0.8rem', color: '#a7f3d0' }}>
+                                  <div className="mt-2 border-t pt-2">
+                                    <p className="text-sm text-emerald-600">
                                       Discharged {v.dischargeOutcome === 'HOME' ? 'home' : v.dischargeOutcome?.toLowerCase()} by {v.dischargedBy?.firstName} {v.dischargedBy?.lastName} on {new Date(v.dischargedAt).toLocaleDateString()}
                                       {v.followUpDate && ` | Follow-up: ${v.followUpDate}`}
                                     </p>
-                                    {v.dischargeSummary && <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>{v.dischargeSummary}</p>}
+                                    {v.dischargeSummary && <p className="mt-0.5 text-sm text-muted-foreground">{v.dischargeSummary}</p>}
                                   </div>
                                 )}
                               </div>
                             ))}
                           </div>
                         )}
-                      </div>
+                        </CardContent>
+                      </Card>
 
                       {/* Referral History */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <FileText size={18} /> Referral History
-                        </h3>
+                      <Card className="text-left">
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <FileText size={18} /> Referral History
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
                         {(!searchedPatientRecord.referrals || searchedPatientRecord.referrals.length === 0) ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No referrals on file.</p>
+                          <p className="text-sm text-muted-foreground">No referrals on file.</p>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div className="flex flex-col gap-2.5">
                             {searchedPatientRecord.referrals.map(r => (
-                              <div key={r.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                              <div key={r.id} className="rounded-lg border bg-muted/40 p-3">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
                                   <div>
-                                    <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>
+                                    <p className="text-sm font-semibold">
                                       {r.fromFacility?.name} → {r.toFacility?.name}
                                     </p>
-                                    <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                    <p className="text-sm text-muted-foreground">
                                       {r.reason} | {new Date(r.referredAt).toLocaleString()} by {r.referredBy?.firstName} {r.referredBy?.lastName}
                                     </p>
                                   </div>
-                                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                    <span className={`badge ${r.urgency === 'EMERGENCY' ? 'badge-red' : r.urgency === 'URGENT' ? 'badge-yellow' : 'badge-green'}`}>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    <Badge variant={r.urgency === 'EMERGENCY' ? 'destructive' : r.urgency === 'URGENT' ? 'warning' : 'success'}>
                                       {r.urgency}
-                                    </span>
-                                    <span className={`badge ${r.status === 'ACCEPTED' || r.status === 'COMPLETED' ? 'badge-green' : r.status === 'DECLINED' || r.status === 'CANCELLED' ? 'badge-red' : 'badge-yellow'}`}>
+                                    </Badge>
+                                    <Badge variant={r.status === 'ACCEPTED' || r.status === 'COMPLETED' ? 'success' : r.status === 'DECLINED' || r.status === 'CANCELLED' ? 'destructive' : 'warning'}>
                                       {r.status}
-                                    </span>
+                                    </Badge>
                                   </div>
                                 </div>
-                                {r.clinicalSummary && <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '6px' }}>{r.clinicalSummary}</p>}
+                                {r.clinicalSummary && <p className="mt-1.5 text-sm text-muted-foreground">{r.clinicalSummary}</p>}
                                 {r.responseNotes && (
-                                  <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '6px', fontStyle: 'italic' }}>
+                                  <p className="mt-1.5 text-sm italic text-muted-foreground">
                                     Response ({r.respondedBy?.firstName} {r.respondedBy?.lastName}): {r.responseNotes}
                                   </p>
                                 )}
@@ -3415,72 +3382,84 @@ function App() {
                             ))}
                           </div>
                         )}
-                      </div>
+                        </CardContent>
+                      </Card>
 
                       {/* Diagnostic Logs */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <FileText /> Diagnostic Logs & Clinical Visits
-                        </h3>
+                      <Card className="text-left">
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <FileText size={18} /> Diagnostic Logs & Clinical Visits
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
                         {searchedPatientRecord.diagnoses.length === 0 ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No diagnoses recorded.</p>
+                          <p className="text-sm text-muted-foreground">No diagnoses recorded.</p>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div className="flex flex-col gap-2.5">
                             {searchedPatientRecord.diagnoses.map(d => (
-                              <div key={d.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>
-                                  {d.diagnosis} {d.icd10Code && <span style={{ color: '#38bdf8', fontSize: '0.75rem', fontWeight: 'normal', background: 'rgba(56, 189, 248, 0.1)', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' }}>ICD-10: {d.icd10Code}</span>}
+                              <div key={d.id} className="rounded-lg border bg-muted/40 p-3">
+                                <p className="text-sm font-semibold">
+                                  {d.diagnosis} {d.icd10Code && <span className="ml-1.5 rounded bg-sky-500/10 px-1.5 py-0.5 text-xs font-normal text-sky-600">ICD-10: {d.icd10Code}</span>}
                                 </p>
-                                <p className="text-muted" style={{ fontSize: '0.8rem' }}>Diagnosed: {new Date(d.diagnosedAt).toLocaleString()} | Notes: {d.notes}</p>
+                                <p className="text-sm text-muted-foreground">Diagnosed: {new Date(d.diagnosedAt).toLocaleString()} | Notes: {d.notes}</p>
                               </div>
                             ))}
                           </div>
                         )}
-                      </div>
+                        </CardContent>
+                      </Card>
 
                       {/* Laboratory Results */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <FileSpreadsheet size={18} /> Laboratory Results
-                        </h3>
+                      <Card className="text-left">
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <FileSpreadsheet size={18} /> Laboratory Results
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
                         {(!searchedPatientRecord.labResults || searchedPatientRecord.labResults.length === 0) ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No lab results recorded.</p>
+                          <p className="text-sm text-muted-foreground">No lab results recorded.</p>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div className="flex flex-col gap-2.5">
                             {searchedPatientRecord.labResults.map(lr => (
-                              <div key={lr.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '8px' }}>
-                                  <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>{lr.testName}</p>
-                                  <p style={{ color: '#7dd3fc', fontSize: '0.95rem', fontWeight: 700 }}>
+                              <div key={lr.id} className="rounded-lg border bg-muted/40 p-3">
+                                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                  <p className="text-sm font-semibold">{lr.testName}</p>
+                                  <p className="text-base font-bold text-sky-600">
                                     {lr.result} {lr.unit}
                                   </p>
                                 </div>
-                                <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>
+                                <p className="mt-0.5 text-sm text-muted-foreground">
                                   {lr.normalRange && `Normal range: ${lr.normalRange} | `}
                                   Tested: {new Date(lr.testDate).toLocaleString()}
                                 </p>
-                                {lr.notes && <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>Notes: {lr.notes}</p>}
+                                {lr.notes && <p className="mt-0.5 text-sm text-muted-foreground">Notes: {lr.notes}</p>}
                               </div>
                             ))}
                           </div>
                         )}
-                      </div>
+                        </CardContent>
+                      </Card>
 
                       {/* Vitals History */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Heart size={18} /> Vitals History
-                        </h3>
+                      <Card className="text-left">
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <Heart size={18} /> Vitals History
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
                         {(!searchedPatientRecord.vitals || searchedPatientRecord.vitals.length === 0) ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No vitals recorded. Vitals are captured at check-in from the Queue tab.</p>
+                          <p className="text-sm text-muted-foreground">No vitals recorded. Vitals are captured at check-in from the Queue tab.</p>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div className="flex flex-col gap-2">
                             {searchedPatientRecord.vitals.map(v => (
-                              <div key={v.id} style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '6px' }}>
+                              <div key={v.id} className="rounded-lg border bg-muted/40 p-3">
+                                <p className="mb-1.5 text-xs text-muted-foreground">
                                   {new Date(v.recordedAt).toLocaleString()} — recorded by {v.recordedBy?.firstName} {v.recordedBy?.lastName}
                                 </p>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', fontSize: '0.85rem', color: '#fff' }}>
+                                <div className="flex flex-wrap gap-3 text-sm">
                                   {(v.systolicBp || v.diastolicBp) && <span>🩸 BP: {v.systolicBp}/{v.diastolicBp}</span>}
                                   {v.temperatureC && <span>🌡️ Temp: {v.temperatureC}°C</span>}
                                   {v.pulseBpm && <span>💓 Pulse: {v.pulseBpm} bpm</span>}
@@ -3491,52 +3470,51 @@ function App() {
                                   {v.bmi && <span>BMI: {v.bmi}</span>}
                                   {v.glucoseMmol && <span>🍬 Glucose: {v.glucoseMmol} mmol/L</span>}
                                 </div>
-                                {v.notes && <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '6px' }}>Notes: {v.notes}</p>}
+                                {v.notes && <p className="mt-1.5 text-sm text-muted-foreground">Notes: {v.notes}</p>}
                               </div>
                             ))}
                           </div>
                         )}
-                      </div>
+                        </CardContent>
+                      </Card>
 
                       {/* Immunization Schedule (EPI) */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                            <Shield /> Immunization Schedule (EPI)
-                          </h3>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            {(!searchedPatientRecord.immunizations || searchedPatientRecord.immunizations.length === 0) && (
-                              <button
-                                className="btn btn-secondary"
-                                onClick={() => handleGenerateImmunizationSchedule(searchedPatientRecord.patient.id)}
-                                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                                disabled={loading}
-                              >
-                                Generate EPI Schedule
-                              </button>
-                            )}
-                            <button
-                              className="btn btn-secondary"
-                              onClick={() => setShowCatchUpForm(!showCatchUpForm)}
-                              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                            >
-                              {showCatchUpForm ? 'Cancel' : '+ Add Catch-up Record'}
-                            </button>
+                      <Card className="text-left">
+                        <CardHeader>
+                          <div className="flex flex-wrap items-center justify-between gap-2.5">
+                            <CardTitle className="flex items-center gap-2 text-base">
+                              <Shield size={18} /> Immunization Schedule (EPI)
+                            </CardTitle>
+                            <div className="flex gap-2">
+                              {(!searchedPatientRecord.immunizations || searchedPatientRecord.immunizations.length === 0) && (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => handleGenerateImmunizationSchedule(searchedPatientRecord.patient.id)}
+                                  disabled={loading}
+                                >
+                                  Generate EPI Schedule
+                                </Button>
+                              )}
+                              <Button variant="secondary" size="sm" onClick={() => setShowCatchUpForm(!showCatchUpForm)}>
+                                {showCatchUpForm ? 'Cancel' : '+ Add Catch-up Record'}
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-
+                        </CardHeader>
+                        <CardContent>
                         {showCatchUpForm && (
                           <form
                             onSubmit={(e) => handleAddCatchUpImmunization(e, searchedPatientRecord.patient.id)}
-                            style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '16px', marginBottom: '16px' }}
+                            className="mb-4 rounded-lg border bg-muted/40 p-4"
                           >
-                            <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '12px' }}>
+                            <p className="mb-3 text-sm text-muted-foreground">
                               Log a vaccine given outside the standard EPI schedule — a dose administered at another facility before this file existed, a travel vaccine, or a catch-up dose.
                             </p>
-                            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
-                              <div>
-                                <label>Vaccine Name</label>
-                                <input
+                            <div className="mb-3 grid grid-cols-[2fr_1fr] gap-2.5">
+                              <div className="space-y-1.5">
+                                <Label>Vaccine Name</Label>
+                                <Input
                                   type="text"
                                   value={catchUpForm.vaccineName}
                                   onChange={(e) => setCatchUpForm({...catchUpForm, vaccineName: e.target.value})}
@@ -3544,9 +3522,9 @@ function App() {
                                   required
                                 />
                               </div>
-                              <div>
-                                <label>Dose Number</label>
-                                <input
+                              <div className="space-y-1.5">
+                                <Label>Dose Number</Label>
+                                <Input
                                   type="number"
                                   min="0"
                                   value={catchUpForm.doseNumber}
@@ -3555,664 +3533,657 @@ function App() {
                                 />
                               </div>
                             </div>
-                            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                              <div>
-                                <label>Scheduled Date</label>
-                                <input
+                            <div className="mb-3 grid grid-cols-2 gap-2.5">
+                              <div className="space-y-1.5">
+                                <Label>Scheduled Date</Label>
+                                <Input
                                   type="date"
                                   value={catchUpForm.scheduledDate}
                                   onChange={(e) => setCatchUpForm({...catchUpForm, scheduledDate: e.target.value})}
                                 />
                               </div>
-                              <div>
-                                <label>Administered Date (leave blank if still due)</label>
-                                <input
+                              <div className="space-y-1.5">
+                                <Label>Administered Date (leave blank if still due)</Label>
+                                <Input
                                   type="date"
                                   value={catchUpForm.administeredDate}
                                   onChange={(e) => setCatchUpForm({...catchUpForm, administeredDate: e.target.value})}
                                 />
                               </div>
                             </div>
-                            <div className="form-group">
-                              <label>Notes</label>
-                              <textarea
+                            <div className="mb-3 space-y-1.5">
+                              <Label>Notes</Label>
+                              <Textarea
                                 value={catchUpForm.notes}
                                 onChange={(e) => setCatchUpForm({...catchUpForm, notes: e.target.value})}
                                 rows={2}
                                 placeholder="e.g. Given at Themba Hospital prior to this file being opened"
                               />
                             </div>
-                            <button type="submit" className="btn btn-primary" disabled={loading}>
+                            <Button type="submit" disabled={loading}>
                               {loading ? 'Saving...' : 'Save Record'}
-                            </button>
+                            </Button>
                           </form>
                         )}
 
                         {(!searchedPatientRecord.immunizations || searchedPatientRecord.immunizations.length === 0) ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No immunization schedule on file. Generate one to start tracking EPI doses for this patient.</p>
+                          <p className="text-sm text-muted-foreground">No immunization schedule on file. Generate one to start tracking EPI doses for this patient.</p>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <div className="flex flex-col gap-2">
                             {searchedPatientRecord.immunizations.map(dose => (
                               <div
                                 key={dose.id}
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  padding: '10px 12px',
-                                  borderRadius: '8px',
-                                  background: dose.status === 'GIVEN' ? 'rgba(16, 185, 129, 0.06)' : dose.status === 'MISSED' ? 'rgba(239, 68, 68, 0.06)' : 'rgba(15, 23, 42, 0.4)',
-                                  border: '1px solid rgba(255,255,255,0.05)'
-                                }}
+                                className={cn(
+                                  'flex items-center justify-between rounded-lg border p-2.5',
+                                  dose.status === 'GIVEN' ? 'bg-emerald-500/5' : dose.status === 'MISSED' ? 'bg-destructive/5' : 'bg-muted/40'
+                                )}
                               >
                                 <div>
-                                  <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
+                                  <p className="text-sm font-semibold">
                                     {dose.vaccineName} {dose.doseNumber != null && `(Dose ${dose.doseNumber})`}
                                   </p>
-                                  <p className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                  <p className="text-xs text-muted-foreground">
                                     Scheduled: {dose.scheduledDate}{dose.administeredDate && ` | Given: ${dose.administeredDate}`}
                                   </p>
                                 </div>
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <div className="flex items-center gap-2">
                                   {dose.status === 'DUE' ? (
                                     <>
-                                      <button className="btn btn-success" onClick={() => handleAdministerDose(dose.id)} style={{ padding: '6px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }} disabled={loading}>
+                                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => handleAdministerDose(dose.id)} disabled={loading}>
                                         <CheckCircle size={14} /> Given
-                                      </button>
-                                      <button className="btn btn-danger" onClick={() => handleMissDose(dose.id)} style={{ padding: '6px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }} disabled={loading}>
+                                      </Button>
+                                      <Button size="sm" variant="destructive" onClick={() => handleMissDose(dose.id)} disabled={loading}>
                                         <XCircle size={14} /> Missed
-                                      </button>
+                                      </Button>
                                     </>
                                   ) : (
-                                    <span className={`badge ${dose.status === 'GIVEN' ? 'badge-green' : 'badge-red'}`}>{dose.status}</span>
+                                    <Badge variant={dose.status === 'GIVEN' ? 'success' : 'destructive'}>{dose.status}</Badge>
                                   )}
                                 </div>
                               </div>
                             ))}
                           </div>
                         )}
-                      </div>
+                        </CardContent>
+                      </Card>
 
                       {/* Clinical Actions Form Panels */}
-                      <div className="grid grid-cols-3" style={{ gap: '20px' }}>
-                        
+                      <div className="grid grid-cols-3 gap-5">
+
                         {/* Add Diagnosis Form */}
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Add Clinical Diagnosis</h3>
-                          <form onSubmit={handleAddDiagnosis}>
-                            <div className="form-group">
-                              <label>Condition / Disease Name</label>
-                              <input 
-                                type="text" 
-                                value={addDiagnosisForm.conditionName} 
-                                onChange={(e) => setAddDiagnosisForm({...addDiagnosisForm, conditionName: e.target.value})} 
-                                placeholder="e.g. Influenza, Gastritis"
-                                required 
-                              />
-                            </div>
-                            <div className="form-group">
-                              <label>Clinical Notes</label>
-                              <textarea 
-                                value={addDiagnosisForm.notes} 
-                                onChange={(e) => setAddDiagnosisForm({...addDiagnosisForm, notes: e.target.value})} 
-                                placeholder="Patient reports acute onset..."
-                                rows={3}
-                              />
-                            </div>
-                            <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
-                              Save Diagnosis
-                            </button>
-                          </form>
-                        </div>
+                        <Card className="text-left">
+                          <CardHeader>
+                            <CardTitle className="text-base">Add Clinical Diagnosis</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <form onSubmit={handleAddDiagnosis}>
+                              <div className="mb-4 space-y-1.5">
+                                <Label>Condition / Disease Name</Label>
+                                <Input
+                                  type="text"
+                                  value={addDiagnosisForm.conditionName}
+                                  onChange={(e) => setAddDiagnosisForm({...addDiagnosisForm, conditionName: e.target.value})}
+                                  placeholder="e.g. Influenza, Gastritis"
+                                  required
+                                />
+                              </div>
+                              <div className="mb-4 space-y-1.5">
+                                <Label>Clinical Notes</Label>
+                                <Textarea
+                                  value={addDiagnosisForm.notes}
+                                  onChange={(e) => setAddDiagnosisForm({...addDiagnosisForm, notes: e.target.value})}
+                                  placeholder="Patient reports acute onset..."
+                                  rows={3}
+                                />
+                              </div>
+                              <Button type="submit" variant="secondary" className="w-full">
+                                Save Diagnosis
+                              </Button>
+                            </form>
+                          </CardContent>
+                        </Card>
 
                         {/* Add Prescription Form */}
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Issue Prescription</h3>
-                          <form onSubmit={handleAddPrescription}>
-                            <div className="form-group">
-                              <label>Medication Name</label>
-                              <input 
-                                type="text" 
-                                value={addPrescriptionForm.medicationName} 
-                                onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, medicationName: e.target.value})} 
-                                placeholder="e.g. Paracetamol 500mg, Amoxicillin 250mg"
-                                required 
-                              />
-                            </div>
-                            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                              <div>
-                                  <label>Dosage</label>
-                                  <input 
-                                    type="text" 
-                                    value={addPrescriptionForm.dosage} 
-                                    onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, dosage: e.target.value})} 
-                                    placeholder="e.g. 1 Tablet"
-                                    required 
-                                  />
+                        <Card className="text-left">
+                          <CardHeader>
+                            <CardTitle className="text-base">Issue Prescription</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <form onSubmit={handleAddPrescription}>
+                              <div className="mb-4 space-y-1.5">
+                                <Label>Medication Name</Label>
+                                <Input
+                                  type="text"
+                                  value={addPrescriptionForm.medicationName}
+                                  onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, medicationName: e.target.value})}
+                                  placeholder="e.g. Paracetamol 500mg, Amoxicillin 250mg"
+                                  required
+                                />
                               </div>
-                              <div>
-                                  <label>Frequency</label>
-                                  <select 
-                                    value={addPrescriptionForm.frequency} 
-                                    onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, frequency: e.target.value})}
-                                    required
-                                  >
-                                    <option value="Once daily">Once daily</option>
-                                    <option value="Twice daily">Twice daily</option>
-                                    <option value="Three times daily">Three times daily</option>
-                                    <option value="With meals">With meals</option>
-                                  </select>
+                              <div className="mb-4 grid grid-cols-2 gap-2.5">
+                                <div className="space-y-1.5">
+                                    <Label>Dosage</Label>
+                                    <Input
+                                      type="text"
+                                      value={addPrescriptionForm.dosage}
+                                      onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, dosage: e.target.value})}
+                                      placeholder="e.g. 1 Tablet"
+                                      required
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label>Frequency</Label>
+                                    <Select value={addPrescriptionForm.frequency} onValueChange={(v) => setAddPrescriptionForm({...addPrescriptionForm, frequency: v})} required>
+                                      <SelectTrigger><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="Once daily">Once daily</SelectItem>
+                                        <SelectItem value="Twice daily">Twice daily</SelectItem>
+                                        <SelectItem value="Three times daily">Three times daily</SelectItem>
+                                        <SelectItem value="With meals">With meals</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                </div>
                               </div>
-                            </div>
-                            <div className="form-group">
-                              <label>Duration (Days)</label>
-                              <input 
-                                type="number" 
-                                value={addPrescriptionForm.durationDays} 
-                                onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, durationDays: parseInt(e.target.value) || 7})} 
-                                required 
-                              />
-                            </div>
-                            <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
-                              Issue Prescription
-                            </button>
-                          </form>
-                        </div>
+                              <div className="mb-4 space-y-1.5">
+                                <Label>Duration (Days)</Label>
+                                <Input
+                                  type="number"
+                                  value={addPrescriptionForm.durationDays}
+                                  onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, durationDays: parseInt(e.target.value) || 7})}
+                                  required
+                                />
+                              </div>
+                              <Button type="submit" variant="secondary" className="w-full">
+                                Issue Prescription
+                              </Button>
+                            </form>
+                          </CardContent>
+                        </Card>
 
                         {/* Add Clinical Alert Form */}
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Add Clinical Alert / Warning</h3>
-                          <form onSubmit={handleAddAlert}>
-                            <div className="form-group">
-                              <label>Severity Level</label>
-                              <select 
-                                value={addAlertForm.severity} 
-                                onChange={(e) => setAddAlertForm({...addAlertForm, severity: e.target.value})}
-                                required
-                              >
-                                <option value="LOW">Low</option>
-                                <option value="MEDIUM">Medium</option>
-                                <option value="HIGH">High</option>
-                                <option value="CRITICAL">Critical</option>
-                              </select>
-                            </div>
-                            <div className="form-group">
-                              <label>Alert Message / Instruction</label>
-                              <textarea 
-                                value={addAlertForm.message} 
-                                onChange={(e) => setAddAlertForm({...addAlertForm, message: e.target.value})} 
-                                placeholder="Patient reports severe dizziness when taking Metformin..."
-                                rows={4}
-                                required
-                              />
-                            </div>
-                            <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
-                              Save Clinical Alert
-                            </button>
-                          </form>
-                        </div>
+                        <Card className="text-left">
+                          <CardHeader>
+                            <CardTitle className="text-base">Add Clinical Alert / Warning</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <form onSubmit={handleAddAlert}>
+                              <div className="mb-4 space-y-1.5">
+                                <Label>Severity Level</Label>
+                                <Select value={addAlertForm.severity} onValueChange={(v) => setAddAlertForm({...addAlertForm, severity: v})} required>
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="LOW">Low</SelectItem>
+                                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                                    <SelectItem value="HIGH">High</SelectItem>
+                                    <SelectItem value="CRITICAL">Critical</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="mb-4 space-y-1.5">
+                                <Label>Alert Message / Instruction</Label>
+                                <Textarea
+                                  value={addAlertForm.message}
+                                  onChange={(e) => setAddAlertForm({...addAlertForm, message: e.target.value})}
+                                  placeholder="Patient reports severe dizziness when taking Metformin..."
+                                  rows={4}
+                                  required
+                                />
+                              </div>
+                              <Button type="submit" variant="secondary" className="w-full">
+                                Save Clinical Alert
+                              </Button>
+                            </form>
+                          </CardContent>
+                        </Card>
                       </div>
 
                       {/* Add Lab Result Form */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <FileSpreadsheet size={18} /> Add Lab Result
-                        </h3>
-                        <form onSubmit={handleAddLabResult}>
-                          <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '10px' }}>
-                            <div>
-                              <label>Test Name</label>
-                              <input
+                      <Card className="text-left">
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <FileSpreadsheet size={18} /> Add Lab Result
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <form onSubmit={handleAddLabResult}>
+                            <div className="mb-4 grid grid-cols-[2fr_1fr_1fr] gap-2.5">
+                              <div className="space-y-1.5">
+                                <Label>Test Name</Label>
+                                <Input
+                                  type="text"
+                                  value={addLabResultForm.testName}
+                                  onChange={(e) => setAddLabResultForm({...addLabResultForm, testName: e.target.value})}
+                                  placeholder="e.g. HbA1c, Full Blood Count, GeneXpert MTB/RIF"
+                                  required
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Result</Label>
+                                <Input
+                                  type="text"
+                                  value={addLabResultForm.result}
+                                  onChange={(e) => setAddLabResultForm({...addLabResultForm, result: e.target.value})}
+                                  placeholder="e.g. 6.8"
+                                  required
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Unit</Label>
+                                <Input
+                                  type="text"
+                                  value={addLabResultForm.unit}
+                                  onChange={(e) => setAddLabResultForm({...addLabResultForm, unit: e.target.value})}
+                                  placeholder="e.g. %"
+                                />
+                              </div>
+                            </div>
+                            <div className="mb-4 space-y-1.5">
+                              <Label>Normal Range</Label>
+                              <Input
                                 type="text"
-                                value={addLabResultForm.testName}
-                                onChange={(e) => setAddLabResultForm({...addLabResultForm, testName: e.target.value})}
-                                placeholder="e.g. HbA1c, Full Blood Count, GeneXpert MTB/RIF"
-                                required
+                                value={addLabResultForm.normalRange}
+                                onChange={(e) => setAddLabResultForm({...addLabResultForm, normalRange: e.target.value})}
+                                placeholder="e.g. 4.0 - 5.6%"
                               />
                             </div>
-                            <div>
-                              <label>Result</label>
-                              <input
-                                type="text"
-                                value={addLabResultForm.result}
-                                onChange={(e) => setAddLabResultForm({...addLabResultForm, result: e.target.value})}
-                                placeholder="e.g. 6.8"
-                                required
+                            <div className="mb-4 space-y-1.5">
+                              <Label>Notes</Label>
+                              <Textarea
+                                value={addLabResultForm.notes}
+                                onChange={(e) => setAddLabResultForm({...addLabResultForm, notes: e.target.value})}
+                                placeholder="Any interpretation or follow-up notes..."
+                                rows={2}
                               />
                             </div>
-                            <div>
-                              <label>Unit</label>
-                              <input
-                                type="text"
-                                value={addLabResultForm.unit}
-                                onChange={(e) => setAddLabResultForm({...addLabResultForm, unit: e.target.value})}
-                                placeholder="e.g. %"
-                              />
-                            </div>
-                          </div>
-                          <div className="form-group">
-                            <label>Normal Range</label>
-                            <input
-                              type="text"
-                              value={addLabResultForm.normalRange}
-                              onChange={(e) => setAddLabResultForm({...addLabResultForm, normalRange: e.target.value})}
-                              placeholder="e.g. 4.0 - 5.6%"
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label>Notes</label>
-                            <textarea
-                              value={addLabResultForm.notes}
-                              onChange={(e) => setAddLabResultForm({...addLabResultForm, notes: e.target.value})}
-                              placeholder="Any interpretation or follow-up notes..."
-                              rows={2}
-                            />
-                          </div>
-                          <button type="submit" className="btn btn-secondary" style={{ width: '100%' }} disabled={loading}>
-                            {loading ? 'Saving...' : 'Save Lab Result'}
-                          </button>
-                        </form>
-                      </div>
+                            <Button type="submit" variant="secondary" className="w-full" disabled={loading}>
+                              {loading ? 'Saving...' : 'Save Lab Result'}
+                            </Button>
+                          </form>
+                        </CardContent>
+                      </Card>
                     </>
                   ) : (
-                    <div className="glass-card" style={{ padding: '80px 20px', textAlign: 'center' }}>
-                      <Clipboard size={64} className="text-muted" style={{ margin: '0 auto 16px', opacity: 0.3 }} />
-                      <h3 style={{ color: '#fff', marginBottom: '8px' }}>No Patient File Loaded</h3>
-                      <p className="text-muted">Use the lookup tool on the left to locate a patient by their national ID number or register a new patient.</p>
-                    </div>
+                    <Card className="py-20 text-center">
+                      <CardContent>
+                        <Clipboard size={64} className="mx-auto mb-4 text-muted-foreground opacity-30" />
+                        <h3 className="mb-2 font-semibold">No Patient File Loaded</h3>
+                        <p className="text-sm text-muted-foreground">Use the lookup tool on the left to locate a patient by their national ID number or register a new patient.</p>
+                      </CardContent>
+                    </Card>
                   )}
                 </div>
               </div>
             ) : activeTabStaff === 'queue' ? (
               /* Reception: Today's Queue */
-              <div style={{ maxWidth: '1000px', margin: '0 auto 40px', padding: '0 20px', textAlign: 'left' }}>
-                <div className="glass-card">
-                  <h2 style={{ fontSize: '1.5rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <Clock style={{ color: '#0ea5e9' }} /> Today's Queue
-                  </h2>
-                  <p className="text-muted" style={{ marginBottom: '24px', fontSize: '0.9rem' }}>
-                    Patients checked in today at your facility, ordered by urgency then arrival time. Check patients in from the "Locate & Manage Patients" tab after finding or registering them.
-                  </p>
-
+              <div className="mx-auto mb-10 max-w-3xl px-4 text-left">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <Clock className="text-sky-600" /> Today's Queue
+                    </CardTitle>
+                    <CardDescription>
+                      Patients checked in today at your facility, ordered by urgency then arrival time. Check patients in from the "Locate & Manage Patients" tab after finding or registering them.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
                   {todayQueue.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                      <Clock size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 12px', opacity: 0.4 }} />
-                      <h4 style={{ color: '#fff' }}>No one checked in yet</h4>
-                      <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '4px' }}>Check in a patient from their file to see them here.</p>
+                    <div className="py-14 text-center">
+                      <Clock size={48} className="mx-auto mb-3 text-muted-foreground opacity-40" />
+                      <h4 className="font-semibold">No one checked in yet</h4>
+                      <p className="mt-1 text-sm text-muted-foreground">Check in a patient from their file to see them here.</p>
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div className="flex flex-col gap-3.5">
                       {todayQueue.map(entry => (
                         <div
                           key={entry.id}
-                          style={{
-                            border: `1px solid ${entry.urgency === 'RED' ? 'rgba(239, 68, 68, 0.3)' : entry.urgency === 'YELLOW' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.08)'}`,
-                            background: entry.urgency === 'RED' ? 'rgba(239, 68, 68, 0.05)' : entry.urgency === 'YELLOW' ? 'rgba(245, 158, 11, 0.04)' : 'rgba(15, 23, 42, 0.4)',
-                            borderRadius: '14px',
-                            padding: '18px'
-                          }}
+                          className={cn(
+                            'rounded-xl border p-4.5',
+                            entry.urgency === 'RED' ? 'border-destructive/30 bg-destructive/5' : entry.urgency === 'YELLOW' ? 'border-amber-500/30 bg-amber-500/5' : 'bg-muted/40'
+                          )}
                         >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                          <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                              <span className="text-xs font-semibold text-muted-foreground">
                                 #{entry.queueNumber} · {entry.department.replace('_', ' ')}
                               </span>
-                              <h3 style={{ color: '#fff', fontSize: '1.1rem', marginTop: '4px' }}>
+                              <h3 className="mt-1 text-base font-semibold">
                                 {entry.patient.firstName} {entry.patient.lastName}
                               </h3>
-                              <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>
+                              <p className="mt-0.5 text-sm text-muted-foreground">
                                 {entry.patient.idNumber || entry.patient.uhid} | {entry.reason}
                               </p>
-                              <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+                              <p className="mt-1 text-xs text-muted-foreground">
                                 Checked in: {new Date(entry.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                 {entry.calledAt && ` | Called: ${new Date(entry.calledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
                               </p>
                             </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+                            <div className="flex flex-col items-end gap-2">
                               <select
                                 value={entry.urgency}
                                 onChange={(e) => handleUpdateQueueUrgency(entry.id, e.target.value)}
-                                style={{ padding: '4px 8px', fontSize: '0.8rem', width: 'auto' }}
+                                className="h-8 w-auto rounded-md border border-input bg-transparent px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                               >
                                 <option value="GREEN">🟢 Green</option>
                                 <option value="YELLOW">🟡 Yellow</option>
                                 <option value="RED">🔴 Red</option>
                               </select>
-                              <span className={`badge ${entry.status === 'IN_CONSULTATION' ? 'badge-yellow' : 'badge-green'}`}>
+                              <Badge variant={entry.status === 'IN_CONSULTATION' ? 'warning' : 'success'}>
                                 {entry.status === 'IN_CONSULTATION' ? 'In Consultation' : 'Waiting'}
-                              </span>
+                              </Badge>
                             </div>
                           </div>
 
-                          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '14px' }}>
-                            <button
-                              className="btn btn-secondary"
-                              onClick={() => setVitalsFormFor(vitalsFormFor === entry.id ? null : entry.id)}
-                              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                            >
+                          <div className="mt-3.5 flex flex-wrap gap-2 border-t pt-3.5">
+                            <Button variant="secondary" size="sm" onClick={() => setVitalsFormFor(vitalsFormFor === entry.id ? null : entry.id)}>
                               {vitalsFormFor === entry.id ? 'Cancel Vitals' : 'Record Vitals'}
-                            </button>
+                            </Button>
                             {entry.status === 'WAITING' && (
-                              <button
-                                className="btn btn-primary"
-                                onClick={() => handleCallIntoConsultation(entry.id)}
-                                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                              >
+                              <Button size="sm" onClick={() => handleCallIntoConsultation(entry.id)}>
                                 Call Into Consultation
-                              </button>
+                              </Button>
                             )}
-                            <button
-                              className="btn btn-success"
-                              onClick={() => handleCompleteQueueEntry(entry.id)}
-                              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                            >
+                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => handleCompleteQueueEntry(entry.id)}>
                               Mark Completed
-                            </button>
-                            <button
-                              className="btn btn-danger"
-                              onClick={() => handleCancelQueueEntry(entry.id)}
-                              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                            >
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleCancelQueueEntry(entry.id)}>
                               Cancel
-                            </button>
+                            </Button>
                           </div>
 
                           {vitalsFormFor === entry.id && (
                             <form
                               onSubmit={(e) => handleRecordVitals(e, entry.patient.id, entry.id)}
-                              style={{ marginTop: '14px', background: 'rgba(0,0,0,0.15)', borderRadius: '10px', padding: '16px' }}
+                              className="mt-3.5 rounded-lg bg-background p-4"
                             >
-                              <div className="grid grid-cols-3" style={{ gap: '10px' }}>
-                                <div className="form-group">
-                                  <label>Systolic BP</label>
-                                  <input type="number" value={vitalsForm.systolicBp} onChange={(e) => setVitalsForm({...vitalsForm, systolicBp: e.target.value})} placeholder="mmHg" />
+                              <div className="grid grid-cols-3 gap-2.5">
+                                <div className="space-y-1.5">
+                                  <Label>Systolic BP</Label>
+                                  <Input type="number" value={vitalsForm.systolicBp} onChange={(e) => setVitalsForm({...vitalsForm, systolicBp: e.target.value})} placeholder="mmHg" />
                                 </div>
-                                <div className="form-group">
-                                  <label>Diastolic BP</label>
-                                  <input type="number" value={vitalsForm.diastolicBp} onChange={(e) => setVitalsForm({...vitalsForm, diastolicBp: e.target.value})} placeholder="mmHg" />
+                                <div className="space-y-1.5">
+                                  <Label>Diastolic BP</Label>
+                                  <Input type="number" value={vitalsForm.diastolicBp} onChange={(e) => setVitalsForm({...vitalsForm, diastolicBp: e.target.value})} placeholder="mmHg" />
                                 </div>
-                                <div className="form-group">
-                                  <label>Temperature (°C)</label>
-                                  <input type="number" step="0.1" value={vitalsForm.temperatureC} onChange={(e) => setVitalsForm({...vitalsForm, temperatureC: e.target.value})} />
+                                <div className="space-y-1.5">
+                                  <Label>Temperature (°C)</Label>
+                                  <Input type="number" step="0.1" value={vitalsForm.temperatureC} onChange={(e) => setVitalsForm({...vitalsForm, temperatureC: e.target.value})} />
                                 </div>
-                                <div className="form-group">
-                                  <label>Pulse (bpm)</label>
-                                  <input type="number" value={vitalsForm.pulseBpm} onChange={(e) => setVitalsForm({...vitalsForm, pulseBpm: e.target.value})} />
+                                <div className="space-y-1.5">
+                                  <Label>Pulse (bpm)</Label>
+                                  <Input type="number" value={vitalsForm.pulseBpm} onChange={(e) => setVitalsForm({...vitalsForm, pulseBpm: e.target.value})} />
                                 </div>
-                                <div className="form-group">
-                                  <label>Respiratory Rate</label>
-                                  <input type="number" value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm({...vitalsForm, respiratoryRate: e.target.value})} placeholder="breaths/min" />
+                                <div className="space-y-1.5">
+                                  <Label>Respiratory Rate</Label>
+                                  <Input type="number" value={vitalsForm.respiratoryRate} onChange={(e) => setVitalsForm({...vitalsForm, respiratoryRate: e.target.value})} placeholder="breaths/min" />
                                 </div>
-                                <div className="form-group">
-                                  <label>Oxygen Saturation (%)</label>
-                                  <input type="number" step="0.1" value={vitalsForm.oxygenSaturation} onChange={(e) => setVitalsForm({...vitalsForm, oxygenSaturation: e.target.value})} />
+                                <div className="space-y-1.5">
+                                  <Label>Oxygen Saturation (%)</Label>
+                                  <Input type="number" step="0.1" value={vitalsForm.oxygenSaturation} onChange={(e) => setVitalsForm({...vitalsForm, oxygenSaturation: e.target.value})} />
                                 </div>
-                                <div className="form-group">
-                                  <label>Weight (kg)</label>
-                                  <input type="number" step="0.1" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm({...vitalsForm, weightKg: e.target.value})} />
+                                <div className="space-y-1.5">
+                                  <Label>Weight (kg)</Label>
+                                  <Input type="number" step="0.1" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm({...vitalsForm, weightKg: e.target.value})} />
                                 </div>
-                                <div className="form-group">
-                                  <label>Height (cm)</label>
-                                  <input type="number" step="0.1" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm({...vitalsForm, heightCm: e.target.value})} />
+                                <div className="space-y-1.5">
+                                  <Label>Height (cm)</Label>
+                                  <Input type="number" step="0.1" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm({...vitalsForm, heightCm: e.target.value})} />
                                 </div>
-                                <div className="form-group">
-                                  <label>Glucose (mmol/L)</label>
-                                  <input type="number" step="0.1" value={vitalsForm.glucoseMmol} onChange={(e) => setVitalsForm({...vitalsForm, glucoseMmol: e.target.value})} placeholder="optional" />
+                                <div className="space-y-1.5">
+                                  <Label>Glucose (mmol/L)</Label>
+                                  <Input type="number" step="0.1" value={vitalsForm.glucoseMmol} onChange={(e) => setVitalsForm({...vitalsForm, glucoseMmol: e.target.value})} placeholder="optional" />
                                 </div>
                               </div>
-                              <div className="form-group">
-                                <label>Notes</label>
-                                <textarea value={vitalsForm.notes} onChange={(e) => setVitalsForm({...vitalsForm, notes: e.target.value})} rows={2} />
+                              <div className="mt-3 space-y-1.5">
+                                <Label>Notes</Label>
+                                <Textarea value={vitalsForm.notes} onChange={(e) => setVitalsForm({...vitalsForm, notes: e.target.value})} rows={2} />
                               </div>
-                              <button type="submit" className="btn btn-primary" disabled={loading}>
+                              <Button type="submit" className="mt-3" disabled={loading}>
                                 {loading ? 'Saving...' : 'Save Vitals'}
-                              </button>
+                              </Button>
                             </form>
                           )}
                         </div>
                       ))}
                     </div>
                   )}
-                </div>
+                  </CardContent>
+                </Card>
               </div>
             ) : activeTabStaff === 'referrals' ? (
               /* Referrals: Incoming & Outgoing */
-              <div style={{ maxWidth: '1000px', margin: '0 auto 40px', padding: '0 20px', textAlign: 'left' }}>
-                <div className="glass-card" style={{ marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '1.5rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    🔄 Incoming Referrals
-                  </h2>
-                  <p className="text-muted" style={{ marginBottom: '20px', fontSize: '0.9rem' }}>
-                    Patients referred to your facility from elsewhere.
-                  </p>
+              <div className="mx-auto mb-10 max-w-3xl px-4 text-left">
+                <Card className="mb-6">
+                  <CardHeader>
+                    <CardTitle className="text-xl">🔄 Incoming Referrals</CardTitle>
+                    <CardDescription>Patients referred to your facility from elsewhere.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
                   {incomingReferrals.length === 0 ? (
-                    <p className="text-muted" style={{ fontSize: '0.85rem' }}>No incoming referrals.</p>
+                    <p className="text-sm text-muted-foreground">No incoming referrals.</p>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div className="flex flex-col gap-3">
                       {incomingReferrals.map(r => (
                         <div
                           key={r.id}
-                          style={{
-                            border: `1px solid ${r.urgency === 'EMERGENCY' ? 'rgba(239, 68, 68, 0.3)' : r.urgency === 'URGENT' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.08)'}`,
-                            background: r.urgency === 'EMERGENCY' ? 'rgba(239, 68, 68, 0.05)' : r.urgency === 'URGENT' ? 'rgba(245, 158, 11, 0.04)' : 'rgba(15, 23, 42, 0.4)',
-                            borderRadius: '12px',
-                            padding: '16px'
-                          }}
+                          className={cn(
+                            'rounded-lg border p-4',
+                            r.urgency === 'EMERGENCY' ? 'border-destructive/30 bg-destructive/5' : r.urgency === 'URGENT' ? 'border-amber-500/30 bg-amber-500/5' : 'bg-muted/40'
+                          )}
                         >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                          <div className="flex flex-wrap items-start justify-between gap-2.5">
                             <div>
-                              <h3 style={{ color: '#fff', fontSize: '1rem' }}>
-                                {r.patient?.firstName} {r.patient?.lastName} <span className="text-muted" style={{ fontWeight: 'normal', fontSize: '0.8rem' }}>({r.patient?.idNumber || r.patient?.uhid})</span>
+                              <h3 className="font-semibold">
+                                {r.patient?.firstName} {r.patient?.lastName} <span className="text-sm font-normal text-muted-foreground">({r.patient?.idNumber || r.patient?.uhid})</span>
                               </h3>
-                              <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>
+                              <p className="mt-0.5 text-sm text-muted-foreground">
                                 From {r.fromFacility?.name} | {r.reason}
                               </p>
-                              <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}>
+                              <p className="mt-0.5 text-xs text-muted-foreground">
                                 Referred: {new Date(r.referredAt).toLocaleString()} by {r.referredBy?.firstName} {r.referredBy?.lastName}
                               </p>
                             </div>
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <span className={`badge ${r.urgency === 'EMERGENCY' ? 'badge-red' : r.urgency === 'URGENT' ? 'badge-yellow' : 'badge-green'}`}>{r.urgency}</span>
-                              <span className={`badge ${r.status === 'ACCEPTED' || r.status === 'COMPLETED' ? 'badge-green' : r.status === 'DECLINED' ? 'badge-red' : 'badge-yellow'}`}>{r.status}</span>
+                            <div className="flex gap-1.5">
+                              <Badge variant={r.urgency === 'EMERGENCY' ? 'destructive' : r.urgency === 'URGENT' ? 'warning' : 'success'}>{r.urgency}</Badge>
+                              <Badge variant={r.status === 'ACCEPTED' || r.status === 'COMPLETED' ? 'success' : r.status === 'DECLINED' ? 'destructive' : 'warning'}>{r.status}</Badge>
                             </div>
                           </div>
                           {r.clinicalSummary && (
-                            <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '10px', background: 'rgba(0,0,0,0.15)', padding: '10px', borderRadius: '8px' }}>
+                            <p className="mt-2.5 rounded-md bg-background p-2.5 text-sm text-muted-foreground">
                               {r.clinicalSummary}
                             </p>
                           )}
                           {r.status === 'PENDING' && (
-                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                              <button className="btn btn-success" onClick={() => handleRespondToReferral(r.id, 'ACCEPTED')} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                            <div className="mt-3 flex gap-2">
+                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => handleRespondToReferral(r.id, 'ACCEPTED')}>
                                 Accept
-                              </button>
-                              <button className="btn btn-danger" onClick={() => handleRespondToReferral(r.id, 'DECLINED')} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={() => handleRespondToReferral(r.id, 'DECLINED')}>
                                 Decline
-                              </button>
+                              </Button>
                             </div>
                           )}
                           {r.status === 'ACCEPTED' && (
-                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                              <button className="btn btn-success" onClick={() => handleRespondToReferral(r.id, 'COMPLETED')} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                            <div className="mt-3 flex gap-2">
+                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => handleRespondToReferral(r.id, 'COMPLETED')}>
                                 Mark Seen / Completed
-                              </button>
+                              </Button>
                             </div>
                           )}
                         </div>
                       ))}
                     </div>
                   )}
-                </div>
+                  </CardContent>
+                </Card>
 
-                <div className="glass-card">
-                  <h2 style={{ fontSize: '1.5rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    📤 Outgoing Referrals
-                  </h2>
-                  <p className="text-muted" style={{ marginBottom: '20px', fontSize: '0.9rem' }}>
-                    Patients your facility has referred elsewhere.
-                  </p>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-xl">📤 Outgoing Referrals</CardTitle>
+                    <CardDescription>Patients your facility has referred elsewhere.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
                   {outgoingReferrals.length === 0 ? (
-                    <p className="text-muted" style={{ fontSize: '0.85rem' }}>No outgoing referrals.</p>
+                    <p className="text-sm text-muted-foreground">No outgoing referrals.</p>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div className="flex flex-col gap-3">
                       {outgoingReferrals.map(r => (
-                        <div key={r.id} style={{ border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '12px', padding: '16px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                        <div key={r.id} className="rounded-lg border bg-muted/40 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-2.5">
                             <div>
-                              <h3 style={{ color: '#fff', fontSize: '1rem' }}>
-                                {r.patient?.firstName} {r.patient?.lastName} <span className="text-muted" style={{ fontWeight: 'normal', fontSize: '0.8rem' }}>({r.patient?.idNumber || r.patient?.uhid})</span>
+                              <h3 className="font-semibold">
+                                {r.patient?.firstName} {r.patient?.lastName} <span className="text-sm font-normal text-muted-foreground">({r.patient?.idNumber || r.patient?.uhid})</span>
                               </h3>
-                              <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '2px' }}>
+                              <p className="mt-0.5 text-sm text-muted-foreground">
                                 To {r.toFacility?.name} | {r.reason}
                               </p>
-                              <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}>
+                              <p className="mt-0.5 text-xs text-muted-foreground">
                                 Referred: {new Date(r.referredAt).toLocaleString()}
                               </p>
                             </div>
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <span className={`badge ${r.urgency === 'EMERGENCY' ? 'badge-red' : r.urgency === 'URGENT' ? 'badge-yellow' : 'badge-green'}`}>{r.urgency}</span>
-                              <span className={`badge ${r.status === 'ACCEPTED' || r.status === 'COMPLETED' ? 'badge-green' : r.status === 'DECLINED' ? 'badge-red' : 'badge-yellow'}`}>{r.status}</span>
+                            <div className="flex gap-1.5">
+                              <Badge variant={r.urgency === 'EMERGENCY' ? 'destructive' : r.urgency === 'URGENT' ? 'warning' : 'success'}>{r.urgency}</Badge>
+                              <Badge variant={r.status === 'ACCEPTED' || r.status === 'COMPLETED' ? 'success' : r.status === 'DECLINED' ? 'destructive' : 'warning'}>{r.status}</Badge>
                             </div>
                           </div>
                           {r.responseNotes && (
-                            <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '10px', fontStyle: 'italic' }}>
+                            <p className="mt-2.5 text-sm italic text-muted-foreground">
                               Response: {r.responseNotes}
                             </p>
                           )}
                           {r.status === 'PENDING' && (
-                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                              <button className="btn btn-danger" onClick={() => handleRespondToReferral(r.id, 'CANCELLED')} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>
+                            <div className="mt-3 flex gap-2">
+                              <Button size="sm" variant="destructive" onClick={() => handleRespondToReferral(r.id, 'CANCELLED')}>
                                 Cancel Referral
-                              </button>
+                              </Button>
                             </div>
                           )}
                         </div>
                       ))}
                     </div>
                   )}
-                </div>
+                  </CardContent>
+                </Card>
               </div>
             ) : activeTabStaff === 'stock' ? (
               /* Pharmacy: Facility Stock/Inventory */
-              <div className="dashboard-grid">
-                <div className="dashboard-sidebar">
-                  <div className="glass-card" style={{ textAlign: 'left' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <PlusCircle size={18} /> Add Stock Item
-                    </h3>
-                    <form onSubmit={handleAddStockItem}>
-                      <div className="form-group">
-                        <label>Medication Name</label>
-                        <input
-                          type="text"
-                          value={stockItemForm.medicationName}
-                          onChange={(e) => setStockItemForm({...stockItemForm, medicationName: e.target.value})}
-                          placeholder="e.g. Metformin 500mg"
-                          required
-                        />
-                      </div>
-                      <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div>
-                          <label>Unit</label>
-                          <input
+              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[320px_1fr]">
+                <div className="flex flex-col gap-6">
+                  <Card className="text-left">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <PlusCircle size={18} /> Add Stock Item
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleAddStockItem}>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Medication Name</Label>
+                          <Input
                             type="text"
-                            value={stockItemForm.unit}
-                            onChange={(e) => setStockItemForm({...stockItemForm, unit: e.target.value})}
-                            placeholder="e.g. tablets"
+                            value={stockItemForm.medicationName}
+                            onChange={(e) => setStockItemForm({...stockItemForm, medicationName: e.target.value})}
+                            placeholder="e.g. Metformin 500mg"
+                            required
                           />
                         </div>
-                        <div>
-                          <label>Reorder Level</label>
-                          <input
+                        <div className="mb-4 grid grid-cols-2 gap-2.5">
+                          <div className="space-y-1.5">
+                            <Label>Unit</Label>
+                            <Input
+                              type="text"
+                              value={stockItemForm.unit}
+                              onChange={(e) => setStockItemForm({...stockItemForm, unit: e.target.value})}
+                              placeholder="e.g. tablets"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label>Reorder Level</Label>
+                            <Input
+                              type="number"
+                              value={stockItemForm.reorderLevel}
+                              onChange={(e) => setStockItemForm({...stockItemForm, reorderLevel: e.target.value})}
+                              placeholder="e.g. 20"
+                            />
+                          </div>
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Initial Quantity on Hand</Label>
+                          <Input
                             type="number"
-                            value={stockItemForm.reorderLevel}
-                            onChange={(e) => setStockItemForm({...stockItemForm, reorderLevel: e.target.value})}
-                            placeholder="e.g. 20"
+                            value={stockItemForm.quantityOnHand}
+                            onChange={(e) => setStockItemForm({...stockItemForm, quantityOnHand: e.target.value})}
+                            placeholder="e.g. 100"
                           />
                         </div>
-                      </div>
-                      <div className="form-group">
-                        <label>Initial Quantity on Hand</label>
-                        <input
-                          type="number"
-                          value={stockItemForm.quantityOnHand}
-                          onChange={(e) => setStockItemForm({...stockItemForm, quantityOnHand: e.target.value})}
-                          placeholder="e.g. 100"
-                        />
-                      </div>
-                      <button type="submit" className="btn btn-secondary" style={{ width: '100%' }} disabled={loading}>
-                        {loading ? 'Adding...' : 'Add Stock Item'}
-                      </button>
-                    </form>
-                  </div>
+                        <Button type="submit" variant="secondary" className="w-full" disabled={loading}>
+                          {loading ? 'Adding...' : 'Add Stock Item'}
+                        </Button>
+                      </form>
+                    </CardContent>
+                  </Card>
                 </div>
 
-                <div className="dashboard-main">
-                  <div className="glass-card" style={{ textAlign: 'left' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Pill size={18} /> Facility Inventory ({stockList.length})
-                    </h3>
+                <div className="flex flex-col gap-6">
+                  <Card className="text-left">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Pill size={18} /> Facility Inventory ({stockList.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
                     {stockList.length === 0 ? (
-                      <p className="text-muted" style={{ fontSize: '0.9rem' }}>No medications tracked at your facility yet. Add one to start.</p>
+                      <p className="text-sm text-muted-foreground">No medications tracked at your facility yet. Add one to start.</p>
                     ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div className="flex flex-col gap-2.5">
                         {stockList.map(s => {
                           const isLow = s.quantityOnHand <= s.reorderLevel;
                           return (
                           <div
                             key={s.id}
-                            style={{
-                              padding: '12px 16px',
-                              borderRadius: '10px',
-                              background: isLow ? 'rgba(239, 68, 68, 0.05)' : 'rgba(15, 23, 42, 0.4)',
-                              border: `1px solid ${isLow ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255,255,255,0.05)'}`
-                            }}
+                            className={cn('rounded-lg border p-4', isLow ? 'border-destructive/30 bg-destructive/5' : 'bg-muted/40')}
                           >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                            <div className="flex flex-wrap items-start justify-between gap-2.5">
                               <div>
-                                <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>{s.medicationName}</p>
-                                <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                <p className="text-sm font-semibold">{s.medicationName}</p>
+                                <p className="text-sm text-muted-foreground">
                                   {s.quantityOnHand} {s.unit} on hand | Reorder at {s.reorderLevel} {s.unit}
                                 </p>
                               </div>
-                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                {isLow && <span className="badge badge-red">Low Stock</span>}
+                              <div className="flex items-center gap-2">
+                                {isLow && <Badge variant="destructive">Low Stock</Badge>}
                                 {s.lowStockNotified && (
-                                  <span className="badge badge-yellow" title="Admins at this facility have been notified">🔔 Alert Sent</span>
+                                  <Badge variant="warning" title="Admins at this facility have been notified">🔔 Alert Sent</Badge>
                                 )}
-                                <button
-                                  className="btn btn-secondary"
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
                                   onClick={() => { setReceiveFormFor(receiveFormFor === s.id ? null : s.id); setReceiveForm({ type: 'RECEIVE', quantityChange: '', notes: '' }); }}
-                                  style={{ padding: '6px 10px', fontSize: '0.75rem' }}
                                 >
                                   {receiveFormFor === s.id ? 'Cancel' : 'Adjust'}
-                                </button>
-                                <button
-                                  className="btn"
-                                  onClick={() => toggleStockHistory(s.id)}
-                                  style={{ padding: '6px 10px', fontSize: '0.75rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }}
-                                >
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={() => toggleStockHistory(s.id)}>
                                   {stockHistoryFor === s.id ? 'Hide History' : 'History'}
-                                </button>
+                                </Button>
                               </div>
                             </div>
 
                             {receiveFormFor === s.id && (
-                              <form onSubmit={(e) => handleStockAdjustment(e, s.id)} style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                                <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-                                  <div>
-                                    <label>Type</label>
-                                    <select
-                                      value={receiveForm.type}
-                                      onChange={(e) => setReceiveForm({...receiveForm, type: e.target.value})}
-                                    >
-                                      <option value="RECEIVE">Receive Stock</option>
-                                      <option value="ADJUST">Write Off</option>
-                                    </select>
+                              <form onSubmit={(e) => handleStockAdjustment(e, s.id)} className="mt-3 border-t pt-3">
+                                <div className="mb-3 grid grid-cols-3 gap-2.5">
+                                  <div className="space-y-1.5">
+                                    <Label>Type</Label>
+                                    <Select value={receiveForm.type} onValueChange={(v) => setReceiveForm({...receiveForm, type: v})}>
+                                      <SelectTrigger><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="RECEIVE">Receive Stock</SelectItem>
+                                        <SelectItem value="ADJUST">Write Off</SelectItem>
+                                      </SelectContent>
+                                    </Select>
                                   </div>
-                                  <div>
-                                    <label>Quantity</label>
-                                    <input
+                                  <div className="space-y-1.5">
+                                    <Label>Quantity</Label>
+                                    <Input
                                       type="number"
                                       min="1"
                                       value={receiveForm.quantityChange}
@@ -4220,9 +4191,9 @@ function App() {
                                       required
                                     />
                                   </div>
-                                  <div>
-                                    <label>Notes</label>
-                                    <input
+                                  <div className="space-y-1.5">
+                                    <Label>Notes</Label>
+                                    <Input
                                       type="text"
                                       value={receiveForm.notes}
                                       onChange={(e) => setReceiveForm({...receiveForm, notes: e.target.value})}
@@ -4230,20 +4201,20 @@ function App() {
                                     />
                                   </div>
                                 </div>
-                                <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+                                <Button type="submit" className="w-full" disabled={loading}>
                                   {loading ? 'Saving...' : receiveForm.type === 'RECEIVE' ? 'Confirm Received' : 'Confirm Write-Off'}
-                                </button>
+                                </Button>
                               </form>
                             )}
 
                             {stockHistoryFor === s.id && (
-                              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <div className="mt-2.5 flex flex-col gap-1.5 border-t pt-2.5">
                                 {stockHistory.length === 0 ? (
-                                  <p className="text-muted" style={{ fontSize: '0.75rem' }}>No transactions recorded.</p>
+                                  <p className="text-xs text-muted-foreground">No transactions recorded.</p>
                                 ) : stockHistory.map(tx => (
-                                  <div key={tx.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '0.75rem' }}>
-                                    <span className="text-muted">
-                                      <span className={`badge ${tx.type === 'RECEIVED' ? 'badge-green' : tx.type === 'DISPENSED' ? 'badge-yellow' : 'badge-red'}`} style={{ marginRight: '6px' }}>{tx.type}</span>
+                                  <div key={tx.id} className="flex justify-between gap-2.5 text-xs">
+                                    <span className="text-muted-foreground">
+                                      <Badge variant={tx.type === 'RECEIVED' ? 'success' : tx.type === 'DISPENSED' ? 'warning' : 'destructive'} className="mr-1.5">{tx.type}</Badge>
                                       {tx.quantityChange > 0 ? '+' : ''}{tx.quantityChange} {s.unit} — {new Date(tx.createdAt).toLocaleString()} by {tx.staff?.firstName} {tx.staff?.lastName}
                                       {tx.notes ? ` (${tx.notes})` : ''}
                                     </span>
@@ -4256,73 +4227,74 @@ function App() {
                         })}
                       </div>
                     )}
-                  </div>
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
             ) : activeTabStaff === 'alerts' ? (
               /* Feature 5: Clinical Alerts Feed Layout */
-              <div style={{ maxWidth: '1200px', margin: '0 auto 40px', padding: '0 20px', textAlign: 'left' }}>
-                <div className="glass-card">
-                  <h2 style={{ fontSize: '1.5rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <ShieldAlert style={{ color: '#ef4444' }} /> Active Clinical Alerts & Decision Support Feed
-                  </h2>
-                  <p className="text-muted" style={{ marginBottom: '24px', fontSize: '0.9rem' }}>
-                    These alerts are automatically fired by the UDHR engine when a patient shows high medication adherence ($ge 90\%$) with poor clinical response (symptoms persisting at Red/Yellow urgency), or high-risk drug-food interactions.
-                  </p>
-
+              <div className="mx-auto mb-10 max-w-6xl px-4 text-left">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <ShieldAlert className="text-destructive" /> Active Clinical Alerts & Decision Support Feed
+                    </CardTitle>
+                    <CardDescription>
+                      These alerts are automatically fired by the UDHR engine when a patient shows high medication adherence (≥90%) with poor clinical response (symptoms persisting at Red/Yellow urgency), or high-risk drug-food interactions.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
                   {clinicalAlerts.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                      <CheckCircle size={48} style={{ color: 'var(--success)', margin: '0 auto 12px', opacity: 0.6 }} />
-                      <h4 style={{ color: '#fff' }}>No Active Clinical Alerts</h4>
-                      <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '4px' }}>All monitored patients are responding well to treatment and have no dietary conflicts.</p>
+                    <div className="py-14 text-center">
+                      <CheckCircle size={48} className="mx-auto mb-3 text-emerald-500 opacity-60" />
+                      <h4 className="font-semibold">No Active Clinical Alerts</h4>
+                      <p className="mt-1 text-sm text-muted-foreground">All monitored patients are responding well to treatment and have no dietary conflicts.</p>
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className="flex flex-col gap-5">
                       {clinicalAlerts.map((item) => {
                         const alert = item.alert;
                         return (
-                          <div 
-                            key={alert.id} 
-                            style={{ 
-                              border: `1px solid ${alert.severity === 'CRITICAL' ? 'rgba(239, 68, 68, 0.3)' : alert.severity === 'HIGH' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.08)'}`,
-                              background: alert.severity === 'CRITICAL' ? 'rgba(239, 68, 68, 0.05)' : alert.severity === 'HIGH' ? 'rgba(245, 158, 11, 0.04)' : 'rgba(15, 23, 42, 0.4)',
-                              borderRadius: '16px',
-                              padding: '24px'
-                            }}
+                          <div
+                            key={alert.id}
+                            className={cn(
+                              'rounded-xl border p-6',
+                              alert.severity === 'CRITICAL' ? 'border-destructive/30 bg-destructive/5' : alert.severity === 'HIGH' ? 'border-amber-500/30 bg-amber-500/5' : 'bg-muted/40'
+                            )}
                           >
                             {/* Alert Header */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '16px', marginBottom: '16px' }}>
+                            <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b pb-4">
                               <div>
-                                <span className={`badge ${alert.severity === 'CRITICAL' ? 'badge-red' : 'badge-yellow'}`} style={{ fontSize: '0.7rem', padding: '2px 8px', fontWeight: 'bold' }}>
+                                <Badge variant={alert.severity === 'CRITICAL' ? 'destructive' : 'warning'}>
                                   {alert.severity} SEVERITY
-                                </span>
-                                <h3 style={{ color: '#fff', fontSize: '1.2rem', marginTop: '6px' }}>
+                                </Badge>
+                                <h3 className="mt-1.5 text-lg font-semibold">
                                   Patient: {item.patient.firstName} {item.patient.lastName} ({item.patient.idNumber})
                                 </h3>
-                                <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '4px' }}>
+                                <p className="mt-1 text-sm text-muted-foreground">
                                   Fired: {new Date(alert.createdAt).toLocaleString()} | Alert Type: {alert.alertType}
                                 </p>
                               </div>
-                              <button className="btn btn-success" onClick={() => handleResolveAlert(alert.id)}>
+                              <Button className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => handleResolveAlert(alert.id)}>
                                 Resolve Alert & Clear
-                              </button>
+                              </Button>
                             </div>
 
                             {/* Alert Details Body */}
-                            <p style={{ color: '#fff', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '16px', fontStyle: 'italic', background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px' }}>
+                            <p className="mb-4 rounded-lg bg-background p-3 text-sm italic leading-relaxed">
                               {alert.message}
                             </p>
 
                             {/* Compliance and Symptoms correlation details */}
-                            <div className="grid grid-cols-2" style={{ gap: '20px', marginBottom: '20px' }}>
+                            <div className="mb-5 grid grid-cols-2 gap-5">
                               <div>
-                                <h4 style={{ color: '#a5b4fc', fontSize: '0.85rem', marginBottom: '8px' }}>Patient Adherence & Prescriptions</h4>
-                                <p style={{ color: '#fff', fontSize: '0.85rem' }}>
+                                <h4 className="mb-2 text-sm font-semibold text-indigo-600">Patient Adherence & Prescriptions</h4>
+                                <p className="text-sm">
                                   Compliance score (last 14 days): <strong>{item.adherenceScore}%</strong>
                                 </p>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
                                   {item.activePrescriptions.map(p => (
-                                    <span key={p.id} style={{ background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', color: '#fff', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <span key={p.id} className="rounded-md border bg-background px-2 py-1 text-xs">
                                       💊 {p.medication} ({p.dosage})
                                     </span>
                                   ))}
@@ -4330,14 +4302,14 @@ function App() {
                               </div>
 
                               <div>
-                                <h4 style={{ color: '#a5b4fc', fontSize: '0.85rem', marginBottom: '8px' }}>Recent Symptom Checks</h4>
+                                <h4 className="mb-2 text-sm font-semibold text-indigo-600">Recent Symptom Checks</h4>
                                 {item.recentSymptomChecks.length === 0 ? (
-                                  <p className="text-muted" style={{ fontSize: '0.8rem' }}>No checks logged.</p>
+                                  <p className="text-sm text-muted-foreground">No checks logged.</p>
                                 ) : (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  <div className="flex flex-col gap-1.5">
                                     {item.recentSymptomChecks.map(check => (
-                                      <div key={check.id} style={{ fontSize: '0.75rem', color: '#fff', background: 'rgba(0,0,0,0.1)', padding: '6px', borderRadius: '6px' }}>
-                                        <strong>{new Date(check.checkedAt).toLocaleDateString()}:</strong> Urgency <span style={{ color: check.urgencyLevel === 'RED' ? 'var(--danger)' : 'var(--warning)' }}>{check.urgencyLevel}</span>
+                                      <div key={check.id} className="rounded-md bg-background p-1.5 text-xs">
+                                        <strong>{new Date(check.checkedAt).toLocaleDateString()}:</strong> Urgency <span className={check.urgencyLevel === 'RED' ? 'text-destructive' : 'text-amber-600'}>{check.urgencyLevel}</span>
                                       </div>
                                     ))}
                                   </div>
@@ -4347,19 +4319,19 @@ function App() {
 
                             {/* CDSS Diagnostic Recommendations */}
                             {alert.alertType === 'NON_RESPONSE' && (
-                              <div style={{ background: 'rgba(15,23,42,0.4)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                <h4 style={{ color: '#38bdf8', fontSize: '0.95rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div className="rounded-lg border bg-background p-4">
+                                <h4 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-sky-600">
                                   <Heart size={16} /> Clinical Decision Support Recommendations
                                 </h4>
 
                                 {/* Lab Test suggestion */}
                                 {item.labRecommendations && item.labRecommendations.length > 0 && (
-                                  <div style={{ marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '12px' }}>
-                                    <h5 style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 600 }}>Suggested Laboratory Diagnostics:</h5>
+                                  <div className="mb-3 border-b pb-3">
+                                    <h5 className="text-sm font-semibold">Suggested Laboratory Diagnostics:</h5>
                                     {item.labRecommendations.map(lr => (
-                                      <div key={lr.id} style={{ marginTop: '6px' }}>
-                                        <p style={{ color: '#7dd3fc', fontSize: '0.85rem' }}>👉 Order: <strong>{lr.testName}</strong> {lr.icdCode && `(ICD-10: ${lr.icdCode})`}</p>
-                                        <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}><strong>Reasoning:</strong> {lr.reason}</p>
+                                      <div key={lr.id} className="mt-1.5">
+                                        <p className="text-sm text-sky-600">👉 Order: <strong>{lr.testName}</strong> {lr.icdCode && `(ICD-10: ${lr.icdCode})`}</p>
+                                        <p className="mt-0.5 text-xs text-muted-foreground"><strong>Reasoning:</strong> {lr.reason}</p>
                                       </div>
                                     ))}
                                   </div>
@@ -4368,24 +4340,20 @@ function App() {
                                 {/* Differential Diagnoses suggestions */}
                                 {item.differentialDiagnoses && item.differentialDiagnoses.length > 0 && (
                                   <div>
-                                    <h5 style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 600 }}>Suggested ICD-10 Differential Diagnoses:</h5>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                                    <h5 className="text-sm font-semibold">Suggested ICD-10 Differential Diagnoses:</h5>
+                                    <div className="mt-1.5 flex flex-col gap-2">
                                       {item.differentialDiagnoses.map(dd => (
-                                        <div key={dd.id} style={{ background: 'rgba(0,0,0,0.15)', padding: '10px', borderRadius: '8px' }}>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ color: '#fff', fontSize: '0.8rem', fontWeight: 600 }}>{dd.conditionName} (ICD-10: {dd.icdCode})</span>
-                                            <span style={{ 
-                                              fontSize: '0.65rem', 
-                                              fontWeight: 'bold', 
-                                              color: dd.likelihood === 'HIGH' ? 'var(--danger)' : dd.likelihood === 'MODERATE' ? 'var(--warning)' : 'var(--success)',
-                                              background: 'rgba(255,255,255,0.03)',
-                                              padding: '2px 6px',
-                                              borderRadius: '4px'
-                                            }}>
+                                        <div key={dd.id} className="rounded-md bg-muted/40 p-2.5">
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-sm font-semibold">{dd.conditionName} (ICD-10: {dd.icdCode})</span>
+                                            <span className={cn(
+                                              'rounded px-1.5 py-0.5 text-xs font-bold',
+                                              dd.likelihood === 'HIGH' ? 'text-destructive' : dd.likelihood === 'MODERATE' ? 'text-amber-600' : 'text-emerald-600'
+                                            )}>
                                               LIKELIHOOD: {dd.likelihood}
                                             </span>
                                           </div>
-                                          <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}><strong>Evidence/Reasoning:</strong> {dd.reasoning}</p>
+                                          <p className="mt-1 text-xs text-muted-foreground"><strong>Evidence/Reasoning:</strong> {dd.reasoning}</p>
                                         </div>
                                       ))}
                                     </div>
@@ -4398,196 +4366,200 @@ function App() {
                       })}
                     </div>
                   )}
-                </div>
+                  </CardContent>
+                </Card>
               </div>
             ) : (
               /* Admin: Staff Management */
-              <div className="dashboard-grid">
-                <div className="dashboard-sidebar">
-                  <div className="glass-card" style={{ textAlign: 'left' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Building2 size={18} /> Register Facility
-                    </h3>
-                    <form onSubmit={handleRegisterFacility}>
-                      <div className="form-group">
-                        <label>Facility Name</label>
-                        <input
-                          type="text"
-                          value={facilityRegForm.name}
-                          onChange={(e) => setFacilityRegForm({...facilityRegForm, name: e.target.value})}
-                          placeholder="e.g. Themba Hospital"
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Type</label>
-                        <select
-                          value={facilityRegForm.type}
-                          onChange={(e) => setFacilityRegForm({...facilityRegForm, type: e.target.value})}
-                        >
-                          <option value="CLINIC">Clinic</option>
-                          <option value="HOSPITAL">Hospital</option>
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label>Province</label>
-                        <select
-                          value={facilityRegForm.province}
-                          onChange={(e) => setFacilityRegForm({...facilityRegForm, province: e.target.value})}
-                        >
-                          {['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'].map(p => (
-                            <option key={p} value={p}>{p}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label>Address</label>
-                        <textarea
-                          value={facilityRegForm.address}
-                          onChange={(e) => setFacilityRegForm({...facilityRegForm, address: e.target.value})}
-                          placeholder="Street, town/suburb"
-                          rows={2}
-                          required
-                        />
-                      </div>
-                      <button type="submit" className="btn btn-secondary" style={{ width: '100%' }} disabled={loading}>
-                        {loading ? 'Registering...' : 'Register Facility'}
-                      </button>
-                    </form>
-                  </div>
+              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[320px_1fr]">
+                <div className="flex flex-col gap-6">
+                  <Card className="text-left">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Building2 size={18} /> Register Facility
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleRegisterFacility}>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Facility Name</Label>
+                          <Input
+                            type="text"
+                            value={facilityRegForm.name}
+                            onChange={(e) => setFacilityRegForm({...facilityRegForm, name: e.target.value})}
+                            placeholder="e.g. Themba Hospital"
+                            required
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Type</Label>
+                          <Select value={facilityRegForm.type} onValueChange={(v) => setFacilityRegForm({...facilityRegForm, type: v})}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="CLINIC">Clinic</SelectItem>
+                              <SelectItem value="HOSPITAL">Hospital</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Province</Label>
+                          <Select value={facilityRegForm.province} onValueChange={(v) => setFacilityRegForm({...facilityRegForm, province: v})}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'].map(p => (
+                                <SelectItem key={p} value={p}>{p}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Address</Label>
+                          <Textarea
+                            value={facilityRegForm.address}
+                            onChange={(e) => setFacilityRegForm({...facilityRegForm, address: e.target.value})}
+                            placeholder="Street, town/suburb"
+                            rows={2}
+                            required
+                          />
+                        </div>
+                        <Button type="submit" variant="secondary" className="w-full" disabled={loading}>
+                          {loading ? 'Registering...' : 'Register Facility'}
+                        </Button>
+                      </form>
+                    </CardContent>
+                  </Card>
 
-                  <div className="glass-card" style={{ textAlign: 'left' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <PlusCircle size={18} /> Register Staff Member
-                    </h3>
-                    <form onSubmit={handleRegisterStaff}>
-                      <div className="form-group">
-                        <label>Staff Number</label>
-                        <input
-                          type="text"
-                          value={staffRegForm.staffNumber}
-                          onChange={(e) => setStaffRegForm({...staffRegForm, staffNumber: e.target.value})}
-                          placeholder="e.g. NUR002"
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>First Name</label>
-                        <input
-                          type="text"
-                          value={staffRegForm.firstName}
-                          onChange={(e) => setStaffRegForm({...staffRegForm, firstName: e.target.value})}
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Last Name</label>
-                        <input
-                          type="text"
-                          value={staffRegForm.lastName}
-                          onChange={(e) => setStaffRegForm({...staffRegForm, lastName: e.target.value})}
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Role</label>
-                        <select
-                          value={staffRegForm.role}
-                          onChange={(e) => setStaffRegForm({...staffRegForm, role: e.target.value})}
-                        >
-                          <option value="ADMIN">Admin</option>
-                          <option value="DOCTOR">Doctor</option>
-                          <option value="NURSE">Nurse</option>
-                          <option value="PHARMACIST">Pharmacist</option>
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label>Facility</label>
-                        <select
-                          value={staffRegForm.facilityId}
-                          onChange={(e) => setStaffRegForm({...staffRegForm, facilityId: e.target.value})}
-                          required
-                        >
-                          <option value="" disabled>Select facility</option>
-                          {facilitiesList.map(f => (
-                            <option key={f.id} value={f.id}>{f.name} ({f.province})</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label>Email</label>
-                        <input
-                          type="email"
-                          value={staffRegForm.email}
-                          onChange={(e) => setStaffRegForm({...staffRegForm, email: e.target.value})}
-                          placeholder="staff@udhr.gov.za"
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Contact Number (optional)</label>
-                        <input
-                          type="text"
-                          value={staffRegForm.contactNumber}
-                          onChange={(e) => setStaffRegForm({...staffRegForm, contactNumber: e.target.value})}
-                          placeholder="e.g. 0731234567 — for SMS alerts (admins only)"
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Temporary Password</label>
-                        <input
-                          type="password"
-                          value={staffRegForm.password}
-                          onChange={(e) => setStaffRegForm({...staffRegForm, password: e.target.value})}
-                          required
-                        />
-                      </div>
-                      <button type="submit" className="btn btn-secondary" style={{ width: '100%' }} disabled={loading}>
-                        {loading ? 'Registering...' : 'Register Staff Member'}
-                      </button>
-                    </form>
-                  </div>
+                  <Card className="text-left">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <PlusCircle size={18} /> Register Staff Member
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleRegisterStaff}>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Staff Number</Label>
+                          <Input
+                            type="text"
+                            value={staffRegForm.staffNumber}
+                            onChange={(e) => setStaffRegForm({...staffRegForm, staffNumber: e.target.value})}
+                            placeholder="e.g. NUR002"
+                            required
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>First Name</Label>
+                          <Input
+                            type="text"
+                            value={staffRegForm.firstName}
+                            onChange={(e) => setStaffRegForm({...staffRegForm, firstName: e.target.value})}
+                            required
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Last Name</Label>
+                          <Input
+                            type="text"
+                            value={staffRegForm.lastName}
+                            onChange={(e) => setStaffRegForm({...staffRegForm, lastName: e.target.value})}
+                            required
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Role</Label>
+                          <Select value={staffRegForm.role} onValueChange={(v) => setStaffRegForm({...staffRegForm, role: v})}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ADMIN">Admin</SelectItem>
+                              <SelectItem value="DOCTOR">Doctor</SelectItem>
+                              <SelectItem value="NURSE">Nurse</SelectItem>
+                              <SelectItem value="PHARMACIST">Pharmacist</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Facility</Label>
+                          <Select value={staffRegForm.facilityId} onValueChange={(v) => setStaffRegForm({...staffRegForm, facilityId: v})} required>
+                            <SelectTrigger><SelectValue placeholder="Select facility" /></SelectTrigger>
+                            <SelectContent>
+                              {facilitiesList.map(f => (
+                                <SelectItem key={f.id} value={String(f.id)}>{f.name} ({f.province})</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Email</Label>
+                          <Input
+                            type="email"
+                            value={staffRegForm.email}
+                            onChange={(e) => setStaffRegForm({...staffRegForm, email: e.target.value})}
+                            placeholder="staff@udhr.gov.za"
+                            required
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Contact Number (optional)</Label>
+                          <Input
+                            type="text"
+                            value={staffRegForm.contactNumber}
+                            onChange={(e) => setStaffRegForm({...staffRegForm, contactNumber: e.target.value})}
+                            placeholder="e.g. 0731234567 — for SMS alerts (admins only)"
+                          />
+                        </div>
+                        <div className="mb-4 space-y-1.5">
+                          <Label>Temporary Password</Label>
+                          <Input
+                            type="password"
+                            value={staffRegForm.password}
+                            onChange={(e) => setStaffRegForm({...staffRegForm, password: e.target.value})}
+                            required
+                          />
+                        </div>
+                        <Button type="submit" variant="secondary" className="w-full" disabled={loading}>
+                          {loading ? 'Registering...' : 'Register Staff Member'}
+                        </Button>
+                      </form>
+                    </CardContent>
+                  </Card>
                 </div>
 
-                <div className="dashboard-main">
-                  <div className="glass-card" style={{ textAlign: 'left' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Calendar size={18} /> Report Date Range
-                    </h3>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'flex-end' }}>
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <label>Start Date</label>
-                        <input
+                <div className="flex flex-col gap-6">
+                  <Card className="text-left">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Calendar size={18} /> Report Date Range
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className="space-y-1.5">
+                        <Label>Start Date</Label>
+                        <Input
                           type="date"
                           value={reportDateRange.startDate}
                           onChange={(e) => setReportDateRange({...reportDateRange, startDate: e.target.value})}
                         />
                       </div>
-                      <div className="form-group" style={{ margin: 0 }}>
-                        <label>End Date</label>
-                        <input
+                      <div className="space-y-1.5">
+                        <Label>End Date</Label>
+                        <Input
                           type="date"
                           value={reportDateRange.endDate}
                           onChange={(e) => setReportDateRange({...reportDateRange, endDate: e.target.value})}
                         />
                       </div>
-                      <button
-                        className="btn btn-primary"
-                        style={{ padding: '10px 16px' }}
-                        onClick={() => fetchAllReports(reportDateRange.startDate, reportDateRange.endDate)}
-                      >
+                      <Button onClick={() => fetchAllReports(reportDateRange.startDate, reportDateRange.endDate)}>
                         Apply
-                      </button>
-                      <button
-                        className="btn"
-                        style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', color: '#fff' }}
+                      </Button>
+                      <Button
+                        variant="outline"
                         onClick={() => { setReportDateRange({ startDate: '', endDate: '' }); fetchAllReports('', ''); }}
                       >
                         All Time
-                      </button>
-                      <button
-                        className="btn"
-                        style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', color: '#fff' }}
+                      </Button>
+                      <Button
+                        variant="outline"
                         onClick={() => {
                           const end = new Date();
                           const start = new Date();
@@ -4598,10 +4570,9 @@ function App() {
                         }}
                       >
                         Last 7 Days
-                      </button>
-                      <button
-                        className="btn"
-                        style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.08)', color: '#fff' }}
+                      </Button>
+                      <Button
+                        variant="outline"
                         onClick={() => {
                           const end = new Date();
                           const start = new Date();
@@ -4612,63 +4583,66 @@ function App() {
                         }}
                       >
                         Last 30 Days
-                      </button>
+                      </Button>
                     </div>
-                    <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '10px' }}>
+                    <p className="mt-2.5 text-xs text-muted-foreground">
                       Applies to every report below. "Today" tiles (e.g. Dispensed Today) always reflect the current day regardless of this filter. Stock's currently-tracked and low-stock counts always reflect live inventory.
                     </p>
-                  </div>
+                    </CardContent>
+                  </Card>
 
                   {stockReport && (
-                    <div className="glass-card" style={{ textAlign: 'left' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '4px' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Pill size={18} /> Pharmacy Stock Report
-                        </h3>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/stock/report/export', 'stock-transactions.csv')}>
-                            <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
-                          </button>
-                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={exportStockPdf}>
-                            <FileText size={14} /> Export PDF
-                          </button>
+                    <Card className="text-left">
+                      <CardHeader>
+                        <div className="flex flex-wrap items-start justify-between gap-2.5">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <Pill size={18} /> Pharmacy Stock Report
+                          </CardTitle>
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => downloadReportCsv('/api/stock/report/export', 'stock-transactions.csv')}>
+                              <Download size={14} /> Export CSV
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={exportStockPdf}>
+                              <FileText size={14} /> Export PDF
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                      <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{stockReport.facilityName}</p>
-
-                      <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Medications Tracked</p>
-                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{stockReport.totalMedicationsTracked}</p>
+                        <CardDescription>{stockReport.facilityName}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                      <div className="mb-4 grid grid-cols-3 gap-2.5">
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Medications Tracked</p>
+                          <p className="text-xl font-bold">{stockReport.totalMedicationsTracked}</p>
                         </div>
-                        <div style={{ background: stockReport.lowStockCount > 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(15, 23, 42, 0.4)', border: `1px solid ${stockReport.lowStockCount > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255,255,255,0.05)'}`, borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Low Stock Items</p>
-                          <p style={{ color: stockReport.lowStockCount > 0 ? '#f87171' : '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{stockReport.lowStockCount}</p>
+                        <div className={cn('rounded-xl border p-3', stockReport.lowStockCount > 0 ? 'border-destructive/30 bg-destructive/5' : 'bg-muted/40')}>
+                          <p className="text-xs text-muted-foreground">Low Stock Items</p>
+                          <p className={cn('text-xl font-bold', stockReport.lowStockCount > 0 && 'text-destructive')}>{stockReport.lowStockCount}</p>
                         </div>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Units Received ({reportRangeSuffix()})</p>
-                          <p style={{ color: 'var(--success)', fontSize: '1.4rem', fontWeight: 'bold' }}>+{stockReport.totalUnitsReceived}</p>
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Units Received ({reportRangeSuffix()})</p>
+                          <p className="text-xl font-bold text-emerald-600">+{stockReport.totalUnitsReceived}</p>
                         </div>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Units Dispensed ({reportRangeSuffix()})</p>
-                          <p style={{ color: '#0ea5e9', fontSize: '1.4rem', fontWeight: 'bold' }}>-{stockReport.totalUnitsDispensed}</p>
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Units Dispensed ({reportRangeSuffix()})</p>
+                          <p className="text-xl font-bold text-sky-600">-{stockReport.totalUnitsDispensed}</p>
                         </div>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Units Written Off ({reportRangeSuffix()})</p>
-                          <p style={{ color: 'var(--warning)', fontSize: '1.4rem', fontWeight: 'bold' }}>-{stockReport.totalUnitsWrittenOff}</p>
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Units Written Off ({reportRangeSuffix()})</p>
+                          <p className="text-xl font-bold text-amber-600">-{stockReport.totalUnitsWrittenOff}</p>
                         </div>
                       </div>
 
                       {stockReport.lowStockItems.length > 0 && (
-                        <div style={{ marginBottom: '16px' }}>
-                          <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Needs Reordering</p>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div className="mb-4">
+                          <p className="mb-2 text-sm font-semibold">Needs Reordering</p>
+                          <div className="flex flex-col gap-1.5">
                             {stockReport.lowStockItems.map(item => (
-                              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                                <span style={{ color: '#fff', fontSize: '0.85rem' }}>{item.medicationName}</span>
-                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                  {item.lowStockNotified && <span className="badge badge-yellow">🔔 Alert Sent</span>}
-                                  <span className="badge badge-red">{item.quantityOnHand} / {item.reorderLevel} {item.unit}</span>
+                              <div key={item.id} className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2">
+                                <span className="text-sm">{item.medicationName}</span>
+                                <div className="flex items-center gap-1.5">
+                                  {item.lowStockNotified && <Badge variant="warning">🔔 Alert Sent</Badge>}
+                                  <Badge variant="destructive">{item.quantityOnHand} / {item.reorderLevel} {item.unit}</Badge>
                                 </div>
                               </div>
                             ))}
@@ -4677,15 +4651,15 @@ function App() {
                       )}
 
                       <div>
-                        <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Recent Stock Activity</p>
+                        <p className="mb-2 text-sm font-semibold">Recent Stock Activity</p>
                         {stockReport.recentTransactions.length === 0 ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No stock activity recorded yet.</p>
+                          <p className="text-sm text-muted-foreground">No stock activity recorded yet.</p>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div className="flex flex-col gap-1.5">
                             {stockReport.recentTransactions.map(tx => (
-                              <div key={tx.id} style={{ fontSize: '0.8rem' }}>
-                                <span className={`badge ${tx.type === 'RECEIVED' ? 'badge-green' : tx.type === 'DISPENSED' ? 'badge-yellow' : 'badge-red'}`} style={{ marginRight: '6px' }}>{tx.type}</span>
-                                <span className="text-muted">
+                              <div key={tx.id} className="text-sm">
+                                <Badge variant={tx.type === 'RECEIVED' ? 'success' : tx.type === 'DISPENSED' ? 'warning' : 'destructive'} className="mr-1.5">{tx.type}</Badge>
+                                <span className="text-muted-foreground">
                                   {tx.stockItem?.medicationName}: {tx.quantityChange > 0 ? '+' : ''}{tx.quantityChange} {tx.stockItem?.unit} — {new Date(tx.createdAt).toLocaleString()} by {tx.staff?.firstName} {tx.staff?.lastName}
                                   {tx.notes ? ` (${tx.notes})` : ''}
                                 </span>
@@ -4694,49 +4668,52 @@ function App() {
                           </div>
                         )}
                       </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   )}
 
                   {dispenseReport && (
-                    <div className="glass-card" style={{ textAlign: 'left' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '4px' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <FileText size={18} /> Pharmacy Dispensing Report
-                        </h3>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/dispensing/report/export', 'dispensing.csv')}>
-                            <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
-                          </button>
-                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={exportDispensePdf}>
-                            <FileText size={14} /> Export PDF
-                          </button>
+                    <Card className="text-left">
+                      <CardHeader>
+                        <div className="flex flex-wrap items-start justify-between gap-2.5">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <FileText size={18} /> Pharmacy Dispensing Report
+                          </CardTitle>
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => downloadReportCsv('/api/dispensing/report/export', 'dispensing.csv')}>
+                              <Download size={14} /> Export CSV
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={exportDispensePdf}>
+                              <FileText size={14} /> Export PDF
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                      <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{dispenseReport.facilityName}</p>
-
-                      <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Total Dispense Events</p>
-                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{dispenseReport.totalDispenseEvents}</p>
+                        <CardDescription>{dispenseReport.facilityName}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                      <div className="mb-4 grid grid-cols-3 gap-2.5">
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Total Dispense Events</p>
+                          <p className="text-xl font-bold">{dispenseReport.totalDispenseEvents}</p>
                         </div>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Dispensed Today</p>
-                          <p style={{ color: '#0ea5e9', fontSize: '1.4rem', fontWeight: 'bold' }}>{dispenseReport.dispensedToday}</p>
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Dispensed Today</p>
+                          <p className="text-xl font-bold text-sky-600">{dispenseReport.dispensedToday}</p>
                         </div>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Unique Patients Served</p>
-                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{dispenseReport.uniquePatientsServed}</p>
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Unique Patients Served</p>
+                          <p className="text-xl font-bold">{dispenseReport.uniquePatientsServed}</p>
                         </div>
                       </div>
 
                       {dispenseReport.topMedications.length > 0 && (
-                        <div style={{ marginBottom: '16px' }}>
-                          <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Dispensed Medications</p>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <div className="mb-4">
+                          <p className="mb-2 text-sm font-semibold">Top Dispensed Medications</p>
+                          <div className="flex flex-col gap-1.5">
                             {dispenseReport.topMedications.map((m, idx) => (
-                              <div key={m.medicationName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <span style={{ color: '#fff', fontSize: '0.85rem' }}>#{idx + 1} {m.medicationName}</span>
-                                <span className="text-muted" style={{ fontSize: '0.8rem' }}>
+                              <div key={m.medicationName} className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
+                                <span className="text-sm">#{idx + 1} {m.medicationName}</span>
+                                <span className="text-sm text-muted-foreground">
                                   {m.dispenseCount} dispense{m.dispenseCount !== 1 ? 's' : ''}{m.totalUnitsDispensed > 0 ? ` · ${m.totalUnitsDispensed} units` : ''}
                                 </span>
                               </div>
@@ -4746,69 +4723,70 @@ function App() {
                       )}
 
                       <div>
-                        <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Recent Dispensing Activity</p>
+                        <p className="mb-2 text-sm font-semibold">Recent Dispensing Activity</p>
                         {dispenseReport.recentDispenses.length === 0 ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No dispensing activity recorded yet.</p>
+                          <p className="text-sm text-muted-foreground">No dispensing activity recorded yet.</p>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div className="flex flex-col gap-1.5">
                             {dispenseReport.recentDispenses.map(d => (
-                              <div key={d.id} style={{ fontSize: '0.8rem' }}>
-                                <span className="text-muted">
-                                  <span style={{ color: '#fff' }}>{d.prescription?.medication}</span> ({d.quantityDispensed}) to {d.patient?.firstName} {d.patient?.lastName} — {new Date(d.dispensedAt).toLocaleString()} by {d.dispensedBy?.firstName} {d.dispensedBy?.lastName}
-                                </span>
+                              <div key={d.id} className="text-sm text-muted-foreground">
+                                <span className="text-foreground">{d.prescription?.medication}</span> ({d.quantityDispensed}) to {d.patient?.firstName} {d.patient?.lastName} — {new Date(d.dispensedAt).toLocaleString()} by {d.dispensedBy?.firstName} {d.dispensedBy?.lastName}
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   )}
 
                   {referralReport && (
-                    <div className="glass-card" style={{ textAlign: 'left' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '4px' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <RefreshCw size={18} /> Facility Referral Report
-                        </h3>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/referrals/report/export', 'referrals.csv')}>
-                            <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
-                          </button>
-                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={exportReferralPdf}>
-                            <FileText size={14} /> Export PDF
-                          </button>
+                    <Card className="text-left">
+                      <CardHeader>
+                        <div className="flex flex-wrap items-start justify-between gap-2.5">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <RefreshCw size={18} /> Facility Referral Report
+                          </CardTitle>
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => downloadReportCsv('/api/referrals/report/export', 'referrals.csv')}>
+                              <Download size={14} /> Export CSV
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={exportReferralPdf}>
+                              <FileText size={14} /> Export PDF
+                            </Button>
+                          </div>
+                        </div>
+                        <CardDescription>{referralReport.facilityName}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                      <div className="mb-4 grid grid-cols-3 gap-2.5">
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Outgoing Referrals ({reportRangeSuffix()})</p>
+                          <p className="text-xl font-bold">{referralReport.totalOutgoing}</p>
+                        </div>
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Incoming Referrals ({reportRangeSuffix()})</p>
+                          <p className="text-xl font-bold">{referralReport.totalIncoming}</p>
+                        </div>
+                        <div className={cn('rounded-xl border p-3', referralReport.pendingIncoming > 0 ? 'border-amber-500/30 bg-amber-500/5' : 'bg-muted/40')}>
+                          <p className="text-xs text-muted-foreground">Pending Incoming (Needs Response)</p>
+                          <p className={cn('text-xl font-bold', referralReport.pendingIncoming > 0 && 'text-amber-600')}>{referralReport.pendingIncoming}</p>
+                        </div>
+                        <div className={cn('rounded-xl border p-3', referralReport.emergencyReferrals > 0 ? 'border-destructive/30 bg-destructive/5' : 'bg-muted/40')}>
+                          <p className="text-xs text-muted-foreground">Emergency Referrals ({reportRangeSuffix()})</p>
+                          <p className={cn('text-xl font-bold', referralReport.emergencyReferrals > 0 && 'text-destructive')}>{referralReport.emergencyReferrals}</p>
                         </div>
                       </div>
-                      <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{referralReport.facilityName}</p>
 
-                      <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Outgoing Referrals ({reportRangeSuffix()})</p>
-                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{referralReport.totalOutgoing}</p>
-                        </div>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Incoming Referrals ({reportRangeSuffix()})</p>
-                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{referralReport.totalIncoming}</p>
-                        </div>
-                        <div style={{ background: referralReport.pendingIncoming > 0 ? 'rgba(245, 158, 11, 0.08)' : 'rgba(15, 23, 42, 0.4)', border: `1px solid ${referralReport.pendingIncoming > 0 ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.05)'}`, borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Pending Incoming (Needs Response)</p>
-                          <p style={{ color: referralReport.pendingIncoming > 0 ? 'var(--warning)' : '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{referralReport.pendingIncoming}</p>
-                        </div>
-                        <div style={{ background: referralReport.emergencyReferrals > 0 ? 'rgba(239, 68, 68, 0.08)' : 'rgba(15, 23, 42, 0.4)', border: `1px solid ${referralReport.emergencyReferrals > 0 ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255,255,255,0.05)'}`, borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Emergency Referrals ({reportRangeSuffix()})</p>
-                          <p style={{ color: referralReport.emergencyReferrals > 0 ? '#f87171' : '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{referralReport.emergencyReferrals}</p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2" style={{ gap: '16px', marginBottom: '16px' }}>
+                      <div className="mb-4 grid grid-cols-2 gap-4">
                         {referralReport.topDestinations.length > 0 && (
                           <div>
-                            <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Destination Facilities</p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <p className="mb-2 text-sm font-semibold">Top Destination Facilities</p>
+                            <div className="flex flex-col gap-1.5">
                               {referralReport.topDestinations.map(f => (
-                                <div key={f.facilityName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>{f.facilityName}</span>
-                                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{f.referralCount}</span>
+                                <div key={f.facilityName} className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
+                                  <span className="text-sm">{f.facilityName}</span>
+                                  <span className="text-sm text-muted-foreground">{f.referralCount}</span>
                                 </div>
                               ))}
                             </div>
@@ -4816,12 +4794,12 @@ function App() {
                         )}
                         {referralReport.topSources.length > 0 && (
                           <div>
-                            <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Source Facilities</p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <p className="mb-2 text-sm font-semibold">Top Source Facilities</p>
+                            <div className="flex flex-col gap-1.5">
                               {referralReport.topSources.map(f => (
-                                <div key={f.facilityName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>{f.facilityName}</span>
-                                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{f.referralCount}</span>
+                                <div key={f.facilityName} className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
+                                  <span className="text-sm">{f.facilityName}</span>
+                                  <span className="text-sm text-muted-foreground">{f.referralCount}</span>
                                 </div>
                               ))}
                             </div>
@@ -4830,19 +4808,19 @@ function App() {
                       </div>
 
                       <div>
-                        <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Recent Referral Activity</p>
+                        <p className="mb-2 text-sm font-semibold">Recent Referral Activity</p>
                         {referralReport.recentActivity.length === 0 ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No referral activity recorded yet.</p>
+                          <p className="text-sm text-muted-foreground">No referral activity recorded yet.</p>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div className="flex flex-col gap-1.5">
                             {referralReport.recentActivity.map(r => {
                               const isOutgoing = r.fromFacility?.name === referralReport.facilityName;
                               return (
-                                <div key={r.id} style={{ fontSize: '0.8rem' }}>
-                                  <span className={`badge ${isOutgoing ? 'badge-yellow' : 'badge-green'}`} style={{ marginRight: '6px' }}>{isOutgoing ? '↗ Sent' : '↙ Received'}</span>
-                                  <span className={`badge ${r.urgency === 'EMERGENCY' ? 'badge-red' : r.urgency === 'URGENT' ? 'badge-yellow' : 'badge-green'}`} style={{ marginRight: '6px' }}>{r.urgency}</span>
-                                  <span className="text-muted">
-                                    {r.patient?.firstName} {r.patient?.lastName} {isOutgoing ? `to ${r.toFacility?.name}` : `from ${r.fromFacility?.name}`} — {r.reason} — {new Date(r.referredAt).toLocaleString()} — <span style={{ fontWeight: 600 }}>{r.status}</span>
+                                <div key={r.id} className="text-sm">
+                                  <Badge variant={isOutgoing ? 'warning' : 'success'} className="mr-1.5">{isOutgoing ? '↗ Sent' : '↙ Received'}</Badge>
+                                  <Badge variant={r.urgency === 'EMERGENCY' ? 'destructive' : r.urgency === 'URGENT' ? 'warning' : 'success'} className="mr-1.5">{r.urgency}</Badge>
+                                  <span className="text-muted-foreground">
+                                    {r.patient?.firstName} {r.patient?.lastName} {isOutgoing ? `to ${r.toFacility?.name}` : `from ${r.fromFacility?.name}`} — {r.reason} — {new Date(r.referredAt).toLocaleString()} — <span className="font-semibold text-foreground">{r.status}</span>
                                   </span>
                                 </div>
                               );
@@ -4850,54 +4828,57 @@ function App() {
                           </div>
                         )}
                       </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   )}
 
                   {prescriptionReport && (
-                    <div className="glass-card" style={{ textAlign: 'left' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '4px' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Clipboard size={18} /> Facility Prescription Report
-                        </h3>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/prescriptions/report/export', 'prescriptions.csv')}>
-                            <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
-                          </button>
-                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={exportPrescriptionPdf}>
-                            <FileText size={14} /> Export PDF
-                          </button>
+                    <Card className="text-left">
+                      <CardHeader>
+                        <div className="flex flex-wrap items-start justify-between gap-2.5">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <Clipboard size={18} /> Facility Prescription Report
+                          </CardTitle>
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => downloadReportCsv('/api/prescriptions/report/export', 'prescriptions.csv')}>
+                              <Download size={14} /> Export CSV
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={exportPrescriptionPdf}>
+                              <FileText size={14} /> Export PDF
+                            </Button>
+                          </div>
+                        </div>
+                        <CardDescription>{prescriptionReport.facilityName}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                      <div className="mb-4 grid grid-cols-3 gap-2.5">
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Total Prescriptions ({reportRangeSuffix()})</p>
+                          <p className="text-xl font-bold">{prescriptionReport.totalPrescriptions}</p>
+                        </div>
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Active Prescriptions</p>
+                          <p className="text-xl font-bold text-emerald-600">{prescriptionReport.activePrescriptions}</p>
+                        </div>
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Issued Today</p>
+                          <p className="text-xl font-bold text-sky-600">{prescriptionReport.issuedToday}</p>
+                        </div>
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Unique Patients Prescribed</p>
+                          <p className="text-xl font-bold">{prescriptionReport.uniquePatientsPrescribed}</p>
                         </div>
                       </div>
-                      <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{prescriptionReport.facilityName}</p>
 
-                      <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Total Prescriptions ({reportRangeSuffix()})</p>
-                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{prescriptionReport.totalPrescriptions}</p>
-                        </div>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Active Prescriptions</p>
-                          <p style={{ color: 'var(--success)', fontSize: '1.4rem', fontWeight: 'bold' }}>{prescriptionReport.activePrescriptions}</p>
-                        </div>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Issued Today</p>
-                          <p style={{ color: '#0ea5e9', fontSize: '1.4rem', fontWeight: 'bold' }}>{prescriptionReport.issuedToday}</p>
-                        </div>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Unique Patients Prescribed</p>
-                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{prescriptionReport.uniquePatientsPrescribed}</p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2" style={{ gap: '16px', marginBottom: '16px' }}>
+                      <div className="mb-4 grid grid-cols-2 gap-4">
                         {prescriptionReport.topMedications.length > 0 && (
                           <div>
-                            <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Prescribed Medications</p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <p className="mb-2 text-sm font-semibold">Top Prescribed Medications</p>
+                            <div className="flex flex-col gap-1.5">
                               {prescriptionReport.topMedications.map(m => (
-                                <div key={m.medicationName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>{m.medicationName}</span>
-                                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{m.prescriptionCount}</span>
+                                <div key={m.medicationName} className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
+                                  <span className="text-sm">{m.medicationName}</span>
+                                  <span className="text-sm text-muted-foreground">{m.prescriptionCount}</span>
                                 </div>
                               ))}
                             </div>
@@ -4905,12 +4886,12 @@ function App() {
                         )}
                         {prescriptionReport.topPrescribers.length > 0 && (
                           <div>
-                            <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Prescribers</p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <p className="mb-2 text-sm font-semibold">Top Prescribers</p>
+                            <div className="flex flex-col gap-1.5">
                               {prescriptionReport.topPrescribers.map(p => (
-                                <div key={p.prescriberName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>Dr. {p.prescriberName}</span>
-                                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{p.prescriptionCount}</span>
+                                <div key={p.prescriberName} className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
+                                  <span className="text-sm">Dr. {p.prescriberName}</span>
+                                  <span className="text-sm text-muted-foreground">{p.prescriptionCount}</span>
                                 </div>
                               ))}
                             </div>
@@ -4919,70 +4900,73 @@ function App() {
                       </div>
 
                       <div>
-                        <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Recent Prescriptions</p>
+                        <p className="mb-2 text-sm font-semibold">Recent Prescriptions</p>
                         {prescriptionReport.recentPrescriptions.length === 0 ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No prescriptions recorded yet.</p>
+                          <p className="text-sm text-muted-foreground">No prescriptions recorded yet.</p>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div className="flex flex-col gap-1.5">
                             {prescriptionReport.recentPrescriptions.map(p => (
-                              <div key={p.id} style={{ fontSize: '0.8rem' }}>
-                                {!p.active && <span className="badge badge-red" style={{ marginRight: '6px' }}>INACTIVE</span>}
-                                <span className="text-muted">
-                                  <span style={{ color: '#fff' }}>{p.medication}</span> ({p.dosage}, {p.frequency}) for {p.patient?.firstName} {p.patient?.lastName} — {new Date(p.createdAt).toLocaleString()} by Dr. {p.doctor?.firstName} {p.doctor?.lastName}
+                              <div key={p.id} className="text-sm">
+                                {!p.active && <Badge variant="destructive" className="mr-1.5">INACTIVE</Badge>}
+                                <span className="text-muted-foreground">
+                                  <span className="text-foreground">{p.medication}</span> ({p.dosage}, {p.frequency}) for {p.patient?.firstName} {p.patient?.lastName} — {new Date(p.createdAt).toLocaleString()} by Dr. {p.doctor?.firstName} {p.doctor?.lastName}
                                 </span>
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   )}
 
                   {labResultReport && (
-                    <div className="glass-card" style={{ textAlign: 'left' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '4px' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <FileSpreadsheet size={18} /> Facility Lab Results Report
-                        </h3>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={() => downloadReportCsv('/api/lab-results/report/export', 'lab-results.csv')}>
-                            <Upload size={14} style={{ transform: 'rotate(180deg)' }} /> Export CSV
-                          </button>
-                          <button className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.08)', color: '#fff' }} onClick={exportLabResultPdf}>
-                            <FileText size={14} /> Export PDF
-                          </button>
+                    <Card className="text-left">
+                      <CardHeader>
+                        <div className="flex flex-wrap items-start justify-between gap-2.5">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <FileSpreadsheet size={18} /> Facility Lab Results Report
+                          </CardTitle>
+                          <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={() => downloadReportCsv('/api/lab-results/report/export', 'lab-results.csv')}>
+                              <Download size={14} /> Export CSV
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={exportLabResultPdf}>
+                              <FileText size={14} /> Export PDF
+                            </Button>
+                          </div>
+                        </div>
+                        <CardDescription>{labResultReport.facilityName}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                      <div className="mb-4 grid grid-cols-3 gap-2.5">
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Total Lab Results ({reportRangeSuffix()})</p>
+                          <p className="text-xl font-bold">{labResultReport.totalLabResults}</p>
+                        </div>
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Results Today</p>
+                          <p className="text-xl font-bold text-sky-600">{labResultReport.resultsToday}</p>
+                        </div>
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Unique Patients Tested</p>
+                          <p className="text-xl font-bold">{labResultReport.uniquePatientsTested}</p>
+                        </div>
+                        <div className="rounded-xl border bg-muted/40 p-3">
+                          <p className="text-xs text-muted-foreground">Unique Test Types</p>
+                          <p className="text-xl font-bold">{labResultReport.uniqueTestTypes}</p>
                         </div>
                       </div>
-                      <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>{labResultReport.facilityName}</p>
 
-                      <div className="grid grid-cols-3" style={{ gap: '10px', marginBottom: '16px' }}>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Total Lab Results ({reportRangeSuffix()})</p>
-                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{labResultReport.totalLabResults}</p>
-                        </div>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Results Today</p>
-                          <p style={{ color: '#0ea5e9', fontSize: '1.4rem', fontWeight: 'bold' }}>{labResultReport.resultsToday}</p>
-                        </div>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Unique Patients Tested</p>
-                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{labResultReport.uniquePatientsTested}</p>
-                        </div>
-                        <div style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Unique Test Types</p>
-                          <p style={{ color: '#fff', fontSize: '1.4rem', fontWeight: 'bold' }}>{labResultReport.uniqueTestTypes}</p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2" style={{ gap: '16px', marginBottom: '16px' }}>
+                      <div className="mb-4 grid grid-cols-2 gap-4">
                         {labResultReport.topTestTypes.length > 0 && (
                           <div>
-                            <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Test Types</p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <p className="mb-2 text-sm font-semibold">Top Test Types</p>
+                            <div className="flex flex-col gap-1.5">
                               {labResultReport.topTestTypes.map(t => (
-                                <div key={t.testName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>{t.testName}</span>
-                                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{t.testCount}</span>
+                                <div key={t.testName} className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
+                                  <span className="text-sm">{t.testName}</span>
+                                  <span className="text-sm text-muted-foreground">{t.testCount}</span>
                                 </div>
                               ))}
                             </div>
@@ -4990,12 +4974,12 @@ function App() {
                         )}
                         {labResultReport.topOrderingStaff.length > 0 && (
                           <div>
-                            <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Top Ordering Staff</p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <p className="mb-2 text-sm font-semibold">Top Ordering Staff</p>
+                            <div className="flex flex-col gap-1.5">
                               {labResultReport.topOrderingStaff.map(s => (
-                                <div key={s.staffName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                  <span style={{ color: '#fff', fontSize: '0.85rem' }}>{s.staffName}</span>
-                                  <span className="text-muted" style={{ fontSize: '0.8rem' }}>{s.testCount}</span>
+                                <div key={s.staffName} className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2">
+                                  <span className="text-sm">{s.staffName}</span>
+                                  <span className="text-sm text-muted-foreground">{s.testCount}</span>
                                 </div>
                               ))}
                             </div>
@@ -5004,115 +4988,90 @@ function App() {
                       </div>
 
                       <div>
-                        <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600, marginBottom: '8px' }}>Recent Lab Results</p>
+                        <p className="mb-2 text-sm font-semibold">Recent Lab Results</p>
                         {labResultReport.recentResults.length === 0 ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No lab results recorded yet.</p>
+                          <p className="text-sm text-muted-foreground">No lab results recorded yet.</p>
                         ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div className="flex flex-col gap-1.5">
                             {labResultReport.recentResults.map(r => (
-                              <div key={r.id} style={{ fontSize: '0.8rem' }}>
-                                <span className="text-muted">
-                                  <span style={{ color: '#fff' }}>{r.testName}</span>: {r.result}{r.unit ? ` ${r.unit}` : ''}{r.normalRange ? ` (normal: ${r.normalRange})` : ''} for {r.patient?.firstName} {r.patient?.lastName} — {new Date(r.testDate).toLocaleString()} by {r.staff?.firstName} {r.staff?.lastName}
-                                </span>
+                              <div key={r.id} className="text-sm text-muted-foreground">
+                                <span className="text-foreground">{r.testName}</span>: {r.result}{r.unit ? ` ${r.unit}` : ''}{r.normalRange ? ` (normal: ${r.normalRange})` : ''} for {r.patient?.firstName} {r.patient?.lastName} — {new Date(r.testDate).toLocaleString()} by {r.staff?.firstName} {r.staff?.lastName}
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
-                    </div>
+                      </CardContent>
+                    </Card>
                   )}
 
-                  <div className="glass-card" style={{ textAlign: 'left' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <User size={18} /> All Staff ({staffList.length})
-                    </h3>
+                  <Card className="text-left">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <User size={18} /> All Staff ({staffList.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
                     {staffList.length === 0 ? (
-                      <p className="text-muted" style={{ fontSize: '0.9rem' }}>No staff members found.</p>
+                      <p className="text-sm text-muted-foreground">No staff members found.</p>
                     ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div className="flex flex-col gap-2.5">
                         {staffList.map(s => (
                           <div
                             key={s.id}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              flexWrap: 'wrap',
-                              gap: '10px',
-                              padding: '12px 16px',
-                              borderRadius: '10px',
-                              background: s.active ? 'rgba(15, 23, 42, 0.4)' : 'rgba(239, 68, 68, 0.05)',
-                              border: '1px solid rgba(255,255,255,0.05)'
-                            }}
+                            className={cn('flex flex-wrap items-center justify-between gap-2.5 rounded-lg border p-3', !s.active && 'border-destructive/30 bg-destructive/5')}
                           >
                             <div>
-                              <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
-                                {s.firstName} {s.lastName} <span className="text-muted" style={{ fontWeight: 'normal' }}>({s.staffNumber})</span>
+                              <p className="text-sm font-semibold">
+                                {s.firstName} {s.lastName} <span className="font-normal text-muted-foreground">({s.staffNumber})</span>
                               </p>
-                              <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+                              <p className="text-sm text-muted-foreground">
                                 {s.role} | {s.facility?.name || 'No facility'} | {s.email}
                               </p>
                             </div>
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <div className="flex items-center gap-2">
                               {s.active ? (
                                 <>
-                                  <span className="badge badge-green">Active</span>
-                                  <button
-                                    className="btn btn-danger"
-                                    onClick={() => handleDeactivateStaff(s.id)}
-                                    style={{ padding: '6px 10px', fontSize: '0.75rem' }}
-                                    disabled={loading}
-                                  >
+                                  <Badge variant="success">Active</Badge>
+                                  <Button variant="destructive" size="sm" onClick={() => handleDeactivateStaff(s.id)} disabled={loading}>
                                     Deactivate
-                                  </button>
+                                  </Button>
                                 </>
                               ) : (
-                                <span className="badge badge-red">Inactive</span>
+                                <Badge variant="destructive">Inactive</Badge>
                               )}
                             </div>
                           </div>
                         ))}
                       </div>
                     )}
-                  </div>
+                    </CardContent>
+                  </Card>
 
-                  <div className="glass-card" style={{ textAlign: 'left' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Building2 size={18} /> All Facilities ({facilitiesList.length})
-                    </h3>
+                  <Card className="text-left">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Building2 size={18} /> All Facilities ({facilitiesList.length})
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
                     {facilitiesList.length === 0 ? (
-                      <p className="text-muted" style={{ fontSize: '0.9rem' }}>No facilities registered.</p>
+                      <p className="text-sm text-muted-foreground">No facilities registered.</p>
                     ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div className="flex flex-col gap-2.5">
                         {facilitiesList.map(f => (
-                          <div
-                            key={f.id}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              flexWrap: 'wrap',
-                              gap: '10px',
-                              padding: '12px 16px',
-                              borderRadius: '10px',
-                              background: 'rgba(15, 23, 42, 0.4)',
-                              border: '1px solid rgba(255,255,255,0.05)'
-                            }}
-                          >
+                          <div key={f.id} className="flex flex-wrap items-center justify-between gap-2.5 rounded-lg border bg-muted/40 p-3">
                             <div>
-                              <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
-                                {f.name}
-                              </p>
-                              <p className="text-muted" style={{ fontSize: '0.8rem' }}>
-                                {f.province} | {f.address}
-                              </p>
+                              <p className="text-sm font-semibold">{f.name}</p>
+                              <p className="text-sm text-muted-foreground">{f.province} | {f.address}</p>
                             </div>
-                            <span className={`badge ${f.type === 'HOSPITAL' ? 'badge-yellow' : 'badge-green'}`}>{f.type}</span>
+                            <Badge variant={f.type === 'HOSPITAL' ? 'warning' : 'success'}>{f.type}</Badge>
                           </div>
                         ))}
                       </div>
                     )}
-                  </div>
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
             )}
@@ -5121,14 +5080,15 @@ function App() {
       </main>
 
       {/* Footer */}
-      <footer style={{ marginTop: 'auto', paddingTop: '40px', paddingBottom: '20px', borderTop: '1px solid rgba(255, 255, 255, 0.08)', textAlign: 'center' }}>
-        <p className="text-muted" style={{ fontSize: '0.85rem' }}>
+      <footer className="mt-auto border-t pt-8 pb-5 text-center">
+        <p className="text-sm text-muted-foreground">
           &copy; {new Date().getFullYear()} Universal Digital Health Record System (UDHR). Authorized medical staff and patient access only.
         </p>
-        <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+        <p className="mt-1 text-xs text-muted-foreground">
           System complies with the National Health Act and POPI Act of South Africa. Portals powered by Infermedica Triage & OpenFDA Databases.
         </p>
       </footer>
+    </div>
     </div>
   );
 }

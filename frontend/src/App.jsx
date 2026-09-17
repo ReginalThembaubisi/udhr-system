@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
@@ -1533,11 +1533,11 @@ function App() {
   // Map urgency level string to color class
   const getUrgencyBadge = (level) => {
     if (level === 'RED') {
-      return <Badge variant="destructive"><ShieldAlert size={14} />🔴 High (Go to Emergency)</Badge>;
+      return <Badge variant="destructive" icon={false}><ShieldAlert size={14} />🔴 High (Go to Emergency)</Badge>;
     } else if (level === 'YELLOW') {
-      return <Badge variant="warning"><AlertTriangle size={14} />🟡 Moderate (Visit Clinic within 24h)</Badge>;
+      return <Badge variant="warning" icon={false}><AlertTriangle size={14} />🟡 Moderate (Visit Clinic within 24h)</Badge>;
     } else {
-      return <Badge variant="success"><CheckCircle size={14} />🟢 Low (Rest & Monitor at Home)</Badge>;
+      return <Badge variant="success" icon={false}><CheckCircle size={14} />🟢 Low (Rest & Monitor at Home)</Badge>;
     }
   };
 
@@ -1984,7 +1984,7 @@ function App() {
                       <Badge key={i} variant="secondary">Condition: {c}</Badge>
                     ))}
                     {healthGuidance?.allergies.map((a, i) => (
-                      <Badge key={i} variant="destructive">⚠️ Allergy: {a}</Badge>
+                      <Badge key={i} variant="destructive" icon={false}>⚠️ Allergy: {a}</Badge>
                     ))}
                   </div>
                 </CardContent>
@@ -2424,7 +2424,7 @@ function App() {
                       <div className="flex flex-col gap-3">
                         {healthGuidance?.healthTips.map((tip) => (
                           <div key={tip.id} className="rounded-lg border bg-muted/40 p-3">
-                            <Badge variant="warning" className="float-right">{tip.tipType}</Badge>
+                            <Badge variant="warning" icon={false} className="float-right">{tip.tipType}</Badge>
                             <h4 className="mb-1.5 text-sm font-semibold">{tip.title}</h4>
                             <p className="mb-1.5 text-sm text-muted-foreground">{tip.description}</p>
                             <span className="text-xs text-muted-foreground">Source: {tip.source} (SA Dept of Health)</span>
@@ -2505,7 +2505,7 @@ function App() {
                 onClick={() => { setActiveTabStaff('alerts'); fetchClinicalAlerts(); }}
               >
                 🚨 Clinical Alerts {clinicalAlerts && clinicalAlerts.length > 0 && (
-                  <Badge variant="destructive" className="px-1.5">{clinicalAlerts.length}</Badge>
+                  <Badge variant="destructive" icon={false} className="px-1.5">{clinicalAlerts.length}</Badge>
                 )}
               </button>
               <button
@@ -2521,7 +2521,7 @@ function App() {
                 onClick={() => { setActiveTabStaff('stock'); fetchStockList(); }}
               >
                 📦 Stock {stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length > 0 && (
-                  <Badge variant="destructive" className="px-1.5">{stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length}</Badge>
+                  <Badge variant="destructive" icon={false} className="px-1.5">{stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length}</Badge>
                 )}
               </button>
               {userRole === 'ADMIN' && (
@@ -3012,8 +3012,19 @@ function App() {
                         </Card>
                       )}
 
+                      {/* Patient Record Tabs — keeps this from becoming one long scroll */}
+                      <Tabs defaultValue="overview" className="w-full">
+                        <TabsList className="mb-2 h-auto w-full flex-wrap justify-start gap-1 bg-muted p-1">
+                          <TabsTrigger value="overview">Overview</TabsTrigger>
+                          <TabsTrigger value="clinical">Clinical</TabsTrigger>
+                          <TabsTrigger value="visits">Visits &amp; Referrals</TabsTrigger>
+                          <TabsTrigger value="labs">Labs &amp; Vitals</TabsTrigger>
+                          <TabsTrigger value="immunizations">Immunizations</TabsTrigger>
+                        </TabsList>
+
+                      <TabsContent value="overview" className="flex flex-col gap-6">
                       {/* Treatment Response Timeline (CDS View) */}
-                      {patientTimeline && (
+                      {patientTimeline ? (
                         <Card className="text-left">
                           <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-lg">
@@ -3107,8 +3118,12 @@ function App() {
                           </div>
                           </CardContent>
                         </Card>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Loading treatment timeline…</p>
                       )}
+                      </TabsContent>
 
+                      <TabsContent value="clinical" className="flex flex-col gap-6">
                       {/* Medical Record sections */}
                       <div className="grid grid-cols-2 gap-6">
 
@@ -3298,6 +3313,33 @@ function App() {
                         </div>
                       </div>
 
+                      {/* Diagnostic Logs */}
+                      <Card className="text-left">
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <FileText size={18} /> Diagnostic Logs & Clinical Visits
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                        {searchedPatientRecord.diagnoses.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No diagnoses recorded.</p>
+                        ) : (
+                          <div className="flex flex-col gap-2.5">
+                            {searchedPatientRecord.diagnoses.map(d => (
+                              <div key={d.id} className="rounded-lg border bg-muted/40 p-3">
+                                <p className="text-sm font-semibold">
+                                  {d.diagnosis} {d.icd10Code && <span className="ml-1.5 rounded bg-sky-500/10 px-1.5 py-0.5 text-xs font-normal text-sky-600">ICD-10: {d.icd10Code}</span>}
+                                </p>
+                                <p className="text-sm text-muted-foreground">Diagnosed: {new Date(d.diagnosedAt).toLocaleString()} | Notes: {d.notes}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        </CardContent>
+                      </Card>
+                      </TabsContent>
+
+                      <TabsContent value="visits" className="flex flex-col gap-6">
                       {/* Visit History */}
                       <Card className="text-left">
                         <CardHeader>
@@ -3384,32 +3426,9 @@ function App() {
                         )}
                         </CardContent>
                       </Card>
+                      </TabsContent>
 
-                      {/* Diagnostic Logs */}
-                      <Card className="text-left">
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2 text-base">
-                            <FileText size={18} /> Diagnostic Logs & Clinical Visits
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                        {searchedPatientRecord.diagnoses.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">No diagnoses recorded.</p>
-                        ) : (
-                          <div className="flex flex-col gap-2.5">
-                            {searchedPatientRecord.diagnoses.map(d => (
-                              <div key={d.id} className="rounded-lg border bg-muted/40 p-3">
-                                <p className="text-sm font-semibold">
-                                  {d.diagnosis} {d.icd10Code && <span className="ml-1.5 rounded bg-sky-500/10 px-1.5 py-0.5 text-xs font-normal text-sky-600">ICD-10: {d.icd10Code}</span>}
-                                </p>
-                                <p className="text-sm text-muted-foreground">Diagnosed: {new Date(d.diagnosedAt).toLocaleString()} | Notes: {d.notes}</p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        </CardContent>
-                      </Card>
-
+                      <TabsContent value="labs" className="flex flex-col gap-6">
                       {/* Laboratory Results */}
                       <Card className="text-left">
                         <CardHeader>
@@ -3477,7 +3496,9 @@ function App() {
                         )}
                         </CardContent>
                       </Card>
+                      </TabsContent>
 
+                      <TabsContent value="immunizations" className="flex flex-col gap-6">
                       {/* Immunization Schedule (EPI) */}
                       <Card className="text-left">
                         <CardHeader>
@@ -3606,7 +3627,9 @@ function App() {
                         )}
                         </CardContent>
                       </Card>
+                      </TabsContent>
 
+                      <TabsContent value="clinical" className="flex flex-col gap-6">
                       {/* Clinical Actions Form Panels */}
                       <div className="grid grid-cols-3 gap-5">
 
@@ -3736,7 +3759,9 @@ function App() {
                           </CardContent>
                         </Card>
                       </div>
+                      </TabsContent>
 
+                      <TabsContent value="labs" className="flex flex-col gap-6">
                       {/* Add Lab Result Form */}
                       <Card className="text-left">
                         <CardHeader>
@@ -3801,6 +3826,8 @@ function App() {
                           </form>
                         </CardContent>
                       </Card>
+                      </TabsContent>
+                      </Tabs>
                     </>
                   ) : (
                     <Card className="py-20 text-center">
@@ -4153,7 +4180,7 @@ function App() {
                               <div className="flex items-center gap-2">
                                 {isLow && <Badge variant="destructive">Low Stock</Badge>}
                                 {s.lowStockNotified && (
-                                  <Badge variant="warning" title="Admins at this facility have been notified">🔔 Alert Sent</Badge>
+                                  <Badge variant="warning" icon={false} title="Admins at this facility have been notified">🔔 Alert Sent</Badge>
                                 )}
                                 <Button
                                   variant="secondary"
@@ -4591,6 +4618,19 @@ function App() {
                     </CardContent>
                   </Card>
 
+                  {/* Admin content tabs — keeps 5 reports + staff + facilities from becoming one long scroll */}
+                  <Tabs defaultValue="stock" className="w-full">
+                    <TabsList className="mb-2 h-auto w-full flex-wrap justify-start gap-1 bg-muted p-1">
+                      <TabsTrigger value="stock">Stock</TabsTrigger>
+                      <TabsTrigger value="dispensing">Dispensing</TabsTrigger>
+                      <TabsTrigger value="referrals">Referrals</TabsTrigger>
+                      <TabsTrigger value="prescriptions">Prescriptions</TabsTrigger>
+                      <TabsTrigger value="labresults">Lab Results</TabsTrigger>
+                      <TabsTrigger value="staff">Staff</TabsTrigger>
+                      <TabsTrigger value="facilities">Facilities</TabsTrigger>
+                    </TabsList>
+
+                  <TabsContent value="stock" className="flex flex-col gap-6">
                   {stockReport && (
                     <Card className="text-left">
                       <CardHeader>
@@ -4641,7 +4681,7 @@ function App() {
                               <div key={item.id} className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2">
                                 <span className="text-sm">{item.medicationName}</span>
                                 <div className="flex items-center gap-1.5">
-                                  {item.lowStockNotified && <Badge variant="warning">🔔 Alert Sent</Badge>}
+                                  {item.lowStockNotified && <Badge variant="warning" icon={false}>🔔 Alert Sent</Badge>}
                                   <Badge variant="destructive">{item.quantityOnHand} / {item.reorderLevel} {item.unit}</Badge>
                                 </div>
                               </div>
@@ -4671,7 +4711,9 @@ function App() {
                       </CardContent>
                     </Card>
                   )}
+                  </TabsContent>
 
+                  <TabsContent value="dispensing" className="flex flex-col gap-6">
                   {dispenseReport && (
                     <Card className="text-left">
                       <CardHeader>
@@ -4739,7 +4781,9 @@ function App() {
                       </CardContent>
                     </Card>
                   )}
+                  </TabsContent>
 
+                  <TabsContent value="referrals" className="flex flex-col gap-6">
                   {referralReport && (
                     <Card className="text-left">
                       <CardHeader>
@@ -4817,7 +4861,7 @@ function App() {
                               const isOutgoing = r.fromFacility?.name === referralReport.facilityName;
                               return (
                                 <div key={r.id} className="text-sm">
-                                  <Badge variant={isOutgoing ? 'warning' : 'success'} className="mr-1.5">{isOutgoing ? '↗ Sent' : '↙ Received'}</Badge>
+                                  <Badge variant={isOutgoing ? 'warning' : 'success'} icon={false} className="mr-1.5">{isOutgoing ? '↗ Sent' : '↙ Received'}</Badge>
                                   <Badge variant={r.urgency === 'EMERGENCY' ? 'destructive' : r.urgency === 'URGENT' ? 'warning' : 'success'} className="mr-1.5">{r.urgency}</Badge>
                                   <span className="text-muted-foreground">
                                     {r.patient?.firstName} {r.patient?.lastName} {isOutgoing ? `to ${r.toFacility?.name}` : `from ${r.fromFacility?.name}`} — {r.reason} — {new Date(r.referredAt).toLocaleString()} — <span className="font-semibold text-foreground">{r.status}</span>
@@ -4831,7 +4875,9 @@ function App() {
                       </CardContent>
                     </Card>
                   )}
+                  </TabsContent>
 
+                  <TabsContent value="prescriptions" className="flex flex-col gap-6">
                   {prescriptionReport && (
                     <Card className="text-left">
                       <CardHeader>
@@ -4919,7 +4965,9 @@ function App() {
                       </CardContent>
                     </Card>
                   )}
+                  </TabsContent>
 
+                  <TabsContent value="labresults" className="flex flex-col gap-6">
                   {labResultReport && (
                     <Card className="text-left">
                       <CardHeader>
@@ -5004,7 +5052,9 @@ function App() {
                       </CardContent>
                     </Card>
                   )}
+                  </TabsContent>
 
+                  <TabsContent value="staff" className="flex flex-col gap-6">
                   <Card className="text-left">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-base">
@@ -5047,7 +5097,9 @@ function App() {
                     )}
                     </CardContent>
                   </Card>
+                  </TabsContent>
 
+                  <TabsContent value="facilities" className="flex flex-col gap-6">
                   <Card className="text-left">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2 text-base">
@@ -5065,13 +5117,15 @@ function App() {
                               <p className="text-sm font-semibold">{f.name}</p>
                               <p className="text-sm text-muted-foreground">{f.province} | {f.address}</p>
                             </div>
-                            <Badge variant={f.type === 'HOSPITAL' ? 'warning' : 'success'}>{f.type}</Badge>
+                            <Badge variant={f.type === 'HOSPITAL' ? 'warning' : 'success'} icon={false}>{f.type}</Badge>
                           </div>
                         ))}
                       </div>
                     )}
                     </CardContent>
                   </Card>
+                  </TabsContent>
+                  </Tabs>
                 </div>
               </div>
             )}

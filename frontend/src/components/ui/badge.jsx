@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { cva } from 'class-variance-authority';
+import { CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -22,8 +23,26 @@ const badgeVariants = cva(
   }
 );
 
-function Badge({ className, variant, ...props }) {
-  return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
+// Status colors (success/warning/destructive) are never the only cue — each
+// pairs with a distinct icon SHAPE (circle-check / triangle / circle-x) so
+// the meaning still reads for colorblind users, per WCAG 1.4.1. Pass
+// icon={false} where the content already carries its own leading icon or
+// emoji (avoids a redundant second glyph) or where the variant is used
+// purely for neutral categorization rather than a pass/fail/caution state.
+const STATUS_ICON = {
+  success: CheckCircle2,
+  warning: AlertTriangle,
+  destructive: XCircle,
+};
+
+function Badge({ className, variant, icon = true, children, ...props }) {
+  const Icon = icon && STATUS_ICON[variant];
+  return (
+    <div className={cn(badgeVariants({ variant }), className)} {...props}>
+      {Icon && <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />}
+      {children}
+    </div>
+  );
 }
 
 export { Badge, badgeVariants };

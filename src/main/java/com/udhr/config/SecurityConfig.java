@@ -3,6 +3,7 @@ package com.udhr.config;
 import com.udhr.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -49,6 +50,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/visits/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
                 .requestMatchers("/api/facilities/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
                 .requestMatchers("/api/immunizations/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
+                // Check-in/triage is clinical intake work, not an admin or dispensing function —
+                // gated more narrowly than the rest of the queue endpoints below.
+                .requestMatchers(HttpMethod.POST, "/api/queue/check-in").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/queue/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST", "ADMIN")
                 .requestMatchers("/api/vitals/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
                 .requestMatchers("/api/referrals/report/**").hasRole("ADMIN")

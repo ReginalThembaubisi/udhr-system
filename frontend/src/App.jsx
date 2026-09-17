@@ -3109,9 +3109,11 @@ function App() {
                         </div>
                         <div className="flex flex-col items-end gap-1.5">
                           <Badge variant="success">Status: Active</Badge>
-                          <Button variant="secondary" size="sm" className="mt-1.5" onClick={() => setShowCheckInForm(!showCheckInForm)}>
-                            <Clock size={14} /> {showCheckInForm ? 'Cancel Check-In' : 'Check In to Queue'}
-                          </Button>
+                          {(userRole === 'NURSE' || userRole === 'DOCTOR') && (
+                            <Button variant="secondary" size="sm" className="mt-1.5" onClick={() => setShowCheckInForm(!showCheckInForm)}>
+                              <Clock size={14} /> {showCheckInForm ? 'Cancel Check-In' : 'Check In to Queue'}
+                            </Button>
+                          )}
                           {searchedPatientRecord.activeQueueEntry?.status === 'IN_CONSULTATION' && (
                             <Button variant="secondary" size="sm" onClick={() => handleSendToPharmacy(searchedPatientRecord.activeQueueEntry.id)}>
                               <Pill size={14} /> Send to Pharmacy
@@ -3242,8 +3244,8 @@ function App() {
                         </Card>
                       )}
 
-                      {/* Reception: Check In to Queue */}
-                      {showCheckInForm && (
+                      {/* Reception: Check In to Queue — clinical intake, not an admin function */}
+                      {showCheckInForm && (userRole === 'NURSE' || userRole === 'DOCTOR') && (
                         <Card className="text-left">
                           <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-base">

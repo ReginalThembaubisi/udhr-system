@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
-  Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode, Building2, X,
-  Download, BellRing, Stethoscope, ChevronDown, ChevronRight
+  Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Building2, X,
+  Download, BellRing, Stethoscope
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -16,91 +16,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-
-// Clinical category grouping for the local symptom catalog, keyed by the
-// exact symptom name as seeded from the Kaggle disease-symptom dataset.
-// This is a display-only grouping (no backend "category" data exists for
-// these symptoms) used to organize the Basic Symptom Triage tool's list.
-const SYMPTOM_CATEGORY_ORDER = [
-  'General / Constitutional', 'Skin & Nails', 'Digestive / Gastrointestinal',
-  'Respiratory / ENT', 'Musculoskeletal', 'Neurological',
-  'Cardiovascular / Circulatory', 'Urinary / Renal', 'Eyes / Vision', 'Mental / Behavioral'
-];
-const SYMPTOM_CATEGORY_BY_NAME = {
-  'Shivering': 'General / Constitutional', 'Chills': 'General / Constitutional', 'Fatigue': 'General / Constitutional',
-  'Weight Gain': 'General / Constitutional', 'Weight Loss': 'General / Constitutional', 'Lethargy': 'General / Constitutional',
-  'Irregular Sugar Level': 'General / Constitutional', 'High Fever': 'General / Constitutional', 'Sweating': 'General / Constitutional',
-  'Dehydration': 'General / Constitutional', 'Loss Of Appetite': 'General / Constitutional', 'Mild Fever': 'General / Constitutional',
-  'Fluid Overload': 'General / Constitutional', 'Swelled Lymph Nodes': 'General / Constitutional', 'Malaise': 'General / Constitutional',
-  'Obesity': 'General / Constitutional', 'Enlarged Thyroid': 'General / Constitutional', 'Excessive Hunger': 'General / Constitutional',
-  'Extra Marital Contacts': 'General / Constitutional', 'Toxic Look (typhos)': 'General / Constitutional', 'Abnormal Menstruation': 'General / Constitutional',
-  'Increased Appetite': 'General / Constitutional', 'Family History': 'General / Constitutional', 'Receiving Blood Transfusion': 'General / Constitutional',
-  'Receiving Unsterile Injections': 'General / Constitutional', 'History Of Alcohol Consumption': 'General / Constitutional',
-
-  'Itching': 'Skin & Nails', 'Skin Rash': 'Skin & Nails', 'Nodal Skin Eruptions': 'Skin & Nails', 'Yellowish Skin': 'Skin & Nails',
-  'Bruising': 'Skin & Nails', 'Brittle Nails': 'Skin & Nails', 'Red Spots Over Body': 'Skin & Nails', 'Dischromic Patches': 'Skin & Nails',
-  'Internal Itching': 'Skin & Nails', 'Pus Filled Pimples': 'Skin & Nails', 'Blackheads': 'Skin & Nails', 'Scurring': 'Skin & Nails',
-  'Skin Peeling': 'Skin & Nails', 'Silver Like Dusting': 'Skin & Nails', 'Small Dents In Nails': 'Skin & Nails',
-  'Inflammatory Nails': 'Skin & Nails', 'Blister': 'Skin & Nails', 'Red Sore Around Nose': 'Skin & Nails', 'Yellow Crust Ooze': 'Skin & Nails',
-
-  'Stomach Pain': 'Digestive / Gastrointestinal', 'Acidity': 'Digestive / Gastrointestinal', 'Ulcers On Tongue': 'Digestive / Gastrointestinal',
-  'Vomiting': 'Digestive / Gastrointestinal', 'Indigestion': 'Digestive / Gastrointestinal', 'Nausea': 'Digestive / Gastrointestinal',
-  'Constipation': 'Digestive / Gastrointestinal', 'Abdominal Pain': 'Digestive / Gastrointestinal', 'Diarrhoea': 'Digestive / Gastrointestinal',
-  'Acute Liver Failure': 'Digestive / Gastrointestinal', 'Swelling Of Stomach': 'Digestive / Gastrointestinal',
-  'Pain During Bowel Movements': 'Digestive / Gastrointestinal', 'Pain In Anal Region': 'Digestive / Gastrointestinal',
-  'Bloody Stool': 'Digestive / Gastrointestinal', 'Irritation In Anus': 'Digestive / Gastrointestinal', 'Passage Of Gases': 'Digestive / Gastrointestinal',
-  'Belly Pain': 'Digestive / Gastrointestinal', 'Drying And Tingling Lips': 'Digestive / Gastrointestinal',
-  'Stomach Bleeding': 'Digestive / Gastrointestinal', 'Distention Of Abdomen': 'Digestive / Gastrointestinal',
-
-  'Continuous Sneezing': 'Respiratory / ENT', 'Patches In Throat': 'Respiratory / ENT', 'Cough': 'Respiratory / ENT',
-  'Breathlessness': 'Respiratory / ENT', 'Phlegm': 'Respiratory / ENT', 'Throat Irritation': 'Respiratory / ENT',
-  'Sinus Pressure': 'Respiratory / ENT', 'Runny Nose': 'Respiratory / ENT', 'Congestion': 'Respiratory / ENT',
-  'Loss Of Smell': 'Respiratory / ENT', 'Mucoid Sputum': 'Respiratory / ENT', 'Rusty Sputum': 'Respiratory / ENT', 'Blood In Sputum': 'Respiratory / ENT',
-
-  'Joint Pain': 'Musculoskeletal', 'Muscle Wasting': 'Musculoskeletal', 'Back Pain': 'Musculoskeletal', 'Neck Pain': 'Musculoskeletal',
-  'Cramps': 'Musculoskeletal', 'Knee Pain': 'Musculoskeletal', 'Hip Joint Pain': 'Musculoskeletal', 'Muscle Weakness': 'Musculoskeletal',
-  'Stiff Neck': 'Musculoskeletal', 'Swelling Joints': 'Musculoskeletal', 'Movement Stiffness': 'Musculoskeletal',
-  'Muscle Pain': 'Musculoskeletal', 'Painful Walking': 'Musculoskeletal',
-
-  'Headache': 'Neurological', 'Weakness In Limbs': 'Neurological', 'Dizziness': 'Neurological', 'Slurred Speech': 'Neurological',
-  'Spinning Movements': 'Neurological', 'Loss Of Balance': 'Neurological', 'Unsteadiness': 'Neurological',
-  'Weakness Of One Body Side': 'Neurological', 'Altered Sensorium': 'Neurological', 'Coma': 'Neurological', 'Lack Of Concentration': 'Neurological',
-
-  'Cold Hands And Feets': 'Cardiovascular / Circulatory', 'Chest Pain': 'Cardiovascular / Circulatory', 'Fast Heart Rate': 'Cardiovascular / Circulatory',
-  'Swollen Legs': 'Cardiovascular / Circulatory', 'Swollen Blood Vessels': 'Cardiovascular / Circulatory',
-  'Swollen Extremeties': 'Cardiovascular / Circulatory', 'Prominent Veins On Calf': 'Cardiovascular / Circulatory', 'Palpitations': 'Cardiovascular / Circulatory',
-
-  'Burning Micturition': 'Urinary / Renal', 'Spotting Urination': 'Urinary / Renal', 'Dark Urine': 'Urinary / Renal', 'Yellow Urine': 'Urinary / Renal',
-  'Bladder Discomfort': 'Urinary / Renal', 'Foul Smell Of Urine': 'Urinary / Renal', 'Continuous Feel Of Urine': 'Urinary / Renal', 'Polyuria': 'Urinary / Renal',
-
-  'Sunken Eyes': 'Eyes / Vision', 'Pain Behind The Eyes': 'Eyes / Vision', 'Yellowing Of Eyes': 'Eyes / Vision',
-  'Blurred And Distorted Vision': 'Eyes / Vision', 'Redness Of Eyes': 'Eyes / Vision', 'Puffy Face And Eyes': 'Eyes / Vision',
-  'Watering From Eyes': 'Eyes / Vision', 'Visual Disturbances': 'Eyes / Vision',
-
-  'Anxiety': 'Mental / Behavioral', 'Mood Swings': 'Mental / Behavioral', 'Restlessness': 'Mental / Behavioral',
-  'Depression': 'Mental / Behavioral', 'Irritability': 'Mental / Behavioral'
-};
-const getSymptomCategory = (name) => SYMPTOM_CATEGORY_BY_NAME[name] || 'General / Constitutional';
-
-// InfermedicaService.getTriageRecommendation() tags every recommendation with
-// where it came from ([Local Triage] or (API Triage: <label>)) so patients
-// can tell whether the advice is a local rule-based estimate or a real
-// clinical API result, rather than that provenance being silently discarded.
-const TRIAGE_SOURCE_TAGS = [
-  { regex: /\s*\[Local Triage\]\s*$/i, note: 'Estimate based on local rule-based triage' },
-  { regex: /\s*\(API Triage:[^)]*\)\s*$/i, note: 'Estimate based on Infermedica clinical API' }
-];
-const parseTriageRecommendation = (recommendation) => {
-  if (!recommendation) return { text: '', note: null };
-  for (const { regex, note } of TRIAGE_SOURCE_TAGS) {
-    if (regex.test(recommendation)) {
-      return { text: recommendation.replace(regex, '').trim(), note };
-    }
-  }
-  return { text: recommendation.trim(), note: null };
-};
 
 function App() {
   // Authentication State
@@ -123,35 +39,14 @@ function App() {
 
   // Patient Dashboard Data State
   const [patientProfile, setPatientProfile] = useState(null);
-  const [patientRecord, setPatientRecord] = useState(null);
-  const [healthGuidance, setHealthGuidance] = useState(null);
-  const [symptomsList, setSymptomsList] = useState([]);
-  const [selectedSymptoms, setSelectedSymptoms] = useState([]);
-  const [symptomSearchQuery, setSymptomSearchQuery] = useState('');
-  const [expandedSymptomCategories, setExpandedSymptomCategories] = useState(new Set());
-  const [triageResult, setTriageResult] = useState(null);
-  const [triageHistory, setTriageHistory] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  // Feature 3: Food Checker State
-  const [foodInputMethod, setFoodInputMethod] = useState('type'); // 'type', 'search', 'upload'
-  const [ingredientsInput, setIngredientsInput] = useState('');
-  const [productQuery, setProductQuery] = useState('737628064502'); // Preset barcode
-  const [lookupType, setLookupType] = useState('barcode'); // 'barcode' or 'search'
-  const [checkResults, setCheckResults] = useState([]);
 
   // Feature 4: Medication Reminders & Adherence State
   const [reminderData, setReminderData] = useState(null);
   const [patientAdherence, setPatientAdherence] = useState(null);
   const [adherenceNotes, setAdherenceNotes] = useState({});
-
-  // Feature 5: Clinical Alerts & CDS State
-  const [clinicalAlerts, setClinicalAlerts] = useState([]);
-  const [patientTimeline, setPatientTimeline] = useState(null);
-  const [drugFoodConflicts, setDrugFoodConflicts] = useState([]);
-  const [patientAlerts, setPatientAlerts] = useState([]);
-  const [activeTabStaff, setActiveTabStaff] = useState('patients'); // 'patients' or 'alerts'
-  const [recordTabValue, setRecordTabValue] = useState('overview'); // which tab is open within a patient's record
+  const [activeTabStaff, setActiveTabStaff] = useState('patients');
+  const [recordTabValue, setRecordTabValue] = useState('clinical'); // which tab is open within a patient's record
 
   // Staff Dashboard Data State
   const [searchId, setSearchId] = useState('9001015000083');
@@ -169,9 +64,6 @@ function App() {
   });
   const [addPrescriptionForm, setAddPrescriptionForm] = useState({
     patientId: '', medicationName: '', dosage: '', frequency: 'Once daily', durationDays: 7, notes: ''
-  });
-  const [addAlertForm, setAddAlertForm] = useState({
-    patientId: '', severity: 'HIGH', message: ''
   });
   const [addLabResultForm, setAddLabResultForm] = useState({
     patientId: '', testName: '', result: '', unit: '', normalRange: '', notes: ''
@@ -306,17 +198,9 @@ function App() {
     setMustChangePassword(false);
     setChangePasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     setPatientProfile(null);
-    setPatientRecord(null);
-    setHealthGuidance(null);
     setSearchedPatientRecord(null);
-    setTriageResult(null);
-    setCheckResults([]);
-    setIngredientsInput('');
     setReminderData(null);
     setPatientAdherence(null);
-    setClinicalAlerts([]);
-    setPatientTimeline(null);
-    setDrugFoodConflicts([]);
     setActiveTabStaff('patients');
   };
 
@@ -373,7 +257,6 @@ function App() {
       if (userRole === 'PATIENT') {
         fetchPatientPortalData();
       } else {
-        fetchClinicalAlerts();
         fetchFacilitiesList(); // needed for the "Refer to Another Facility" destination picker
         checkLowStockOnLogin();
       }
@@ -390,71 +273,16 @@ function App() {
         setPatientProfile(profileData);
       }
 
-      // 2. Fetch Record
-      const recordRes = await fetch('/api/patient/me/record', { headers: getAuthHeaders() });
-      if (recordRes.ok) {
-        const recordData = await recordRes.json();
-        setPatientRecord(recordData);
-      }
-
-      // 3. Fetch Symptoms List
-      const symptomsRes = await fetch('/api/symptoms', { headers: getAuthHeaders() });
-      if (symptomsRes.ok) {
-        const symptomsData = await symptomsRes.json();
-        setSymptomsList(symptomsData);
-      }
-
-      // 4. Fetch Triage History
-      const historyRes = await fetch('/api/symptom-checker/history', { headers: getAuthHeaders() });
-      if (historyRes.ok) {
-        const historyData = await historyRes.json();
-        setTriageHistory(historyData);
-      }
-
-      // 5. Fetch Health Guidance & FDA warnings
-      const guidanceRes = await fetch('/api/health-guidance/tips', { headers: getAuthHeaders() });
-      if (guidanceRes.ok) {
-        const guidanceData = await guidanceRes.json();
-        setHealthGuidance(guidanceData);
-      }
-
-      // 6. Fetch Medication Reminders
+      // 2. Fetch Medication Reminders
       const remindersRes = await fetch('/api/reminders/patient', { headers: getAuthHeaders() });
       if (remindersRes.ok) {
         const remindersData = await remindersRes.json();
         setReminderData(remindersData);
       }
-
-      // 7. Fetch Drug Food Audit Conflicts
-      const conflictRes = await fetch('/api/clinical-alerts/drug-food-audit', { headers: getAuthHeaders() });
-      if (conflictRes.ok) {
-        const conflictData = await conflictRes.json();
-        setDrugFoodConflicts(conflictData);
-      }
-
-      // 8. Fetch Active Clinical Alerts
-      const patientAlertsRes = await fetch('/api/clinical-alerts/my-alerts', { headers: getAuthHeaders() });
-      if (patientAlertsRes.ok) {
-        const patientAlertsData = await patientAlertsRes.json();
-        setPatientAlerts(patientAlertsData);
-      }
     } catch (err) {
       console.error("Error fetching patient portal data", err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Fetch all unresolved alerts for doctors
-  const fetchClinicalAlerts = async () => {
-    try {
-      const alertsRes = await fetch('/api/clinical-alerts', { headers: getAuthHeaders() });
-      if (alertsRes.ok) {
-        const alertsData = await alertsRes.json();
-        setClinicalAlerts(alertsData);
-      }
-    } catch (err) {
-      console.error("Error fetching clinical alerts", err);
     }
   };
 
@@ -1254,7 +1082,6 @@ function App() {
     setLoading(true);
     setSearchedPatientRecord(null);
     setPatientAdherence(null);
-    setPatientTimeline(null);
 
     try {
       let response = await fetch(`/api/patients/${idToSearch}/record`, { headers: getAuthHeaders() });
@@ -1270,25 +1097,8 @@ function App() {
       setSearchedPatientRecord(data);
       setAddDiagnosisForm(prev => ({ ...prev, patientId: data.patient.id }));
       setAddPrescriptionForm(prev => ({ ...prev, patientId: data.patient.id }));
-      setAddAlertForm(prev => ({ ...prev, patientId: data.patient.id }));
       setAddLabResultForm(prev => ({ ...prev, patientId: data.patient.id }));
 
-      // ADMIN has no clinical role: skip CDS evaluation and the clinical-alerts
-      // timeline fetch entirely rather than firing calls the backend now 403s.
-      if (userRole !== 'ADMIN') {
-        // Trigger automatic CDS evaluation on patient file search to generate alerts in real time
-        await fetch(`/api/clinical-alerts/patient/${data.patient.id}/evaluate`, {
-          method: 'POST',
-          headers: getAuthHeaders()
-        });
-
-        // Fetch patient timeline data (adherence logs, symptom checks, alerts, food conflicts)
-        const timelineRes = await fetch(`/api/clinical-alerts/patient/${data.patient.id}`, { headers: getAuthHeaders() });
-        if (timelineRes.ok) {
-          const timelineData = await timelineRes.json();
-          setPatientTimeline(timelineData);
-        }
-      }
 
       // Fetch Adherence Logs — reveals medication names, so skip for ADMIN too
       if (userRole !== 'ADMIN') {
@@ -1314,52 +1124,6 @@ function App() {
     setActiveTabStaff('patients');
     setRecordTabValue(tab);
     handleSearchPatient(null, id);
-  };
-
-  // Manual Trigger to analyze patient response
-  const handleEvaluatePatient = async (patientId) => {
-    setErrorMessage('');
-    setSuccessMessage('');
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/clinical-alerts/patient/${patientId}/evaluate`, {
-        method: 'POST',
-        headers: getAuthHeaders()
-      });
-      if (!response.ok) throw new Error('Failed to run treatment response evaluation');
-      setSuccessMessage('Treatment response evaluation analyzed. Real-time CDS alerts updated.');
-      
-      // Refresh timeline and search details
-      handleSearchPatient();
-      fetchClinicalAlerts();
-    } catch (err) {
-      setErrorMessage(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Resolve alert handler
-  const handleResolveAlert = async (alertId) => {
-    setErrorMessage('');
-    setSuccessMessage('');
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/clinical-alerts/${alertId}/resolve`, {
-        method: 'POST',
-        headers: getAuthHeaders()
-      });
-      if (!response.ok) throw new Error('Failed to resolve clinical alert');
-      setSuccessMessage('Clinical Alert marked as resolved successfully.');
-      fetchClinicalAlerts();
-      if (searchedPatientRecord) {
-        handleSearchPatient();
-      }
-    } catch (err) {
-      setErrorMessage(err.message);
-    } finally {
-      setLoading(false);
-    }
   };
 
   // Staff registers new patient (adult, or newborn with birth details)
@@ -1584,38 +1348,6 @@ function App() {
     }
   };
 
-  // Staff adds a custom clinical alert
-  const handleAddAlert = async (e) => {
-    e.preventDefault();
-    setErrorMessage('');
-    setSuccessMessage('');
-    setLoading(true);
-
-    try {
-      const response = await fetch('/api/clinical-alerts', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          patientId: addAlertForm.patientId,
-          severity: addAlertForm.severity,
-          message: addAlertForm.message
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to add custom alert');
-      }
-      setSuccessMessage('Custom Clinical Alert created successfully!');
-      setAddAlertForm(prev => ({ ...prev, message: '' }));
-      fetchClinicalAlerts();
-      handleSearchPatient(); // Refresh record
-    } catch (err) {
-      setErrorMessage(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Staff adds a lab result
   const handleAddLabResult = async (e) => {
     e.preventDefault();
@@ -1650,68 +1382,6 @@ function App() {
     }
   };
 
-  // Patient symptom check submission
-  const handleSymptomCheckSubmit = async (e) => {
-    e.preventDefault();
-    if (selectedSymptoms.length === 0) {
-      setErrorMessage('Please select at least one symptom');
-      return;
-    }
-    setErrorMessage('');
-    setLoading(true);
-    setTriageResult(null);
-
-    try {
-      const response = await fetch('/api/symptom-checker/check', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(selectedSymptoms)
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || 'Symptom check triage failed');
-      }
-      setTriageResult(data);
-      setSelectedSymptoms([]);
-      setSymptomSearchQuery('');
-      setExpandedSymptomCategories(new Set());
-      // Reload history and guidelines
-      fetchPatientPortalData();
-    } catch (err) {
-      setErrorMessage(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSymptomToggle = (id) => {
-    if (selectedSymptoms.includes(id)) {
-      setSelectedSymptoms(selectedSymptoms.filter(sId => sId !== id));
-    } else {
-      setSelectedSymptoms([...selectedSymptoms, id]);
-    }
-  };
-
-  const toggleSymptomCategory = (category) => {
-    setExpandedSymptomCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(category)) next.delete(category);
-      else next.add(category);
-      return next;
-    });
-  };
-
-  // Map urgency level string to color class
-  const getUrgencyBadge = (level) => {
-    if (level === 'RED') {
-      return <Badge variant="destructive" icon={false}><ShieldAlert size={14} />🔴 High (Go to Emergency)</Badge>;
-    } else if (level === 'YELLOW') {
-      return <Badge variant="warning" icon={false}><AlertTriangle size={14} />🟡 Moderate (Visit Clinic within 24h)</Badge>;
-    } else {
-      return <Badge variant="success" icon={false}><CheckCircle size={14} />🟢 Low (Rest & Monitor at Home)</Badge>;
-    }
-  };
-
   // Update Medication Adherence (Patient Portal)
   const handleUpdateAdherence = async (adherenceId, status, notes = '') => {
     setErrorMessage('');
@@ -1735,88 +1405,6 @@ function App() {
     }
   };
 
-  // Feature 3: OCR File Upload Handler
-  const handleOcrUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setErrorMessage('');
-    setSuccessMessage('');
-    setLoading(true);
-    
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    try {
-      const response = await fetch('/api/food-checker/ocr', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'OCR extraction failed');
-      setIngredientsInput(data.extractedText);
-      setSuccessMessage(`Ingredients read from '${file.name}' successfully!`);
-    } catch (err) {
-      setErrorMessage(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Feature 3: Open Food Facts Lookup
-  const handleProductLookup = async (e) => {
-    e.preventDefault();
-    if (!productQuery) return;
-    setErrorMessage('');
-    setSuccessMessage('');
-    setLoading(true);
-    
-    try {
-      const response = await fetch(`/api/food-checker/search?type=${lookupType}&query=${productQuery}`, {
-        headers: getAuthHeaders()
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Product ingredients search failed');
-      setIngredientsInput(data.ingredients);
-      setSuccessMessage('Ingredients fetched from Open Food Facts!');
-    } catch (err) {
-      setErrorMessage(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Feature 3: Ingredient cross-reference check
-  const handleCheckIngredients = async (e) => {
-    e.preventDefault();
-    if (!ingredientsInput) {
-      setErrorMessage('Please type or fetch ingredients first');
-      return;
-    }
-    setErrorMessage('');
-    setSuccessMessage('');
-    setLoading(true);
-    setCheckResults([]);
-    
-    try {
-      const response = await fetch('/api/food-checker/check', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ ingredients: ingredientsInput })
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Analysis failed');
-      setCheckResults(data);
-      setSuccessMessage('Ingredients cross-checked against your medical record!');
-      fetchPatientPortalData(); // Refresh history and conflict warnings
-    } catch (err) {
-      setErrorMessage(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -2094,125 +1682,10 @@ function App() {
                   </div>
                 </CardContent>
               </Card>
-
-              {/* Triage History List */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Clock size={18} /> Symptom Check History
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {triageHistory.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No symptom checks completed yet.</p>
-                  ) : (
-                    <div className="flex max-h-[350px] flex-col gap-3 overflow-y-auto">
-                      {triageHistory.map((check) => (
-                        <div key={check.id} className="rounded-lg border bg-muted/40 p-3 text-left">
-                          <div className="mb-2 flex items-center justify-between">
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(check.checkedAt).toLocaleDateString()}
-                            </span>
-                            <span className={cn(
-                              'text-xs font-bold',
-                              check.urgencyLevel === 'RED' ? 'text-destructive' : check.urgencyLevel === 'YELLOW' ? 'text-amber-600' : 'text-emerald-600'
-                            )}>
-                              {check.urgencyLevel}
-                            </span>
-                          </div>
-                          {(() => {
-                            const { text, note } = parseTriageRecommendation(check.recommendation);
-                            return (
-                              <>
-                                <p className="text-sm">{text}</p>
-                                {note && <p className="text-xs italic text-muted-foreground">({note})</p>}
-                              </>
-                            );
-                          })()}
-                          {check.details && check.details.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {check.details.map((d, idx) => (
-                                <span key={idx} className="rounded border bg-background px-2 py-0.5 text-xs text-muted-foreground">
-                                  🩺 {d.symptom.name}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
             </div>
 
             {/* Main Portal Panels */}
             <div className="flex flex-col gap-6">
-
-              {/* Dynamic Health Guidance Banner */}
-              <Card className="border-l-4 border-l-primary bg-primary/5 text-left">
-                <CardContent className="p-6">
-                  <h2 className="mb-2 text-xl font-semibold">Personalized Health Guidance Portal</h2>
-                  <p className="mb-4 text-sm text-muted-foreground">
-                    Based on your active conditions, we have compiled specialized dietary guidelines and safety warnings.
-                  </p>
-
-                  {/* Active Tags */}
-                  <div className="flex flex-wrap gap-2">
-                    {healthGuidance?.conditions.map((c, i) => (
-                      <Badge key={i} variant="secondary">Condition: {c}</Badge>
-                    ))}
-                    {healthGuidance?.allergies.map((a, i) => (
-                      <Badge key={i} variant="destructive" icon={false}>⚠️ Allergy: {a}</Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Doctor Clinical Warnings Panel */}
-              {patientAlerts && patientAlerts.length > 0 && (
-                <Card className="border-l-4 border-l-amber-500 bg-amber-500/5 text-left">
-                  <CardContent className="p-6">
-                    <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold">
-                      <ShieldAlert className="text-amber-600" size={20} /> Clinical Warnings & Doctor's Instructions
-                    </h3>
-                    <div className="flex flex-col gap-2">
-                      {patientAlerts.map((alert) => (
-                        <div key={alert.id} className="rounded-lg border bg-background p-3">
-                          <div className="mb-1.5 flex items-center justify-between">
-                            <span className={cn('text-xs font-bold', alert.severity === 'CRITICAL' ? 'text-destructive' : 'text-amber-600')}>
-                              {alert.severity} WARNING
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(alert.createdAt).toLocaleDateString()}
-                            </span>
-                          </div>
-                          <p className="text-sm leading-relaxed">{alert.message}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Drug-Food Conflict Audit Panel (Patient dashboard warning) */}
-              {drugFoodConflicts && drugFoodConflicts.length > 0 && (
-                <Card className="border-l-4 border-l-destructive bg-destructive/5 text-left">
-                  <CardContent className="p-6">
-                    <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold">
-                      <AlertTriangle className="text-destructive" size={20} /> Active Drug-Food Interactions Flagged
-                    </h3>
-                    <div className="flex flex-col gap-2">
-                      {drugFoodConflicts.map((c, i) => (
-                        <div key={i} className="rounded-lg border bg-background p-3">
-                          <p className="text-sm"><strong>Medication:</strong> {c.medication} | <strong>Ingredient:</strong> {c.ingredient}</p>
-                          <p className={cn('mt-1 text-sm leading-relaxed', c.severity === 'CRITICAL' ? 'text-destructive' : 'text-amber-600')}>{c.message}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
 
               {/* Medication Reminders & Adherence Widget */}
               <Card className="text-left">
@@ -2309,426 +1782,6 @@ function App() {
                   )}
                 </CardContent>
               </Card>
-
-              {/* Interactive Symptom Checker */}
-              <Card className="text-left">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Heart className="text-primary" size={20} /> Basic Symptom Triage
-                  </CardTitle>
-                  <CardDescription>
-                    Select the symptoms you are currently experiencing. This tool uses local, rule-based logic to recommend an urgency level — it is not connected to a live clinical decision-support API. <em>Note: This is not a diagnosis.</em>
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {/* Selected symptoms summary chips */}
-                  {selectedSymptoms.length > 0 && (
-                    <div className="mb-4 flex flex-wrap gap-2">
-                      {selectedSymptoms.map((id) => {
-                        const symptom = symptomsList.find(s => s.id === id);
-                        if (!symptom) return null;
-                        return (
-                          <button
-                            key={id}
-                            type="button"
-                            onClick={() => handleSymptomToggle(id)}
-                            className="flex items-center gap-1.5 rounded-full border border-primary bg-primary/10 py-1 pl-3 pr-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
-                          >
-                            {symptom.name}
-                            <X size={12} />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* Symptom search */}
-                  <div className="relative mb-4">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
-                    <Input
-                      value={symptomSearchQuery}
-                      onChange={(e) => setSymptomSearchQuery(e.target.value)}
-                      placeholder="Search symptoms..."
-                      className="pl-9"
-                    />
-                  </div>
-
-                  {/* Categorized, collapsible symptom list */}
-                  <div className="mb-6 flex flex-col gap-2">
-                    {SYMPTOM_CATEGORY_ORDER.map((category) => {
-                      const categorySymptoms = symptomsList.filter(s => getSymptomCategory(s.name) === category);
-                      if (categorySymptoms.length === 0) return null;
-
-                      const query = symptomSearchQuery.trim().toLowerCase();
-                      const visibleSymptoms = query
-                        ? categorySymptoms.filter(s => s.name.toLowerCase().includes(query))
-                        : categorySymptoms;
-                      if (query && visibleSymptoms.length === 0) return null;
-
-                      const selectedInCategory = categorySymptoms.filter(s => selectedSymptoms.includes(s.id)).length;
-                      const isExpanded = query
-                        ? true
-                        : expandedSymptomCategories.has(category) || selectedInCategory > 0;
-
-                      return (
-                        <div key={category} className="rounded-lg border">
-                          <button
-                            type="button"
-                            onClick={() => toggleSymptomCategory(category)}
-                            className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
-                          >
-                            <span className="flex items-center gap-2 text-sm font-medium">
-                              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                              {category}
-                              <span className="text-xs font-normal text-muted-foreground">({categorySymptoms.length})</span>
-                            </span>
-                            {selectedInCategory > 0 && (
-                              <Badge variant="success">{selectedInCategory} selected</Badge>
-                            )}
-                          </button>
-                          {isExpanded && (
-                            <div className="grid grid-cols-1 gap-2 border-t p-3 sm:grid-cols-2 lg:grid-cols-3">
-                              {visibleSymptoms.map((symptom) => {
-                                const isSelected = selectedSymptoms.includes(symptom.id);
-                                return (
-                                  <div
-                                    key={symptom.id}
-                                    onClick={() => handleSymptomToggle(symptom.id)}
-                                    className={cn(
-                                      'flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors',
-                                      isSelected ? 'border-primary bg-primary/10' : 'hover:bg-muted/40'
-                                    )}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={() => {}} // Handled by div onClick
-                                      className="pointer-events-none h-4 w-4 accent-primary"
-                                    />
-                                    <p className="text-sm font-medium">{symptom.name}</p>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="flex justify-end gap-3">
-                    {selectedSymptoms.length > 0 && (
-                      <Button variant="secondary" onClick={() => setSelectedSymptoms([])}>
-                        Clear Selection
-                      </Button>
-                    )}
-                    <Button onClick={handleSymptomCheckSubmit} disabled={selectedSymptoms.length === 0 || loading}>
-                      {loading ? 'Analyzing...' : `Analyze ${selectedSymptoms.length} Symptom(s)`}
-                    </Button>
-                  </div>
-
-                  {/* Triage Recommendation Output Modal */}
-                  <Dialog open={!!triageResult} onOpenChange={(open) => { if (!open) setTriageResult(null); }}>
-                    <DialogContent className="max-w-lg">
-                      {triageResult && (
-                        <>
-                          <DialogHeader>
-                            <div className="flex items-center justify-between gap-3">
-                              <DialogTitle>Triage Recommendation</DialogTitle>
-                              {getUrgencyBadge(triageResult.urgencyLevel)}
-                            </div>
-                          </DialogHeader>
-                          {(() => {
-                            const { text, note } = parseTriageRecommendation(triageResult.recommendation);
-                            return (
-                              <>
-                                <p className="text-base font-medium leading-relaxed">{text}</p>
-                                {note && <p className="text-xs italic text-muted-foreground">({note})</p>}
-                              </>
-                            );
-                          })()}
-                          <p className="border-t pt-3 text-xs text-muted-foreground">
-                            ⚠️ <strong>Disclaimer:</strong> This tool only provides care recommendations based on symptoms. It does not replace professional medical evaluation. If you feel extremely unwell, seek medical help immediately.
-                          </p>
-                          <Button className="w-full" onClick={() => setTriageResult(null)}>
-                            Acknowledge & Close
-                          </Button>
-                        </>
-                      )}
-                    </DialogContent>
-                  </Dialog>
-                </CardContent>
-              </Card>
-
-              {/* Feature 3: Interactive Food Ingredient Checker */}
-              <Card className="text-left">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <FileSpreadsheet className="text-sky-600" size={20} /> Food Ingredient Checker & Safety Scanner
-                  </CardTitle>
-                  <CardDescription>
-                    Input ingredient lists manually, query items via Open Food Facts, or scan labels from packaging photographs (OCR) to evaluate their safety against your medical records.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {/* Input Method Selector */}
-                  <div className="mb-5 flex max-w-md gap-1 rounded-lg bg-muted p-1">
-                    <button
-                      className={cn('flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors', foodInputMethod === 'type' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
-                      onClick={() => setFoodInputMethod('type')}
-                    >
-                      Type Ingredients
-                    </button>
-                    <button
-                      className={cn('flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors', foodInputMethod === 'search' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
-                      onClick={() => setFoodInputMethod('search')}
-                    >
-                      Open Food Facts
-                    </button>
-                    <button
-                      className={cn('flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors', foodInputMethod === 'upload' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
-                      onClick={() => setFoodInputMethod('upload')}
-                    >
-                      Upload Label (OCR)
-                    </button>
-                  </div>
-
-                  {/* Dynamic Inputs based on Selector */}
-                  {foodInputMethod === 'type' && (
-                    <div className="mb-5 space-y-1.5">
-                      <Label>Ingredients List (separate with commas)</Label>
-                      <Textarea
-                        value={ingredientsInput}
-                        onChange={(e) => setIngredientsInput(e.target.value)}
-                        placeholder="e.g. Sugar, Wheat Flour, Sodium Chloride, Peanut Butter, Vegetable Fat, Milk..."
-                        rows={3}
-                      />
-                    </div>
-                  )}
-
-                  {foodInputMethod === 'search' && (
-                    <div className="mb-5 flex flex-col gap-4">
-                      <div className="flex gap-3">
-                        <div className="w-40 space-y-1.5">
-                          <Label>Lookup Type</Label>
-                          <Select value={lookupType} onValueChange={setLookupType}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="barcode">Barcode</SelectItem>
-                              <SelectItem value="search">Product Name</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="flex-1 space-y-1.5">
-                          <Label>{lookupType === 'barcode' ? 'Product Barcode' : 'Search Terms'}</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="text"
-                              value={productQuery}
-                              onChange={(e) => setProductQuery(e.target.value)}
-                              placeholder={lookupType === 'barcode' ? 'e.g. 737628064502' : 'e.g. wheat bread'}
-                            />
-                            <Button variant="secondary" onClick={handleProductLookup} disabled={loading} className="whitespace-nowrap">
-                              {lookupType === 'barcode' ? <Barcode size={18} /> : <Search size={18} />} Fetch
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                      {ingredientsInput && (
-                        <div className="space-y-1.5">
-                          <Label>Fetched Ingredients</Label>
-                          <Textarea value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} />
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {foodInputMethod === 'upload' && (
-                    <div className="mb-5 flex flex-col gap-4">
-                      <Label>Upload Food Label Photo</Label>
-                      <div className="relative cursor-pointer rounded-lg border-2 border-dashed bg-muted/40 p-6 text-center">
-                        <Upload size={32} className="mx-auto mb-2 text-muted-foreground" />
-                        <p className="text-sm text-muted-foreground">Choose label file or drag it here</p>
-                        <p className="mt-1 text-xs text-muted-foreground">PNG, JPG or JPEG. Max size 5MB.</p>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleOcrUpload}
-                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                        />
-                      </div>
-                      {ingredientsInput && (
-                        <div className="space-y-1.5">
-                          <Label>Extracted Ingredients (OCR Text)</Label>
-                          <Textarea value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} />
-                        </div>
-                      )}
-                      <Alert className="border-sky-500/30 bg-sky-500/5">
-                        <AlertDescription className="text-xs">
-                          💡 <strong>OCR Demo Trigger:</strong> Select any file. If the file name contains <code>juice</code>, <code>chips</code>, or <code>bread</code>, it will automatically extract matching condition-specific ingredients!
-                        </AlertDescription>
-                      </Alert>
-                    </div>
-                  )}
-
-                  {ingredientsInput && (
-                    <div className="mt-4 flex justify-end">
-                      <Button onClick={handleCheckIngredients} disabled={loading}>
-                        {loading ? 'Analyzing...' : 'Analyze Safety Profiles'}
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* Analysis Results Display */}
-                  {checkResults.length > 0 && (
-                    <div className="mt-6 border-t pt-5">
-                      <h4 className="mb-4 font-semibold">Scanned Ingredients Analysis</h4>
-
-                      <div className="flex flex-col gap-3">
-                        {checkResults.map((res, i) => (
-                          <div
-                            key={i}
-                            className={cn(
-                              'flex items-center justify-between gap-3 rounded-lg border p-3',
-                              res.status === 'DANGER' ? 'border-destructive/30 bg-destructive/5' : res.status === 'CAUTION' ? 'border-amber-500/30 bg-amber-500/5' : 'border-emerald-500/30 bg-emerald-500/5'
-                            )}
-                          >
-                            <div>
-                              <span className="font-semibold">{res.name}</span>
-                              <p className={cn('mt-0.5 text-sm', res.status === 'DANGER' ? 'text-destructive' : res.status === 'CAUTION' ? 'text-amber-600' : 'text-emerald-600')}>
-                                {res.reason}
-                              </p>
-                            </div>
-
-                            <Badge variant={res.status === 'DANGER' ? 'destructive' : res.status === 'CAUTION' ? 'warning' : 'success'}>
-                              {res.status}
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Health Guidance Details */}
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-
-                {/* Dietary Guidelines Panel */}
-                <Card className="text-left">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Compass className="text-emerald-600" size={18} /> Personal Dietary Guidelines
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {healthGuidance?.dietaryGuidelines.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No dietary guidelines matching your conditions.</p>
-                    ) : (
-                      <div className="flex flex-col gap-4">
-                        {/* Foods to Eat */}
-                        <div>
-                          <h4 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-emerald-600">
-                            <CheckCircle size={16} /> Recommended Foods to Eat
-                          </h4>
-                          <div className="flex flex-col gap-2">
-                            {healthGuidance?.dietaryGuidelines.filter(g => g.foodType === 'EAT').map((item) => (
-                              <div key={item.id} className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2.5">
-                                <p className="text-sm font-semibold">{item.foodItem}</p>
-                                <p className="text-sm text-muted-foreground">{item.description}</p>
-                                <span className="text-xs text-muted-foreground">Source: {item.source} (ICD-10 Aligned)</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Foods to Avoid */}
-                        <div>
-                          <h4 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-destructive">
-                            <XCircle size={16} /> Foods to Strict Limit / Avoid
-                          </h4>
-                          <div className="flex flex-col gap-2">
-                            {healthGuidance?.dietaryGuidelines.filter(g => g.foodType === 'AVOID').map((item) => (
-                              <div key={item.id} className="rounded-lg border border-destructive/20 bg-destructive/5 p-2.5">
-                                <p className="text-sm font-semibold">{item.foodItem}</p>
-                                <p className="text-sm text-muted-foreground">{item.description}</p>
-                                <span className="text-xs text-muted-foreground">Source: {item.source} (ICD-10 Aligned)</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Health & Lifestyle Tips Panel */}
-                <Card className="text-left">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Clipboard className="text-amber-600" size={18} /> Lifestyle & Management Tips
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {healthGuidance?.healthTips.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No custom health tips available.</p>
-                    ) : (
-                      <div className="flex flex-col gap-3">
-                        {healthGuidance?.healthTips.map((tip) => (
-                          <div key={tip.id} className="rounded-lg border bg-muted/40 p-3">
-                            <Badge variant="warning" icon={false} className="float-right">{tip.tipType}</Badge>
-                            <h4 className="mb-1.5 text-sm font-semibold">{tip.title}</h4>
-                            <p className="mb-1.5 text-sm text-muted-foreground">{tip.description}</p>
-                            <span className="text-xs text-muted-foreground">Source: {tip.source} (SA Dept of Health)</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* FDA Medication Warnings Panel */}
-              <Card className="text-left">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <ShieldAlert className="text-destructive" size={18} /> Medication Allergy & OpenFDA Safety Warnings
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {healthGuidance?.medicationWarnings && Object.keys(healthGuidance.medicationWarnings).length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No medication allergies registered.</p>
-                  ) : (
-                    <div className="flex flex-col gap-5">
-                      {healthGuidance?.medicationWarnings && Object.entries(healthGuidance.medicationWarnings).map(([allergen, warnings]) => (
-                        <div key={allergen} className="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
-                          <div className="mb-3 flex flex-wrap items-center gap-2">
-                            <Badge variant="destructive">ALLERGEN: {allergen.toUpperCase()}</Badge>
-                            <span className="text-sm text-muted-foreground">Medication cross-reactivity and warnings from OpenFDA:</span>
-                          </div>
-
-                          {warnings.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No FDA alerts found for this allergen. Consult your doctor.</p>
-                          ) : (
-                            <div className="grid grid-cols-1 gap-3">
-                              {warnings.map((w, idx) => (
-                                <div key={idx} className="rounded-lg border bg-background p-3">
-                                  <p className="text-sm font-semibold">
-                                    ⚠️ Avoid: <span className="text-destructive">{w.genericName}</span> ({w.brandName})
-                                  </p>
-                                  <p className="mt-1 rounded-md bg-muted/50 p-2 text-sm italic leading-relaxed text-muted-foreground">
-                                    {w.warningText}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
             </div>
           </div>
         )}
@@ -2753,16 +1806,6 @@ function App() {
                 >
                   🕐 Queue {todayQueue && todayQueue.length > 0 && (
                     <Badge className="px-1.5">{todayQueue.length}</Badge>
-                  )}
-                </button>
-              )}
-              {(userRole === 'DOCTOR' || userRole === 'NURSE') && (
-                <button
-                  className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'alerts' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
-                  onClick={() => { setActiveTabStaff('alerts'); fetchClinicalAlerts(); }}
-                >
-                  🚨 Clinical Alerts {clinicalAlerts && clinicalAlerts.length > 0 && (
-                    <Badge variant="destructive" icon={false} className="px-1.5">{clinicalAlerts.length}</Badge>
                   )}
                 </button>
               )}
@@ -3148,11 +2191,6 @@ function App() {
                               <CheckCircle size={14} /> {showDischargeForm ? 'Cancel Discharge' : 'Discharge Patient'}
                             </Button>
                           )}
-                          {(userRole === 'NURSE' || userRole === 'DOCTOR') && (
-                            <Button size="sm" onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}>
-                              <RefreshCw size={14} /> Analyze Response (CDS)
-                            </Button>
-                          )}
                         </div>
                         </CardContent>
                       </Card>
@@ -3327,123 +2365,11 @@ function App() {
                       {/* Patient Record Tabs — keeps this from becoming one long scroll */}
                       <Tabs value={recordTabValue} onValueChange={setRecordTabValue} className="w-full">
                         <TabsList className="mb-2 h-auto w-full flex-wrap justify-start gap-1 bg-muted p-1">
-                          <TabsTrigger value="overview">Overview</TabsTrigger>
                           <TabsTrigger value="clinical">Clinical</TabsTrigger>
                           <TabsTrigger value="visits">Visits &amp; Referrals</TabsTrigger>
                           <TabsTrigger value="labs">Labs &amp; Vitals</TabsTrigger>
                           <TabsTrigger value="immunizations">Immunizations</TabsTrigger>
                         </TabsList>
-
-                      <TabsContent value="overview" className="flex flex-col gap-6">
-                      {/* Treatment Response Timeline (CDS View) — clinical detail (symptom
-                          urgency, medication adherence, alert messages), not an admin function */}
-                      {userRole === 'ADMIN' ? null : patientTimeline ? (
-                        <Card className="text-left">
-                          <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-lg">
-                              <Clock className="text-sky-600" size={20} /> 📈 Treatment Response Timeline (Past 14 Days)
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                          {/* Display active alerts if any */}
-                          {patientTimeline.activeAlerts && patientTimeline.activeAlerts.length > 0 && (
-                            <div className="mb-4 flex flex-col gap-2">
-                              {patientTimeline.activeAlerts.map(alert => (
-                                <div key={alert.id} className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
-                                  <p className="text-sm font-semibold text-destructive">🚨 Clinical Alert: {alert.alertType}</p>
-                                  <p className="mt-0.5 text-sm">{alert.message}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Display Food conflicts if any */}
-                          {patientTimeline.foodConflicts && patientTimeline.foodConflicts.length > 0 && (
-                            <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-                              <p className="text-sm font-semibold text-amber-600">⚠️ Drug-Food Interactions Detected</p>
-                              <div className="mt-1.5 flex flex-col gap-1">
-                                {patientTimeline.foodConflicts.map((c, i) => (
-                                  <p key={i} className="text-xs">
-                                    - <strong>{c.medication}</strong> conflicts with scanned ingredient <strong>{c.ingredient}</strong> ({c.message})
-                                  </p>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Timeline Table Grid */}
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <h4 className="mb-2 text-sm font-semibold text-indigo-600">Medication Doses (Adherence logs)</h4>
-                              {patientTimeline.adherenceLogs.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No doses logged in last 14 days.</p>
-                              ) : (
-                                <div className="flex max-h-[200px] flex-col gap-1.5 overflow-y-auto rounded-lg bg-muted/40 p-2">
-                                  {patientTimeline.adherenceLogs.map(log => (
-                                    <div key={log.id} className="flex flex-col gap-0.5 border-b p-1.5 last:border-b-0">
-                                      <div className="flex items-center justify-between text-xs">
-                                        <span>{log.reminder.prescription.medication}</span>
-                                        <span className="text-muted-foreground">{new Date(log.scheduledTime).toLocaleDateString([], { month: 'short', day: 'numeric' })} {log.reminder.reminderTime}</span>
-                                        <Badge variant={log.status === 'TAKEN' ? 'success' : log.status === 'MISSED' ? 'destructive' : 'warning'} className="px-1.5 py-0 text-[0.65rem]">
-                                          {log.status}
-                                        </Badge>
-                                      </div>
-                                      {log.notes && (
-                                        <p className="text-xs italic text-muted-foreground">
-                                          Feedback: "{log.notes}"
-                                        </p>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            <div>
-                              <h4 className="mb-2 text-sm font-semibold text-indigo-600">Symptom Check History</h4>
-                              {patientTimeline.symptomChecks.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No symptom checks logged in last 14 days.</p>
-                              ) : (
-                                <div className="flex max-h-[200px] flex-col gap-1.5 overflow-y-auto rounded-lg bg-muted/40 p-2">
-                                  {patientTimeline.symptomChecks.map(check => (
-                                    <div key={check.id} className="flex flex-col gap-1 border-b p-1.5 text-xs last:border-b-0">
-                                      <div className="flex justify-between">
-                                        <span className="text-muted-foreground">{new Date(check.checkedAt).toLocaleDateString()}</span>
-                                        <span className={check.urgencyLevel === 'RED' ? 'text-destructive' : check.urgencyLevel === 'YELLOW' ? 'text-amber-600' : 'text-emerald-600'}>
-                                          {check.urgencyLevel}
-                                        </span>
-                                      </div>
-                                      {(() => {
-                                        const { text, note } = parseTriageRecommendation(check.recommendation);
-                                        return (
-                                          <>
-                                            <p className="text-xs">{text}</p>
-                                            {note && <p className="text-[0.65rem] italic text-muted-foreground">({note})</p>}
-                                          </>
-                                        );
-                                      })()}
-                                      {check.details && check.details.length > 0 && (
-                                        <div className="mt-0.5 flex flex-wrap gap-1">
-                                          {check.details.map((d, idx) => (
-                                            <span key={idx} className="rounded border bg-background px-1.5 py-0.5 text-[0.65rem] text-muted-foreground">
-                                              🩺 {d.symptom.name}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          </CardContent>
-                        </Card>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">Loading treatment timeline…</p>
-                      )}
-                      </TabsContent>
-
                       <TabsContent value="clinical" className="flex flex-col gap-6">
                       {/* Medical Record sections */}
                       <div className="grid grid-cols-2 gap-6">
@@ -3974,7 +2900,7 @@ function App() {
                       {/* Clinical Actions Form Panels — diagnosing, prescribing, and alerting are
                           clinical decisions, not an admin function */}
                       {(userRole === 'NURSE' || userRole === 'DOCTOR') && (
-                      <div className="grid grid-cols-3 gap-5">
+                      <div className="grid grid-cols-2 gap-5">
 
                         {/* Add Diagnosis Form */}
                         <Card className="text-left">
@@ -4061,42 +2987,6 @@ function App() {
                               </div>
                               <Button type="submit" variant="secondary" className="w-full">
                                 Issue Prescription
-                              </Button>
-                            </form>
-                          </CardContent>
-                        </Card>
-
-                        {/* Add Clinical Alert Form */}
-                        <Card className="text-left">
-                          <CardHeader>
-                            <CardTitle className="text-base">Add Clinical Alert / Warning</CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <form onSubmit={handleAddAlert}>
-                              <div className="mb-4 space-y-1.5">
-                                <Label>Severity Level</Label>
-                                <Select value={addAlertForm.severity} onValueChange={(v) => setAddAlertForm({...addAlertForm, severity: v})} required>
-                                  <SelectTrigger><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="LOW">Low</SelectItem>
-                                    <SelectItem value="MEDIUM">Medium</SelectItem>
-                                    <SelectItem value="HIGH">High</SelectItem>
-                                    <SelectItem value="CRITICAL">Critical</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="mb-4 space-y-1.5">
-                                <Label>Alert Message / Instruction</Label>
-                                <Textarea
-                                  value={addAlertForm.message}
-                                  onChange={(e) => setAddAlertForm({...addAlertForm, message: e.target.value})}
-                                  placeholder="Patient reports severe dizziness when taking Metformin..."
-                                  rows={4}
-                                  required
-                                />
-                              </div>
-                              <Button type="submit" variant="secondary" className="w-full">
-                                Save Clinical Alert
                               </Button>
                             </form>
                           </CardContent>
@@ -4724,144 +3614,6 @@ function App() {
                             ))}
                           </div>
                         </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  </CardContent>
-                </Card>
-              </div>
-            ) : activeTabStaff === 'alerts' ? (
-              /* Feature 5: Clinical Alerts Feed Layout */
-              <div className="mx-auto mb-10 max-w-6xl px-4 text-left">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-xl">
-                      <ShieldAlert className="text-destructive" /> Active Clinical Alerts & Decision Support Feed
-                    </CardTitle>
-                    <CardDescription>
-                      These alerts are automatically fired by the UDHR engine when a patient shows high medication adherence (≥90%) with poor clinical response (symptoms persisting at Red/Yellow urgency), or high-risk drug-food interactions.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                  {clinicalAlerts.length === 0 ? (
-                    <div className="py-14 text-center">
-                      <CheckCircle size={48} className="mx-auto mb-3 text-emerald-500 opacity-60" />
-                      <h4 className="font-semibold">No Active Clinical Alerts</h4>
-                      <p className="mt-1 text-sm text-muted-foreground">All monitored patients are responding well to treatment and have no dietary conflicts.</p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-5">
-                      {clinicalAlerts.map((item) => {
-                        const alert = item.alert;
-                        return (
-                          <div
-                            key={alert.id}
-                            className={cn(
-                              'rounded-xl border p-6',
-                              alert.severity === 'CRITICAL' ? 'border-destructive/30 bg-destructive/5' : alert.severity === 'HIGH' ? 'border-amber-500/30 bg-amber-500/5' : 'bg-muted/40'
-                            )}
-                          >
-                            {/* Alert Header */}
-                            <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b pb-4">
-                              <div>
-                                <Badge variant={alert.severity === 'CRITICAL' ? 'destructive' : 'warning'}>
-                                  {alert.severity} SEVERITY
-                                </Badge>
-                                <h3 className="mt-1.5 text-lg font-semibold">
-                                  Patient: {item.patient.firstName} {item.patient.lastName} ({item.patient.idNumber})
-                                </h3>
-                                <p className="mt-1 text-sm text-muted-foreground">
-                                  Fired: {new Date(alert.createdAt).toLocaleString()} | Alert Type: {alert.alertType}
-                                </p>
-                              </div>
-                              <Button className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => handleResolveAlert(alert.id)}>
-                                Resolve Alert & Clear
-                              </Button>
-                            </div>
-
-                            {/* Alert Details Body */}
-                            <p className="mb-4 rounded-lg bg-background p-3 text-sm italic leading-relaxed">
-                              {alert.message}
-                            </p>
-
-                            {/* Compliance and Symptoms correlation details */}
-                            <div className="mb-5 grid grid-cols-2 gap-5">
-                              <div>
-                                <h4 className="mb-2 text-sm font-semibold text-indigo-600">Patient Adherence & Prescriptions</h4>
-                                <p className="text-sm">
-                                  Compliance score (last 14 days): <strong>{item.adherenceScore}%</strong>
-                                </p>
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                  {item.activePrescriptions.map(p => (
-                                    <span key={p.id} className="rounded-md border bg-background px-2 py-1 text-xs">
-                                      💊 {p.medication} ({p.dosage})
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-
-                              <div>
-                                <h4 className="mb-2 text-sm font-semibold text-indigo-600">Recent Symptom Checks</h4>
-                                {item.recentSymptomChecks.length === 0 ? (
-                                  <p className="text-sm text-muted-foreground">No checks logged.</p>
-                                ) : (
-                                  <div className="flex flex-col gap-1.5">
-                                    {item.recentSymptomChecks.map(check => (
-                                      <div key={check.id} className="rounded-md bg-background p-1.5 text-xs">
-                                        <strong>{new Date(check.checkedAt).toLocaleDateString()}:</strong> Urgency <span className={check.urgencyLevel === 'RED' ? 'text-destructive' : 'text-amber-600'}>{check.urgencyLevel}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* CDSS Diagnostic Recommendations */}
-                            {alert.alertType === 'NON_RESPONSE' && (
-                              <div className="rounded-lg border bg-background p-4">
-                                <h4 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-sky-600">
-                                  <Heart size={16} /> Clinical Decision Support Recommendations
-                                </h4>
-
-                                {/* Lab Test suggestion */}
-                                {item.labRecommendations && item.labRecommendations.length > 0 && (
-                                  <div className="mb-3 border-b pb-3">
-                                    <h5 className="text-sm font-semibold">Suggested Laboratory Diagnostics:</h5>
-                                    {item.labRecommendations.map(lr => (
-                                      <div key={lr.id} className="mt-1.5">
-                                        <p className="text-sm text-sky-600">👉 Order: <strong>{lr.testName}</strong> {lr.icdCode && `(ICD-10: ${lr.icdCode})`}</p>
-                                        <p className="mt-0.5 text-xs text-muted-foreground"><strong>Reasoning:</strong> {lr.reason}</p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-
-                                {/* Differential Diagnoses suggestions */}
-                                {item.differentialDiagnoses && item.differentialDiagnoses.length > 0 && (
-                                  <div>
-                                    <h5 className="text-sm font-semibold">Suggested ICD-10 Differential Diagnoses:</h5>
-                                    <div className="mt-1.5 flex flex-col gap-2">
-                                      {item.differentialDiagnoses.map(dd => (
-                                        <div key={dd.id} className="rounded-md bg-muted/40 p-2.5">
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-sm font-semibold">{dd.conditionName} (ICD-10: {dd.icdCode})</span>
-                                            <span className={cn(
-                                              'rounded px-1.5 py-0.5 text-xs font-bold',
-                                              dd.likelihood === 'HIGH' ? 'text-destructive' : dd.likelihood === 'MODERATE' ? 'text-amber-600' : 'text-emerald-600'
-                                            )}>
-                                              LIKELIHOOD: {dd.likelihood}
-                                            </span>
-                                          </div>
-                                          <p className="mt-1 text-xs text-muted-foreground"><strong>Evidence/Reasoning:</strong> {dd.reasoning}</p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
                         );
                       })}
                     </div>
@@ -5612,7 +4364,7 @@ function App() {
           &copy; {new Date().getFullYear()} Universal Digital Health Record System (UDHR). Authorized medical staff and patient access only.
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          System complies with the National Health Act and POPI Act of South Africa. Food safety data powered by the OpenFDA database.
+          System complies with the National Health Act and POPI Act of South Africa.
         </p>
       </footer>
     </div>

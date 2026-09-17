@@ -3,7 +3,7 @@ import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
   Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode, Building2, X,
-  Download, BellRing, Stethoscope
+  Download, BellRing, Stethoscope, ChevronDown, ChevronRight
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -18,6 +18,71 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+
+// Clinical category grouping for the local symptom catalog, keyed by the
+// exact symptom name as seeded from the Kaggle disease-symptom dataset.
+// This is a display-only grouping (no backend "category" data exists for
+// these symptoms) used to organize the Basic Symptom Triage tool's list.
+const SYMPTOM_CATEGORY_ORDER = [
+  'General / Constitutional', 'Skin & Nails', 'Digestive / Gastrointestinal',
+  'Respiratory / ENT', 'Musculoskeletal', 'Neurological',
+  'Cardiovascular / Circulatory', 'Urinary / Renal', 'Eyes / Vision', 'Mental / Behavioral'
+];
+const SYMPTOM_CATEGORY_BY_NAME = {
+  'Shivering': 'General / Constitutional', 'Chills': 'General / Constitutional', 'Fatigue': 'General / Constitutional',
+  'Weight Gain': 'General / Constitutional', 'Weight Loss': 'General / Constitutional', 'Lethargy': 'General / Constitutional',
+  'Irregular Sugar Level': 'General / Constitutional', 'High Fever': 'General / Constitutional', 'Sweating': 'General / Constitutional',
+  'Dehydration': 'General / Constitutional', 'Loss Of Appetite': 'General / Constitutional', 'Mild Fever': 'General / Constitutional',
+  'Fluid Overload': 'General / Constitutional', 'Swelled Lymph Nodes': 'General / Constitutional', 'Malaise': 'General / Constitutional',
+  'Obesity': 'General / Constitutional', 'Enlarged Thyroid': 'General / Constitutional', 'Excessive Hunger': 'General / Constitutional',
+  'Extra Marital Contacts': 'General / Constitutional', 'Toxic Look (typhos)': 'General / Constitutional', 'Abnormal Menstruation': 'General / Constitutional',
+  'Increased Appetite': 'General / Constitutional', 'Family History': 'General / Constitutional', 'Receiving Blood Transfusion': 'General / Constitutional',
+  'Receiving Unsterile Injections': 'General / Constitutional', 'History Of Alcohol Consumption': 'General / Constitutional',
+
+  'Itching': 'Skin & Nails', 'Skin Rash': 'Skin & Nails', 'Nodal Skin Eruptions': 'Skin & Nails', 'Yellowish Skin': 'Skin & Nails',
+  'Bruising': 'Skin & Nails', 'Brittle Nails': 'Skin & Nails', 'Red Spots Over Body': 'Skin & Nails', 'Dischromic Patches': 'Skin & Nails',
+  'Internal Itching': 'Skin & Nails', 'Pus Filled Pimples': 'Skin & Nails', 'Blackheads': 'Skin & Nails', 'Scurring': 'Skin & Nails',
+  'Skin Peeling': 'Skin & Nails', 'Silver Like Dusting': 'Skin & Nails', 'Small Dents In Nails': 'Skin & Nails',
+  'Inflammatory Nails': 'Skin & Nails', 'Blister': 'Skin & Nails', 'Red Sore Around Nose': 'Skin & Nails', 'Yellow Crust Ooze': 'Skin & Nails',
+
+  'Stomach Pain': 'Digestive / Gastrointestinal', 'Acidity': 'Digestive / Gastrointestinal', 'Ulcers On Tongue': 'Digestive / Gastrointestinal',
+  'Vomiting': 'Digestive / Gastrointestinal', 'Indigestion': 'Digestive / Gastrointestinal', 'Nausea': 'Digestive / Gastrointestinal',
+  'Constipation': 'Digestive / Gastrointestinal', 'Abdominal Pain': 'Digestive / Gastrointestinal', 'Diarrhoea': 'Digestive / Gastrointestinal',
+  'Acute Liver Failure': 'Digestive / Gastrointestinal', 'Swelling Of Stomach': 'Digestive / Gastrointestinal',
+  'Pain During Bowel Movements': 'Digestive / Gastrointestinal', 'Pain In Anal Region': 'Digestive / Gastrointestinal',
+  'Bloody Stool': 'Digestive / Gastrointestinal', 'Irritation In Anus': 'Digestive / Gastrointestinal', 'Passage Of Gases': 'Digestive / Gastrointestinal',
+  'Belly Pain': 'Digestive / Gastrointestinal', 'Drying And Tingling Lips': 'Digestive / Gastrointestinal',
+  'Stomach Bleeding': 'Digestive / Gastrointestinal', 'Distention Of Abdomen': 'Digestive / Gastrointestinal',
+
+  'Continuous Sneezing': 'Respiratory / ENT', 'Patches In Throat': 'Respiratory / ENT', 'Cough': 'Respiratory / ENT',
+  'Breathlessness': 'Respiratory / ENT', 'Phlegm': 'Respiratory / ENT', 'Throat Irritation': 'Respiratory / ENT',
+  'Sinus Pressure': 'Respiratory / ENT', 'Runny Nose': 'Respiratory / ENT', 'Congestion': 'Respiratory / ENT',
+  'Loss Of Smell': 'Respiratory / ENT', 'Mucoid Sputum': 'Respiratory / ENT', 'Rusty Sputum': 'Respiratory / ENT', 'Blood In Sputum': 'Respiratory / ENT',
+
+  'Joint Pain': 'Musculoskeletal', 'Muscle Wasting': 'Musculoskeletal', 'Back Pain': 'Musculoskeletal', 'Neck Pain': 'Musculoskeletal',
+  'Cramps': 'Musculoskeletal', 'Knee Pain': 'Musculoskeletal', 'Hip Joint Pain': 'Musculoskeletal', 'Muscle Weakness': 'Musculoskeletal',
+  'Stiff Neck': 'Musculoskeletal', 'Swelling Joints': 'Musculoskeletal', 'Movement Stiffness': 'Musculoskeletal',
+  'Muscle Pain': 'Musculoskeletal', 'Painful Walking': 'Musculoskeletal',
+
+  'Headache': 'Neurological', 'Weakness In Limbs': 'Neurological', 'Dizziness': 'Neurological', 'Slurred Speech': 'Neurological',
+  'Spinning Movements': 'Neurological', 'Loss Of Balance': 'Neurological', 'Unsteadiness': 'Neurological',
+  'Weakness Of One Body Side': 'Neurological', 'Altered Sensorium': 'Neurological', 'Coma': 'Neurological', 'Lack Of Concentration': 'Neurological',
+
+  'Cold Hands And Feets': 'Cardiovascular / Circulatory', 'Chest Pain': 'Cardiovascular / Circulatory', 'Fast Heart Rate': 'Cardiovascular / Circulatory',
+  'Swollen Legs': 'Cardiovascular / Circulatory', 'Swollen Blood Vessels': 'Cardiovascular / Circulatory',
+  'Swollen Extremeties': 'Cardiovascular / Circulatory', 'Prominent Veins On Calf': 'Cardiovascular / Circulatory', 'Palpitations': 'Cardiovascular / Circulatory',
+
+  'Burning Micturition': 'Urinary / Renal', 'Spotting Urination': 'Urinary / Renal', 'Dark Urine': 'Urinary / Renal', 'Yellow Urine': 'Urinary / Renal',
+  'Bladder Discomfort': 'Urinary / Renal', 'Foul Smell Of Urine': 'Urinary / Renal', 'Continuous Feel Of Urine': 'Urinary / Renal', 'Polyuria': 'Urinary / Renal',
+
+  'Sunken Eyes': 'Eyes / Vision', 'Pain Behind The Eyes': 'Eyes / Vision', 'Yellowing Of Eyes': 'Eyes / Vision',
+  'Blurred And Distorted Vision': 'Eyes / Vision', 'Redness Of Eyes': 'Eyes / Vision', 'Puffy Face And Eyes': 'Eyes / Vision',
+  'Watering From Eyes': 'Eyes / Vision', 'Visual Disturbances': 'Eyes / Vision',
+
+  'Anxiety': 'Mental / Behavioral', 'Mood Swings': 'Mental / Behavioral', 'Restlessness': 'Mental / Behavioral',
+  'Depression': 'Mental / Behavioral', 'Irritability': 'Mental / Behavioral'
+};
+const getSymptomCategory = (name) => SYMPTOM_CATEGORY_BY_NAME[name] || 'General / Constitutional';
 
 function App() {
   // Authentication State
@@ -44,6 +109,8 @@ function App() {
   const [healthGuidance, setHealthGuidance] = useState(null);
   const [symptomsList, setSymptomsList] = useState([]);
   const [selectedSymptoms, setSelectedSymptoms] = useState([]);
+  const [symptomSearchQuery, setSymptomSearchQuery] = useState('');
+  const [expandedSymptomCategories, setExpandedSymptomCategories] = useState(new Set());
   const [triageResult, setTriageResult] = useState(null);
   const [triageHistory, setTriageHistory] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1579,6 +1646,8 @@ function App() {
       }
       setTriageResult(data);
       setSelectedSymptoms([]);
+      setSymptomSearchQuery('');
+      setExpandedSymptomCategories(new Set());
       // Reload history and guidelines
       fetchPatientPortalData();
     } catch (err) {
@@ -1594,6 +1663,15 @@ function App() {
     } else {
       setSelectedSymptoms([...selectedSymptoms, id]);
     }
+  };
+
+  const toggleSymptomCategory = (category) => {
+    setExpandedSymptomCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
   };
 
   // Map urgency level string to color class
@@ -2201,36 +2279,103 @@ function App() {
               <Card className="text-left">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg">
-                    <Heart className="text-primary" size={20} /> Symptom Checker & Care Navigator
+                    <Heart className="text-primary" size={20} /> Basic Symptom Triage
                   </CardTitle>
                   <CardDescription>
-                    Select the symptoms you are currently experiencing. Our care navigation engine (powered by Infermedica) will recommend the appropriate urgency level. <em>Note: This is not a diagnosis.</em>
+                    Select the symptoms you are currently experiencing. This tool uses local, rule-based logic to recommend an urgency level — it is not connected to a live clinical decision-support API. <em>Note: This is not a diagnosis.</em>
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {/* Symptom Checkbox Grid */}
-                  <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {symptomsList.map((symptom) => {
-                      const isSelected = selectedSymptoms.includes(symptom.id);
+                  {/* Selected symptoms summary chips */}
+                  {selectedSymptoms.length > 0 && (
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      {selectedSymptoms.map((id) => {
+                        const symptom = symptomsList.find(s => s.id === id);
+                        if (!symptom) return null;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => handleSymptomToggle(id)}
+                            className="flex items-center gap-1.5 rounded-full border border-primary bg-primary/10 py-1 pl-3 pr-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20"
+                          >
+                            {symptom.name}
+                            <X size={12} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Symptom search */}
+                  <div className="relative mb-4">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                    <Input
+                      value={symptomSearchQuery}
+                      onChange={(e) => setSymptomSearchQuery(e.target.value)}
+                      placeholder="Search symptoms..."
+                      className="pl-9"
+                    />
+                  </div>
+
+                  {/* Categorized, collapsible symptom list */}
+                  <div className="mb-6 flex flex-col gap-2">
+                    {SYMPTOM_CATEGORY_ORDER.map((category) => {
+                      const categorySymptoms = symptomsList.filter(s => getSymptomCategory(s.name) === category);
+                      if (categorySymptoms.length === 0) return null;
+
+                      const query = symptomSearchQuery.trim().toLowerCase();
+                      const visibleSymptoms = query
+                        ? categorySymptoms.filter(s => s.name.toLowerCase().includes(query))
+                        : categorySymptoms;
+                      if (query && visibleSymptoms.length === 0) return null;
+
+                      const selectedInCategory = categorySymptoms.filter(s => selectedSymptoms.includes(s.id)).length;
+                      const isExpanded = query
+                        ? true
+                        : expandedSymptomCategories.has(category) || selectedInCategory > 0;
+
                       return (
-                        <div
-                          key={symptom.id}
-                          onClick={() => handleSymptomToggle(symptom.id)}
-                          className={cn(
-                            'flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors',
-                            isSelected ? 'border-primary bg-primary/10' : 'hover:bg-muted/40'
+                        <div key={category} className="rounded-lg border">
+                          <button
+                            type="button"
+                            onClick={() => toggleSymptomCategory(category)}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                          >
+                            <span className="flex items-center gap-2 text-sm font-medium">
+                              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              {category}
+                              <span className="text-xs font-normal text-muted-foreground">({categorySymptoms.length})</span>
+                            </span>
+                            {selectedInCategory > 0 && (
+                              <Badge variant="success">{selectedInCategory} selected</Badge>
+                            )}
+                          </button>
+                          {isExpanded && (
+                            <div className="grid grid-cols-1 gap-2 border-t p-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {visibleSymptoms.map((symptom) => {
+                                const isSelected = selectedSymptoms.includes(symptom.id);
+                                return (
+                                  <div
+                                    key={symptom.id}
+                                    onClick={() => handleSymptomToggle(symptom.id)}
+                                    className={cn(
+                                      'flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors',
+                                      isSelected ? 'border-primary bg-primary/10' : 'hover:bg-muted/40'
+                                    )}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => {}} // Handled by div onClick
+                                      className="pointer-events-none h-4 w-4 accent-primary"
+                                    />
+                                    <p className="text-sm font-medium">{symptom.name}</p>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {}} // Handled by div onClick
-                            className="pointer-events-none h-4 w-4 accent-primary"
-                          />
-                          <div>
-                            <p className="text-sm font-medium">{symptom.name}</p>
-                            <p className="text-xs text-muted-foreground">ICD-10: {symptom.icd10Code || 'N/A'}</p>
-                          </div>
                         </div>
                       );
                     })}
@@ -5369,7 +5514,7 @@ function App() {
           &copy; {new Date().getFullYear()} Universal Digital Health Record System (UDHR). Authorized medical staff and patient access only.
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          System complies with the National Health Act and POPI Act of South Africa. Portals powered by Infermedica Triage & OpenFDA Databases.
+          System complies with the National Health Act and POPI Act of South Africa. Food safety data powered by the OpenFDA database.
         </p>
       </footer>
     </div>

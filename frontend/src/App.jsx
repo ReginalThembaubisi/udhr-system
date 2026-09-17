@@ -279,6 +279,9 @@ function App() {
       setUserName(data.fullName);
       setUserFacilityId(data.facilityId || '');
       setMustChangePassword(!!data.mustChangePassword);
+      // PHARMACIST has no "Locate & Manage Patients" access, so the default
+      // 'patients' landing tab would otherwise leave them on a tab with no button.
+      setActiveTabStaff(data.role === 'PHARMACIST' ? 'pharmacy' : 'patients');
       setSuccessMessage(data.mustChangePassword ? 'Logged in — please set a new password to continue.' : 'Logged in successfully!');
     } catch (err) {
       setErrorMessage(err.message);
@@ -2729,44 +2732,54 @@ function App() {
           <div>
             {/* Tab Switcher for Staff */}
             <div className="mx-auto mb-6 flex max-w-4xl flex-wrap gap-1 rounded-lg bg-muted p-1">
-              <button
-                className={cn('flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'patients' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
-                onClick={() => setActiveTabStaff('patients')}
-              >
-                Locate & Manage Patients
-              </button>
-              <button
-                className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'queue' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
-                onClick={() => { setActiveTabStaff('queue'); fetchTodayQueue(); }}
-              >
-                🕐 Queue {todayQueue && todayQueue.length > 0 && (
-                  <Badge className="px-1.5">{todayQueue.length}</Badge>
-                )}
-              </button>
-              <button
-                className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'alerts' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
-                onClick={() => { setActiveTabStaff('alerts'); fetchClinicalAlerts(); }}
-              >
-                🚨 Clinical Alerts {clinicalAlerts && clinicalAlerts.length > 0 && (
-                  <Badge variant="destructive" icon={false} className="px-1.5">{clinicalAlerts.length}</Badge>
-                )}
-              </button>
-              <button
-                className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'referrals' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
-                onClick={() => { setActiveTabStaff('referrals'); fetchIncomingReferrals(); fetchOutgoingReferrals(); }}
-              >
-                🔄 Referrals {incomingReferrals.filter(r => r.status === 'PENDING').length > 0 && (
-                  <Badge className="px-1.5">{incomingReferrals.filter(r => r.status === 'PENDING').length}</Badge>
-                )}
-              </button>
-              <button
-                className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'stock' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
-                onClick={() => { setActiveTabStaff('stock'); fetchStockList(); }}
-              >
-                📦 Stock {stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length > 0 && (
-                  <Badge variant="destructive" icon={false} className="px-1.5">{stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length}</Badge>
-                )}
-              </button>
+              {(userRole === 'DOCTOR' || userRole === 'NURSE' || userRole === 'ADMIN') && (
+                <button
+                  className={cn('flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'patients' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+                  onClick={() => setActiveTabStaff('patients')}
+                >
+                  Locate & Manage Patients
+                </button>
+              )}
+              {(userRole === 'DOCTOR' || userRole === 'NURSE' || userRole === 'ADMIN') && (
+                <button
+                  className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'queue' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+                  onClick={() => { setActiveTabStaff('queue'); fetchTodayQueue(); }}
+                >
+                  🕐 Queue {todayQueue && todayQueue.length > 0 && (
+                    <Badge className="px-1.5">{todayQueue.length}</Badge>
+                  )}
+                </button>
+              )}
+              {(userRole === 'DOCTOR' || userRole === 'NURSE') && (
+                <button
+                  className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'alerts' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+                  onClick={() => { setActiveTabStaff('alerts'); fetchClinicalAlerts(); }}
+                >
+                  🚨 Clinical Alerts {clinicalAlerts && clinicalAlerts.length > 0 && (
+                    <Badge variant="destructive" icon={false} className="px-1.5">{clinicalAlerts.length}</Badge>
+                  )}
+                </button>
+              )}
+              {(userRole === 'DOCTOR' || userRole === 'NURSE' || userRole === 'ADMIN') && (
+                <button
+                  className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'referrals' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+                  onClick={() => { setActiveTabStaff('referrals'); fetchIncomingReferrals(); fetchOutgoingReferrals(); }}
+                >
+                  🔄 Referrals {incomingReferrals.filter(r => r.status === 'PENDING').length > 0 && (
+                    <Badge className="px-1.5">{incomingReferrals.filter(r => r.status === 'PENDING').length}</Badge>
+                  )}
+                </button>
+              )}
+              {(userRole === 'DOCTOR' || userRole === 'NURSE' || userRole === 'PHARMACIST') && (
+                <button
+                  className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'stock' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+                  onClick={() => { setActiveTabStaff('stock'); fetchStockList(); }}
+                >
+                  📦 Stock {stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length > 0 && (
+                    <Badge variant="destructive" icon={false} className="px-1.5">{stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length}</Badge>
+                  )}
+                </button>
+              )}
               <button
                 className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'pharmacy' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
                 onClick={() => { setActiveTabStaff('pharmacy'); fetchPharmacyQueue(); }}
@@ -3119,21 +3132,27 @@ function App() {
                               <Pill size={14} /> Send to Pharmacy
                             </Button>
                           )}
-                          <Button variant="secondary" size="sm" onClick={() => setShowReferForm(!showReferForm)}>
-                            <FileText size={14} /> {showReferForm ? 'Cancel Referral' : 'Refer to Another Facility'}
-                          </Button>
-                          <Button variant="secondary" size="sm" onClick={() => setShowDischargeForm(!showDischargeForm)}>
-                            <CheckCircle size={14} /> {showDischargeForm ? 'Cancel Discharge' : 'Discharge Patient'}
-                          </Button>
-                          <Button size="sm" onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}>
-                            <RefreshCw size={14} /> Analyze Response (CDS)
-                          </Button>
+                          {(userRole === 'NURSE' || userRole === 'DOCTOR') && (
+                            <Button variant="secondary" size="sm" onClick={() => setShowReferForm(!showReferForm)}>
+                              <FileText size={14} /> {showReferForm ? 'Cancel Referral' : 'Refer to Another Facility'}
+                            </Button>
+                          )}
+                          {(userRole === 'NURSE' || userRole === 'DOCTOR') && (
+                            <Button variant="secondary" size="sm" onClick={() => setShowDischargeForm(!showDischargeForm)}>
+                              <CheckCircle size={14} /> {showDischargeForm ? 'Cancel Discharge' : 'Discharge Patient'}
+                            </Button>
+                          )}
+                          {(userRole === 'NURSE' || userRole === 'DOCTOR') && (
+                            <Button size="sm" onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}>
+                              <RefreshCw size={14} /> Analyze Response (CDS)
+                            </Button>
+                          )}
                         </div>
                         </CardContent>
                       </Card>
 
-                      {/* Discharge Patient */}
-                      {showDischargeForm && (
+                      {/* Discharge Patient — clinical closure decision, not an admin function */}
+                      {showDischargeForm && (userRole === 'NURSE' || userRole === 'DOCTOR') && (
                         <Card className="text-left">
                           <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-base">
@@ -3181,8 +3200,8 @@ function App() {
                         </Card>
                       )}
 
-                      {/* Refer to Another Facility */}
-                      {showReferForm && (
+                      {/* Refer to Another Facility — clinical judgement call, not an admin function */}
+                      {showReferForm && (userRole === 'NURSE' || userRole === 'DOCTOR') && (
                         <Card className="text-left">
                           <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-base">
@@ -3490,7 +3509,7 @@ function App() {
                                         {dispenseHistory.length > 0 && (
                                           <Badge variant="success">Dispensed x{dispenseHistory.length}</Badge>
                                         )}
-                                        {p.active && (
+                                        {p.active && userRole !== 'ADMIN' && (
                                           <Button
                                             variant="secondary"
                                             size="sm"
@@ -3502,7 +3521,7 @@ function App() {
                                       </div>
                                     </div>
 
-                                    {dispenseFormFor === p.id && (
+                                    {dispenseFormFor === p.id && userRole !== 'ADMIN' && (
                                       <form onSubmit={(e) => handleDispense(e, p.id)} className="mt-3 border-t pt-3">
                                         <div className="mb-3 grid grid-cols-[2fr_1fr] gap-2.5">
                                           <div className="space-y-1.5">
@@ -3801,6 +3820,7 @@ function App() {
                             <CardTitle className="flex items-center gap-2 text-base">
                               <Shield size={18} /> Immunization Schedule (EPI)
                             </CardTitle>
+                            {(userRole === 'NURSE' || userRole === 'DOCTOR') && (
                             <div className="flex gap-2">
                               {(!searchedPatientRecord.immunizations || searchedPatientRecord.immunizations.length === 0) && (
                                 <Button
@@ -3816,10 +3836,11 @@ function App() {
                                 {showCatchUpForm ? 'Cancel' : '+ Add Catch-up Record'}
                               </Button>
                             </div>
+                            )}
                           </div>
                         </CardHeader>
                         <CardContent>
-                        {showCatchUpForm && (
+                        {showCatchUpForm && (userRole === 'NURSE' || userRole === 'DOCTOR') && (
                           <form
                             onSubmit={(e) => handleAddCatchUpImmunization(e, searchedPatientRecord.patient.id)}
                             className="mb-4 rounded-lg border bg-muted/40 p-4"
@@ -3904,6 +3925,7 @@ function App() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   {dose.status === 'DUE' ? (
+                                    (userRole === 'NURSE' || userRole === 'DOCTOR') ? (
                                     <>
                                       <Button size="sm" className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => handleAdministerDose(dose.id)} disabled={loading}>
                                         <CheckCircle size={14} /> Given
@@ -3912,6 +3934,9 @@ function App() {
                                         <XCircle size={14} /> Missed
                                       </Button>
                                     </>
+                                    ) : (
+                                      <Badge variant="warning">{dose.status}</Badge>
+                                    )
                                   ) : (
                                     <Badge variant={dose.status === 'GIVEN' ? 'success' : 'destructive'}>{dose.status}</Badge>
                                   )}
@@ -3925,7 +3950,9 @@ function App() {
                       </TabsContent>
 
                       <TabsContent value="clinical" className="flex flex-col gap-6">
-                      {/* Clinical Actions Form Panels */}
+                      {/* Clinical Actions Form Panels — diagnosing, prescribing, and alerting are
+                          clinical decisions, not an admin function */}
+                      {(userRole === 'NURSE' || userRole === 'DOCTOR') && (
                       <div className="grid grid-cols-3 gap-5">
 
                         {/* Add Diagnosis Form */}
@@ -4054,10 +4081,13 @@ function App() {
                           </CardContent>
                         </Card>
                       </div>
+                      )}
                       </TabsContent>
 
                       <TabsContent value="labs" className="flex flex-col gap-6">
-                      {/* Add Lab Result Form */}
+                      {/* Add Lab Result Form — recording a result is clinical data entry, not an
+                          admin function */}
+                      {(userRole === 'NURSE' || userRole === 'DOCTOR') && (
                       <Card className="text-left">
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2 text-base">
@@ -4121,6 +4151,7 @@ function App() {
                           </form>
                         </CardContent>
                       </Card>
+                      )}
                       </TabsContent>
                       </Tabs>
                     </>
@@ -4197,10 +4228,12 @@ function App() {
                           </div>
 
                           <div className="mt-3.5 flex flex-wrap gap-2 border-t pt-3.5">
-                            <Button variant="secondary" size="sm" onClick={() => setVitalsFormFor(vitalsFormFor === entry.id ? null : entry.id)}>
-                              {vitalsFormFor === entry.id ? 'Cancel Vitals' : 'Record Vitals'}
-                            </Button>
-                            {entry.status === 'WAITING' && (
+                            {(userRole === 'NURSE' || userRole === 'DOCTOR') && (
+                              <Button variant="secondary" size="sm" onClick={() => setVitalsFormFor(vitalsFormFor === entry.id ? null : entry.id)}>
+                                {vitalsFormFor === entry.id ? 'Cancel Vitals' : 'Record Vitals'}
+                              </Button>
+                            )}
+                            {entry.status === 'WAITING' && (userRole === 'NURSE' || userRole === 'DOCTOR') && (
                               <Button size="sm" onClick={() => handleCallIntoConsultation(entry.id)}>
                                 Call Into Consultation
                               </Button>
@@ -4218,7 +4251,7 @@ function App() {
                             </Button>
                           </div>
 
-                          {vitalsFormFor === entry.id && (
+                          {vitalsFormFor === entry.id && (userRole === 'NURSE' || userRole === 'DOCTOR') && (
                             <form
                               onSubmit={(e) => handleRecordVitals(e, entry.patient.id, entry.id)}
                               className="mt-3.5 rounded-lg bg-background p-4"
@@ -4320,7 +4353,7 @@ function App() {
                               {r.clinicalSummary}
                             </p>
                           )}
-                          {r.status === 'PENDING' && (
+                          {r.status === 'PENDING' && (userRole === 'NURSE' || userRole === 'DOCTOR') && (
                             <div className="mt-3 flex gap-2">
                               <Button size="sm" className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => handleRespondToReferral(r.id, 'ACCEPTED')}>
                                 Accept
@@ -4330,7 +4363,7 @@ function App() {
                               </Button>
                             </div>
                           )}
-                          {r.status === 'ACCEPTED' && (
+                          {r.status === 'ACCEPTED' && (userRole === 'NURSE' || userRole === 'DOCTOR') && (
                             <div className="mt-3 flex gap-2">
                               <Button size="sm" className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => handleRespondToReferral(r.id, 'COMPLETED')}>
                                 Mark Seen / Completed
@@ -4378,7 +4411,7 @@ function App() {
                               Response: {r.responseNotes}
                             </p>
                           )}
-                          {r.status === 'PENDING' && (
+                          {r.status === 'PENDING' && (userRole === 'NURSE' || userRole === 'DOCTOR') && (
                             <div className="mt-3 flex gap-2">
                               <Button size="sm" variant="destructive" onClick={() => handleRespondToReferral(r.id, 'CANCELLED')}>
                                 Cancel Referral
@@ -4618,16 +4651,18 @@ function App() {
                                     <p className="text-xs text-muted-foreground">Dosage: {p.dosage} | Frequency: {p.frequency} | Duration: {p.durationDays} days</p>
                                     {p.notes && <p className="mt-0.5 text-xs text-muted-foreground">Notes: {p.notes}</p>}
                                   </div>
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => { setDispenseFormFor(dispenseFormFor === p.id ? null : p.id); setDispenseForm({ quantityDispensed: '', daysSupply: '', pharmacyNotes: '' }); }}
-                                  >
-                                    {dispenseFormFor === p.id ? 'Cancel' : 'Dispense'}
-                                  </Button>
+                                  {userRole !== 'ADMIN' && (
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => { setDispenseFormFor(dispenseFormFor === p.id ? null : p.id); setDispenseForm({ quantityDispensed: '', daysSupply: '', pharmacyNotes: '' }); }}
+                                    >
+                                      {dispenseFormFor === p.id ? 'Cancel' : 'Dispense'}
+                                    </Button>
+                                  )}
                                 </div>
 
-                                {dispenseFormFor === p.id && (
+                                {dispenseFormFor === p.id && userRole !== 'ADMIN' && (
                                   <form onSubmit={(e) => handleDispense(e, p.id)} className="mt-3 border-t pt-3">
                                     <div className="mb-3 grid grid-cols-[2fr_1fr] gap-2.5">
                                       <div className="space-y-1.5">

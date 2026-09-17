@@ -3,7 +3,7 @@ import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
   Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode, Building2, X,
-  Download, BellRing
+  Download, BellRing, Stethoscope
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -66,6 +66,7 @@ function App() {
   const [drugFoodConflicts, setDrugFoodConflicts] = useState([]);
   const [patientAlerts, setPatientAlerts] = useState([]);
   const [activeTabStaff, setActiveTabStaff] = useState('patients'); // 'patients' or 'alerts'
+  const [recordTabValue, setRecordTabValue] = useState('overview'); // which tab is open within a patient's record
 
   // Staff Dashboard Data State
   const [searchId, setSearchId] = useState('9001015000083');
@@ -1105,8 +1106,9 @@ function App() {
   };
 
   // Staff search patient
-  const handleSearchPatient = async (e) => {
+  const handleSearchPatient = async (e, idOverride) => {
     if (e) e.preventDefault();
+    const idToSearch = idOverride || searchId;
     setErrorMessage('');
     setLoading(true);
     setSearchedPatientRecord(null);
@@ -1114,11 +1116,11 @@ function App() {
     setPatientTimeline(null);
 
     try {
-      let response = await fetch(`/api/patients/${searchId}/record`, { headers: getAuthHeaders() });
+      let response = await fetch(`/api/patients/${idToSearch}/record`, { headers: getAuthHeaders() });
       if (response.status === 404) {
         // Not found by ID number — this may be a UHID file number, e.g. a
         // newborn who has no national ID number yet.
-        response = await fetch(`/api/patients/uhid/${searchId}/record`, { headers: getAuthHeaders() });
+        response = await fetch(`/api/patients/uhid/${idToSearch}/record`, { headers: getAuthHeaders() });
       }
       const data = await response.json();
       if (!response.ok) {
@@ -1154,6 +1156,17 @@ function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Jump from a queue entry straight into that patient's record, opened on
+  // the given tab (defaults to Clinical, so a doctor calling a patient into
+  // consultation lands directly on the diagnosis/prescription forms).
+  const handleOpenPatientRecord = (patient, tab = 'clinical') => {
+    const id = patient.idNumber || patient.uhid;
+    setSearchId(id);
+    setActiveTabStaff('patients');
+    setRecordTabValue(tab);
+    handleSearchPatient(null, id);
   };
 
   // Manual Trigger to analyze patient response
@@ -3013,7 +3026,7 @@ function App() {
                       )}
 
                       {/* Patient Record Tabs — keeps this from becoming one long scroll */}
-                      <Tabs defaultValue="overview" className="w-full">
+                      <Tabs value={recordTabValue} onValueChange={setRecordTabValue} className="w-full">
                         <TabsList className="mb-2 h-auto w-full flex-wrap justify-start gap-1 bg-muted p-1">
                           <TabsTrigger value="overview">Overview</TabsTrigger>
                           <TabsTrigger value="clinical">Clinical</TabsTrigger>
@@ -3908,6 +3921,11 @@ function App() {
                             {entry.status === 'WAITING' && (
                               <Button size="sm" onClick={() => handleCallIntoConsultation(entry.id)}>
                                 Call Into Consultation
+                              </Button>
+                            )}
+                            {entry.status === 'IN_CONSULTATION' && (
+                              <Button size="sm" onClick={() => handleOpenPatientRecord(entry.patient, 'clinical')}>
+                                <Stethoscope size={14} /> View &amp; Consult
                               </Button>
                             )}
                             <Button size="sm" className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => handleCompleteQueueEntry(entry.id)}>

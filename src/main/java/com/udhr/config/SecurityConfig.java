@@ -49,7 +49,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/visits/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
                 .requestMatchers("/api/facilities/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
                 .requestMatchers("/api/immunizations/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
-                .requestMatchers("/api/queue/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
+                .requestMatchers("/api/queue/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST", "ADMIN")
                 .requestMatchers("/api/vitals/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
                 .requestMatchers("/api/referrals/report/**").hasRole("ADMIN")
                 .requestMatchers("/api/referrals/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")

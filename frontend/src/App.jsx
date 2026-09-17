@@ -108,6 +108,7 @@ function App() {
 
   // Reception: Queue & Vitals state
   const [todayQueue, setTodayQueue] = useState([]);
+  const [pharmacyQueue, setPharmacyQueue] = useState([]); // AWAITING_PHARMACY entries, each with its active prescriptions
   const [showCheckInForm, setShowCheckInForm] = useState(false);
   const [checkInForm, setCheckInForm] = useState({ department: 'GP', reason: '', urgency: 'GREEN' });
   const [vitalsFormFor, setVitalsFormFor] = useState(null); // queue entry id currently showing the vitals form
@@ -482,6 +483,45 @@ function App() {
     }
   };
 
+  // Pharmacy: patients sent from consultation, awaiting dispensing
+  const fetchPharmacyQueue = async () => {
+    try {
+      const response = await fetch('/api/queue/pharmacy', { headers: getAuthHeaders() });
+      if (response.ok) {
+        setPharmacyQueue(await response.json());
+      }
+    } catch (err) {
+      console.error('Error fetching pharmacy queue', err);
+    }
+  };
+
+  const handleSendToPharmacy = async (queueEntryId) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/queue/${queueEntryId}/send-to-pharmacy`, { method: 'POST', headers: getAuthHeaders() });
+      if (!response.ok) throw new Error('Failed to send patient to pharmacy');
+      setSuccessMessage('Patient sent to pharmacy.');
+      fetchTodayQueue();
+      if (searchedPatientRecord) handleSearchPatient();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleCompletePharmacyEntry = async (id) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/queue/${id}/complete`, { method: 'POST', headers: getAuthHeaders() });
+      if (!response.ok) throw new Error('Failed to complete queue entry');
+      setSuccessMessage('Marked as completed.');
+      fetchPharmacyQueue();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
   const handleCheckIn = async (e, patientId) => {
     e.preventDefault();
     setErrorMessage('');
@@ -727,7 +767,11 @@ function App() {
       setSuccessMessage(`${data.quantityDispensed} dispensed successfully.`);
       setDispenseForm({ quantityDispensed: '', daysSupply: '', pharmacyNotes: '' });
       setDispenseFormFor(null);
-      handleSearchPatient(); // Refresh record
+      if (activeTabStaff === 'pharmacy') {
+        fetchPharmacyQueue(); // Refresh the pharmacy worklist
+      } else if (searchedPatientRecord) {
+        handleSearchPatient(); // Refresh the patient record (Clinical tab)
+      }
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -2537,6 +2581,14 @@ function App() {
                   <Badge variant="destructive" icon={false} className="px-1.5">{stockList.filter(s => s.quantityOnHand <= s.reorderLevel).length}</Badge>
                 )}
               </button>
+              <button
+                className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'pharmacy' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+                onClick={() => { setActiveTabStaff('pharmacy'); fetchPharmacyQueue(); }}
+              >
+                💊 Pharmacy Queue {pharmacyQueue && pharmacyQueue.length > 0 && (
+                  <Badge className="px-1.5">{pharmacyQueue.length}</Badge>
+                )}
+              </button>
               {userRole === 'ADMIN' && (
                 <button
                   className={cn('flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors', activeTabStaff === 'staff' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground')}
@@ -2845,6 +2897,11 @@ function App() {
                           <Button variant="secondary" size="sm" className="mt-1.5" onClick={() => setShowCheckInForm(!showCheckInForm)}>
                             <Clock size={14} /> {showCheckInForm ? 'Cancel Check-In' : 'Check In to Queue'}
                           </Button>
+                          {searchedPatientRecord.activeQueueEntry?.status === 'IN_CONSULTATION' && (
+                            <Button variant="secondary" size="sm" onClick={() => handleSendToPharmacy(searchedPatientRecord.activeQueueEntry.id)}>
+                              <Pill size={14} /> Send to Pharmacy
+                            </Button>
+                          )}
                           <Button variant="secondary" size="sm" onClick={() => setShowReferForm(!showReferForm)}>
                             <FileText size={14} /> {showReferForm ? 'Cancel Referral' : 'Refer to Another Facility'}
                           </Button>
@@ -4275,6 +4332,123 @@ function App() {
                     </CardContent>
                   </Card>
                 </div>
+              </div>
+            ) : activeTabStaff === 'pharmacy' ? (
+              /* Pharmacy Queue: patients sent from consultation, awaiting dispensing */
+              <div className="mx-auto mb-10 max-w-3xl px-4 text-left">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <Pill className="text-sky-600" /> Pharmacy Queue
+                    </CardTitle>
+                    <CardDescription>
+                      Patients sent to pharmacy after consultation, with their active prescriptions ready to dispense. A doctor or nurse sends a patient here with "Send to Pharmacy" once a prescription has been issued.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                  {pharmacyQueue.length === 0 ? (
+                    <div className="py-14 text-center">
+                      <Pill size={48} className="mx-auto mb-3 text-muted-foreground opacity-40" />
+                      <h4 className="font-semibold">No one awaiting pharmacy</h4>
+                      <p className="mt-1 text-sm text-muted-foreground">Patients sent to pharmacy from a consultation will appear here.</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3.5">
+                      {pharmacyQueue.map(item => {
+                        const entry = item.queueEntry;
+                        const prescriptions = item.activePrescriptions || [];
+                        return (
+                        <div key={entry.id} className="rounded-xl border bg-muted/40 p-4.5">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <span className="text-xs font-semibold text-muted-foreground">
+                                #{entry.queueNumber} · {entry.department.replace('_', ' ')}
+                              </span>
+                              <h3 className="mt-1 text-base font-semibold">
+                                {entry.patient.firstName} {entry.patient.lastName}
+                              </h3>
+                              <p className="mt-0.5 text-sm text-muted-foreground">
+                                {entry.patient.idNumber || entry.patient.uhid}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Checked in: {new Date(entry.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <Badge variant="warning">Awaiting Pharmacy</Badge>
+                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-600/90" onClick={() => handleCompletePharmacyEntry(entry.id)}>
+                                <CheckCircle size={14} /> Mark Completed
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="mt-3.5 flex flex-col gap-2 border-t pt-3.5">
+                            {prescriptions.length === 0 ? (
+                              <p className="text-sm text-muted-foreground">No active prescriptions on file — dispensing may not be needed. Use "Mark Completed" once confirmed.</p>
+                            ) : prescriptions.map(p => (
+                              <div key={p.id} className="rounded-lg border bg-background p-2.5">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm font-semibold">{p.medication}</p>
+                                    <p className="text-xs text-muted-foreground">Dosage: {p.dosage} | Frequency: {p.frequency} | Duration: {p.durationDays} days</p>
+                                    {p.notes && <p className="mt-0.5 text-xs text-muted-foreground">Notes: {p.notes}</p>}
+                                  </div>
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => { setDispenseFormFor(dispenseFormFor === p.id ? null : p.id); setDispenseForm({ quantityDispensed: '', daysSupply: '', pharmacyNotes: '' }); }}
+                                  >
+                                    {dispenseFormFor === p.id ? 'Cancel' : 'Dispense'}
+                                  </Button>
+                                </div>
+
+                                {dispenseFormFor === p.id && (
+                                  <form onSubmit={(e) => handleDispense(e, p.id)} className="mt-3 border-t pt-3">
+                                    <div className="mb-3 grid grid-cols-[2fr_1fr] gap-2.5">
+                                      <div className="space-y-1.5">
+                                        <Label>Quantity Dispensed</Label>
+                                        <Input
+                                          type="text"
+                                          value={dispenseForm.quantityDispensed}
+                                          onChange={(e) => setDispenseForm({...dispenseForm, quantityDispensed: e.target.value})}
+                                          placeholder="e.g. 30 tablets"
+                                          required
+                                        />
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        <Label>Days Supply</Label>
+                                        <Input
+                                          type="number"
+                                          value={dispenseForm.daysSupply}
+                                          onChange={(e) => setDispenseForm({...dispenseForm, daysSupply: e.target.value})}
+                                          placeholder="e.g. 30"
+                                        />
+                                      </div>
+                                    </div>
+                                    <div className="mb-3 space-y-1.5">
+                                      <Label>Pharmacy Notes</Label>
+                                      <Textarea
+                                        value={dispenseForm.pharmacyNotes}
+                                        onChange={(e) => setDispenseForm({...dispenseForm, pharmacyNotes: e.target.value})}
+                                        placeholder="Counselling given, generic substitution, stock notes..."
+                                        rows={2}
+                                      />
+                                    </div>
+                                    <Button type="submit" className="w-full" disabled={loading}>
+                                      {loading ? 'Recording...' : 'Confirm Dispensed'}
+                                    </Button>
+                                  </form>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  </CardContent>
+                </Card>
               </div>
             ) : activeTabStaff === 'alerts' ? (
               /* Feature 5: Clinical Alerts Feed Layout */

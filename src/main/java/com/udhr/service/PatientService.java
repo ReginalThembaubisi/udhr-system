@@ -57,6 +57,9 @@ public class PatientService {
     @Autowired
     private DispenseRepository dispenseRepository;
 
+    @Autowired
+    private QueueEntryRepository queueEntryRepository;
+
     public Patient findById(Long id) {
         return patientRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
@@ -164,6 +167,15 @@ public class PatientService {
         List<Referral> referrals = referralRepository.findByPatientIdOrderByReferredAtDesc(patient.getId());
         List<Dispense> dispenses = dispenseRepository.findByPatientIdOrderByDispensedAtDesc(patient.getId());
 
+        LocalDate today = LocalDate.now();
+        List<QueueEntry.Status> activeStatuses = List.of(
+                QueueEntry.Status.WAITING, QueueEntry.Status.IN_CONSULTATION, QueueEntry.Status.AWAITING_PHARMACY);
+        QueueEntry activeQueueEntry = queueEntryRepository.findByPatientIdOrderByCheckedInAtDesc(patient.getId())
+                .stream()
+                .filter(qe -> qe.getQueueDate().equals(today) && activeStatuses.contains(qe.getStatus()))
+                .findFirst()
+                .orElse(null);
+
         // Log the view action in AuditLog
         Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
         if (staff != null) {
@@ -186,7 +198,8 @@ public class PatientService {
                 immunizations,
                 vitals,
                 referrals,
-                dispenses
+                dispenses,
+                activeQueueEntry
         );
     }
 }

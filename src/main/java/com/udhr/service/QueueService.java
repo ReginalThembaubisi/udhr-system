@@ -1,10 +1,13 @@
 package com.udhr.service;
 
+import com.udhr.dto.PharmacyQueueItem;
 import com.udhr.dto.QueueCheckInRequest;
 import com.udhr.model.Patient;
+import com.udhr.model.Prescription;
 import com.udhr.model.QueueEntry;
 import com.udhr.model.Staff;
 import com.udhr.repository.PatientRepository;
+import com.udhr.repository.PrescriptionRepository;
 import com.udhr.repository.QueueEntryRepository;
 import com.udhr.repository.StaffRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +30,9 @@ public class QueueService {
 
     @Autowired
     private StaffRepository staffRepository;
+
+    @Autowired
+    private PrescriptionRepository prescriptionRepository;
 
     private static final Map<QueueEntry.Urgency, Integer> URGENCY_PRIORITY = Map.of(
             QueueEntry.Urgency.RED, 0,
@@ -93,6 +99,31 @@ public class QueueService {
         entry.setAttendingStaff(staff);
         entry.setCalledAt(LocalDateTime.now());
         return queueEntryRepository.save(entry);
+    }
+
+    @Transactional
+    public QueueEntry sendToPharmacy(Long id) {
+        QueueEntry entry = queueEntryRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Queue entry not found"));
+        if (entry.getStatus() != QueueEntry.Status.IN_CONSULTATION) {
+            throw new RuntimeException("Only a patient currently in consultation can be sent to pharmacy");
+        }
+        entry.setStatus(QueueEntry.Status.AWAITING_PHARMACY);
+        return queueEntryRepository.save(entry);
+    }
+
+    public List<PharmacyQueueItem> getAwaitingPharmacy(String staffNumber) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+
+        List<QueueEntry> entries = queueEntryRepository.findByFacilityIdAndQueueDateAndStatusInOrderByQueueNumberAsc(
+                staff.getFacility().getId(), LocalDate.now(), List.of(QueueEntry.Status.AWAITING_PHARMACY));
+
+        return entries.stream()
+                .map(entry -> new PharmacyQueueItem(
+                        entry,
+                        prescriptionRepository.findByPatientIdAndActiveTrue(entry.getPatient().getId())))
+                .collect(java.util.stream.Collectors.toList());
     }
 
     @Transactional

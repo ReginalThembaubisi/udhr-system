@@ -8,6 +8,7 @@ import com.udhr.model.Immunization;
 import com.udhr.model.LabResult;
 import com.udhr.model.Patient;
 import com.udhr.model.Prescription;
+import com.udhr.model.QueueEntry;
 import com.udhr.model.Referral;
 import com.udhr.model.Vitals;
 import com.udhr.model.Visit;
@@ -31,4 +32,9 @@ public class PatientRecordResponse {
     private List<Vitals> vitals;
     private List<Referral> referrals;
     private List<Dispense> dispenses;
+    // The patient's current queue entry for today, if any (WAITING /
+    // IN_CONSULTATION / AWAITING_PHARMACY) — lets the patient-file screen
+    // show the right consultation action (e.g. "Send to Pharmacy") without
+    // a separate queue lookup.
+    private QueueEntry activeQueueEntry;
 }

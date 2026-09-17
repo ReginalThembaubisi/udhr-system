@@ -19,7 +19,7 @@ public class QueueEntry {
     }
 
     public enum Status {
-        WAITING, IN_CONSULTATION, COMPLETED, CANCELLED
+        WAITING, IN_CONSULTATION, AWAITING_PHARMACY, COMPLETED, CANCELLED
     }
 
     @Id

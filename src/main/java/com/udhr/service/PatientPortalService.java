@@ -117,7 +117,8 @@ public class PatientPortalService {
                 immunizations,
                 vitals,
                 referrals,
-                dispenses
+                dispenses,
+                null
         );
     }
 }

@@ -1,5 +1,6 @@
 package com.udhr.controller;
 
+import com.udhr.dto.PharmacyQueueItem;
 import com.udhr.dto.QueueCheckInRequest;
 import com.udhr.dto.UrgencyUpdateRequest;
 import com.udhr.model.QueueEntry;
@@ -90,6 +91,36 @@ public class QueueController {
         try {
             QueueEntry entry = queueService.callNext(id, staffNumber);
             return ResponseEntity.ok(entry);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/{id}/send-to-pharmacy")
+    public ResponseEntity<?> sendToPharmacy(@PathVariable Long id, HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            QueueEntry entry = queueService.sendToPharmacy(id);
+            return ResponseEntity.ok(entry);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/pharmacy")
+    public ResponseEntity<?> getAwaitingPharmacy(HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            List<PharmacyQueueItem> items = queueService.getAwaitingPharmacy(staffNumber);
+            return ResponseEntity.ok(items);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }

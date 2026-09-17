@@ -84,6 +84,24 @@ const SYMPTOM_CATEGORY_BY_NAME = {
 };
 const getSymptomCategory = (name) => SYMPTOM_CATEGORY_BY_NAME[name] || 'General / Constitutional';
 
+// InfermedicaService.getTriageRecommendation() tags every recommendation with
+// where it came from ([Local Triage] or (API Triage: <label>)) so patients
+// can tell whether the advice is a local rule-based estimate or a real
+// clinical API result, rather than that provenance being silently discarded.
+const TRIAGE_SOURCE_TAGS = [
+  { regex: /\s*\[Local Triage\]\s*$/i, note: 'Estimate based on local rule-based triage' },
+  { regex: /\s*\(API Triage:[^)]*\)\s*$/i, note: 'Estimate based on Infermedica clinical API' }
+];
+const parseTriageRecommendation = (recommendation) => {
+  if (!recommendation) return { text: '', note: null };
+  for (const { regex, note } of TRIAGE_SOURCE_TAGS) {
+    if (regex.test(recommendation)) {
+      return { text: recommendation.replace(regex, '').trim(), note };
+    }
+  }
+  return { text: recommendation.trim(), note: null };
+};
+
 function App() {
   // Authentication State
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -2093,7 +2111,15 @@ function App() {
                               {check.urgencyLevel}
                             </span>
                           </div>
-                          <p className="text-sm">{check.recommendation.split('[')[0]}</p>
+                          {(() => {
+                            const { text, note } = parseTriageRecommendation(check.recommendation);
+                            return (
+                              <>
+                                <p className="text-sm">{text}</p>
+                                {note && <p className="text-xs italic text-muted-foreground">({note})</p>}
+                              </>
+                            );
+                          })()}
                           {check.details && check.details.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               {check.details.map((d, idx) => (
@@ -2403,9 +2429,15 @@ function App() {
                               {getUrgencyBadge(triageResult.urgencyLevel)}
                             </div>
                           </DialogHeader>
-                          <p className="text-base font-medium leading-relaxed">
-                            {triageResult.recommendation.split('[')[0]}
-                          </p>
+                          {(() => {
+                            const { text, note } = parseTriageRecommendation(triageResult.recommendation);
+                            return (
+                              <>
+                                <p className="text-base font-medium leading-relaxed">{text}</p>
+                                {note && <p className="text-xs italic text-muted-foreground">({note})</p>}
+                              </>
+                            );
+                          })()}
                           <p className="border-t pt-3 text-xs text-muted-foreground">
                             ⚠️ <strong>Disclaimer:</strong> This tool only provides care recommendations based on symptoms. It does not replace professional medical evaluation. If you feel extremely unwell, seek medical help immediately.
                           </p>
@@ -3353,7 +3385,15 @@ function App() {
                                           {check.urgencyLevel}
                                         </span>
                                       </div>
-                                      <p className="text-xs">{check.recommendation.split('[')[0]}</p>
+                                      {(() => {
+                                        const { text, note } = parseTriageRecommendation(check.recommendation);
+                                        return (
+                                          <>
+                                            <p className="text-xs">{text}</p>
+                                            {note && <p className="text-[0.65rem] italic text-muted-foreground">({note})</p>}
+                                          </>
+                                        );
+                                      })()}
                                       {check.details && check.details.length > 0 && (
                                         <div className="mt-0.5 flex flex-wrap gap-1">
                                           {check.details.map((d, idx) => (

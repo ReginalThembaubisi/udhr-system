@@ -120,6 +120,19 @@ public class DataSeeder implements CommandLineRunner {
             nurse.setMustChangePassword(false); // documented demo login, not a real temp password
             staffRepository.save(nurse);
 
+            // Staff 4: PHARM001
+            Staff pharmacist = new Staff();
+            pharmacist.setStaffNumber("PHARM001");
+            pharmacist.setFirstName("Sipho");
+            pharmacist.setLastName("Nkosi");
+            pharmacist.setRole("PHARMACIST");
+            pharmacist.setFacility(facility);
+            pharmacist.setEmail("sipho.nkosi@udhr.gov.za");
+            pharmacist.setPassword(passwordEncoder.encode("Pharmacy@123"));
+            pharmacist.setActive(true);
+            pharmacist.setMustChangePassword(false); // documented demo login, not a real temp password
+            staffRepository.save(pharmacist);
+
             System.out.println("Facility and Staff seeded successfully.");
         } else {
             facility = facilityRepository.findAll().get(0);

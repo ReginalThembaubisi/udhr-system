@@ -38,6 +38,9 @@ public class ReferralService {
     @Autowired
     private VisitRepository visitRepository;
 
+    @Autowired
+    private QueueService queueService;
+
     @Transactional
     public Referral createReferral(ReferralRequest request, String staffNumber) {
         Patient patient = patientRepository.findById(request.getPatientId())
@@ -90,6 +93,10 @@ public class ReferralService {
         visit.setDischargedBy(staff);
         visit.setDischargedAt(LocalDateTime.now());
         visitRepository.save(visit);
+
+        // Same as discharge: the patient is no longer "here" once referred
+        // elsewhere, so close out any active queue entry at this facility.
+        queueService.completeActiveEntryForPatientAtFacility(patient.getId(), staff.getFacility().getId());
 
         return saved;
     }

@@ -706,6 +706,7 @@ function App() {
       setShowReferForm(false);
       setReferForm({ toFacilityId: '', urgency: 'ROUTINE', reason: '', clinicalSummary: '' });
       handleSearchPatient();
+      fetchTodayQueue(); // Referral also closes out any active queue entry for today
     } catch (err) {
       setErrorMessage(err.message);
     } finally {

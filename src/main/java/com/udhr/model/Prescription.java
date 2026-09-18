@@ -12,6 +12,7 @@ import jakarta.persistence.Table;
 import lombok.Data;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 
 @Data
 @Entity
@@ -65,5 +66,12 @@ public class Prescription {
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
+    }
+
+    public Long getDurationDays() {
+        if (startDate == null || endDate == null) {
+            return null;
+        }
+        return ChronoUnit.DAYS.between(startDate, endDate) + 1;
     }
 }

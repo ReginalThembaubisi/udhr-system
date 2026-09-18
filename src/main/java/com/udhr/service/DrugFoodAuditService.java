@@ -26,17 +26,14 @@ public class DrugFoodAuditService {
             return conflicts;
         }
 
-        // Tokenize and normalize all ingredients checked in the past scans
-        Set<String> checkedIngredients = new HashSet<>();
+        // Normalize all ingredients checked in the past scans into a single searchable string,
+        // so both single-word (e.g. "sugar") and multi-word (e.g. "trans fat") triggers can match.
+        StringBuilder normalized = new StringBuilder();
         for (FoodScan scan : scans) {
-            String[] tokens = scan.getIngredients().toLowerCase().split("[,;\\.\\(\\)\\s]+");
-            for (String t : tokens) {
-                String clean = t.replaceAll("[^a-zA-Z]", "");
-                if (clean.length() > 2) {
-                    checkedIngredients.add(clean);
-                }
-            }
+            normalized.append(' ')
+                    .append(scan.getIngredients().toLowerCase().replaceAll("[^a-z]+", " "));
         }
+        String checkedIngredientsText = " " + normalized.toString().trim().replaceAll("\\s+", " ") + " ";
 
         for (Prescription rx : activePrescriptions) {
             if (!rx.getActive()) continue;
@@ -47,7 +44,7 @@ public class DrugFoodAuditService {
             if (medLower.contains("metformin") || medLower.contains("gliclazide") || medLower.contains("insulin")) {
                 String[] diabeticTriggers = {"pap", "mageu", "bread", "sugar", "fructose", "glucose", "sucrose", "dextrose", "syrup", "honey", "maltodextrin"};
                 for (String trigger : diabeticTriggers) {
-                    if (checkedIngredients.contains(trigger)) {
+                    if (checkedIngredientsText.contains(" " + trigger + " ")) {
                         Map<String, Object> conflict = new HashMap<>();
                         conflict.put("medication", rx.getMedication());
                         conflict.put("ingredient", trigger);
@@ -62,7 +59,7 @@ public class DrugFoodAuditService {
             if (medLower.contains("amlodipine") || medLower.contains("enalapril") || medLower.contains("losartan") || medLower.contains("hydrochlorothiazide")) {
                 String[] hypertensiveTriggers = {"salt", "sodium", "msg", "glutamate", "bicarbonate", "chips", "boerewors", "polony", "biltong", "trans fat", "hydrogenated"};
                 for (String trigger : hypertensiveTriggers) {
-                    if (checkedIngredients.contains(trigger)) {
+                    if (checkedIngredientsText.contains(" " + trigger + " ")) {
                         Map<String, Object> conflict = new HashMap<>();
                         conflict.put("medication", rx.getMedication());
                         conflict.put("ingredient", trigger);
@@ -77,7 +74,7 @@ public class DrugFoodAuditService {
             if (medLower.contains("warfarin")) {
                 String[] warfarinTriggers = {"spinach", "broccoli", "kale", "cabbage", "morogo", "greens"};
                 for (String trigger : warfarinTriggers) {
-                    if (checkedIngredients.contains(trigger)) {
+                    if (checkedIngredientsText.contains(" " + trigger + " ")) {
                         Map<String, Object> conflict = new HashMap<>();
                         conflict.put("medication", rx.getMedication());
                         conflict.put("ingredient", trigger);

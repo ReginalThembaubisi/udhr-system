@@ -1,6 +1,7 @@
 package com.udhr.service;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import java.util.*;
@@ -10,6 +11,15 @@ public class OpenFoodFactsService {
 
     private static final String OFF_PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product/";
     private static final String OFF_SEARCH_URL = "https://world.openfoodfacts.org/cgi/search.pl";
+    private static final int CONNECT_TIMEOUT_MS = 3000;
+    private static final int READ_TIMEOUT_MS = 4000;
+
+    private RestTemplate buildRestTemplate() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        factory.setReadTimeout(READ_TIMEOUT_MS);
+        return new RestTemplate(factory);
+    }
 
     public String fetchIngredientsByBarcode(String barcode) {
         if (barcode == null || barcode.trim().isEmpty()) {
@@ -17,7 +27,7 @@ public class OpenFoodFactsService {
         }
 
         try {
-            RestTemplate restTemplate = new RestTemplate();
+            RestTemplate restTemplate = buildRestTemplate();
             String url = OFF_PRODUCT_URL + barcode.trim() + ".json";
             ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
 
@@ -52,7 +62,7 @@ public class OpenFoodFactsService {
         }
 
         try {
-            RestTemplate restTemplate = new RestTemplate();
+            RestTemplate restTemplate = buildRestTemplate();
             String url = OFF_SEARCH_URL + "?search_terms=" + query.trim() + "&json=1&limit=3";
             ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
 

@@ -1,6 +1,7 @@
 package com.udhr.service;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import java.util.*;
@@ -9,6 +10,8 @@ import java.util.*;
 public class OpenFdaService {
 
     private static final String OPEN_FDA_URL = "https://api.fda.gov/drug/label.json";
+    private static final int CONNECT_TIMEOUT_MS = 3000;
+    private static final int READ_TIMEOUT_MS = 4000;
 
     public List<Map<String, Object>> getMedicationWarnings(String allergen) {
         if (allergen == null || allergen.trim().isEmpty()) {
@@ -16,7 +19,10 @@ public class OpenFdaService {
         }
 
         try {
-            RestTemplate restTemplate = new RestTemplate();
+            SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+            factory.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            factory.setReadTimeout(READ_TIMEOUT_MS);
+            RestTemplate restTemplate = new RestTemplate(factory);
             // Construct the search query
             // Example: (warnings:penicillin+OR+contraindications:penicillin)+AND+allergy
             String searchQuery = String.format("(warnings:\"%s\" OR contraindications:\"%s\") AND (allergy OR hypersensitivity)", allergen, allergen);

@@ -101,6 +101,11 @@ public class FoodIngredientService {
     private IngredientCheckResult analyzeIngredient(String name, List<String> conditions, List<String> allergies) {
         String normalized = name.toLowerCase();
 
+        // Warnings can be keyed either by chronic condition (e.g. "Diabetes") or by
+        // allergen name (e.g. "Peanuts"), so both must be checked against the DB mappings.
+        List<String> conditionsAndAllergies = new ArrayList<>(conditions);
+        conditionsAndAllergies.addAll(allergies);
+
         // 1. Check Allergies (Direct or contains allergen name)
         for (String allergy : allergies) {
             String normAllergy = allergy.toLowerCase();
@@ -117,7 +122,7 @@ public class FoodIngredientService {
         Optional<Ingredient> ingredientOpt = ingredientRepository.findByNameIgnoreCase(name);
         if (ingredientOpt.isPresent()) {
             Ingredient ingredient = ingredientOpt.get();
-            List<IngredientWarning> warnings = ingredientWarningRepository.findByIngredientIdAndConditionNameIn(ingredient.getId(), conditions);
+            List<IngredientWarning> warnings = ingredientWarningRepository.findByIngredientIdAndConditionNameIn(ingredient.getId(), conditionsAndAllergies);
 
             if (!warnings.isEmpty()) {
                 // Sort by severity (DANGER > CAUTION > SAFE)

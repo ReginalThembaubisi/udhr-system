@@ -36,6 +36,14 @@
             <artifactId>mysql-connector-j</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- For a Postgres-hosted database in production (e.g. Neon); Spring Boot
+             picks the right driver automatically based on the JDBC URL scheme,
+             so local dev keeps using MySQL via XAMPP without any change. -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <!-- JJWT dependencies -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>

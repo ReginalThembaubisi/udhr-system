@@ -1225,6 +1225,138 @@ function App() {
   const isDoctor = userRole === 'DOCTOR';
   const isAdmin = userRole === 'ADMIN';
 
+  // 1. Login — light clinical redesign. Rendered on its own, ahead of the
+  // shared app shell below, since it uses a full-viewport two-pane layout
+  // rather than the header + centered-card layout the other screens still use.
+  if (!token) {
+    return (
+      <div className="udhr-login-shell">
+        <div className="udhr-login-brand">
+          <div className="udhr-login-logo">
+            <div className="udhr-login-logo-chip">
+              <Activity size={20} color="#fff" />
+            </div>
+            <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '-0.01em' }}>UDHR</span>
+          </div>
+          <div>
+            <h1 className="udhr-login-headline">Your health record,<br />in one place.</h1>
+            <p className="udhr-login-tagline">
+              Universal Digital Health Record connects patients, clinics and pharmacies so care follows you — not your paperwork.
+            </p>
+          </div>
+          <p className="udhr-login-copyright">© 2026 UDHR · National Health Network</p>
+        </div>
+
+        <div className="udhr-login-form-pane">
+          <div className="udhr-login-form-col">
+            <h2 className="udhr-login-title">Sign in</h2>
+            <p className="udhr-login-subtitle">Choose how you're accessing UDHR.</p>
+
+            {errorMessage && (
+              <div className="udhr-alert-banner error">
+                <AlertCircle size={16} />
+                <span style={{ flex: 1 }}>{errorMessage}</span>
+                <button type="button" onClick={() => setErrorMessage('')}>×</button>
+              </div>
+            )}
+            {successMessage && (
+              <div className="udhr-alert-banner success">
+                <CheckCircle size={16} />
+                <span style={{ flex: 1 }}>{successMessage}</span>
+                <button type="button" onClick={() => setSuccessMessage('')}>×</button>
+              </div>
+            )}
+
+            <div className="udhr-segmented">
+              <button
+                type="button"
+                className={`udhr-segmented-btn ${loginRole === 'patient' ? 'active' : ''}`}
+                onClick={() => { setLoginRole('patient'); setErrorMessage(''); }}
+              >
+                Patient
+              </button>
+              <button
+                type="button"
+                className={`udhr-segmented-btn ${loginRole === 'staff' ? 'active' : ''}`}
+                onClick={() => { setLoginRole('staff'); setErrorMessage(''); }}
+              >
+                Healthcare Staff
+              </button>
+            </div>
+
+            <form onSubmit={handleLogin}>
+              {loginRole === 'patient' ? (
+                <>
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="patientId">South African ID Number</label>
+                    <input
+                      type="text"
+                      id="patientId"
+                      className="udhr-input"
+                      value={patientIdNumber}
+                      onChange={(e) => setPatientIdNumber(e.target.value)}
+                      placeholder="e.g. 9001015000083"
+                      required
+                    />
+                  </div>
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="patientDob">Date of Birth</label>
+                    <input
+                      type="date"
+                      id="patientDob"
+                      className="udhr-input"
+                      value={patientDob}
+                      onChange={(e) => setPatientDob(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <p className="udhr-demo-note">
+                    💡 <strong>Demo Patient Login:</strong> ID <code>9001015000083</code>, DOB <code>1990-01-01</code> — pre-seeded patient (diabetic, hypertensive, penicillin allergic).
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="staffNum">Staff Number</label>
+                    <input
+                      type="text"
+                      id="staffNum"
+                      className="udhr-input"
+                      value={staffNumber}
+                      onChange={(e) => setStaffNumber(e.target.value)}
+                      placeholder="e.g. DOC001 or NUR001"
+                      required
+                    />
+                  </div>
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="staffPass">Password</label>
+                    <input
+                      type="password"
+                      id="staffPass"
+                      className="udhr-input"
+                      value={staffPassword}
+                      onChange={(e) => setStaffPassword(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                    />
+                  </div>
+                  <p className="udhr-demo-note">
+                    💡 <strong>Demo Staff Logins:</strong><br />
+                    Doctor <code>DOC001</code> / <code>Doctor@123</code> · Nurse <code>NUR001</code> / <code>Nurse@123</code> · Pharmacist <code>PHARM001</code> / <code>Pharmacist@123</code> · Admin <code>ADMIN001</code> / <code>Admin@123</code>
+                  </p>
+                </>
+              )}
+
+              <button type="submit" className="udhr-btn-primary" disabled={loading}>
+                {loading ? 'Signing in...' : 'Sign In'}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-container">
       {/* Header */}
@@ -1322,106 +1454,6 @@ function App() {
               >
                 Cancel & Log Out
               </button>
-            </div>
-          </div>
-        )}
-
-        {/* 1. Login Page */}
-        {!token && (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, padding: '20px 0' }}>
-            <div className="glass-card" style={{ width: '450px', maxWidth: '100%', textAlign: 'center' }}>
-              <Heart size={48} color="#4f46e5" style={{ margin: '0 auto 16px' }} />
-              <h2 style={{ marginBottom: '8px' }}>Welcome to UDHR</h2>
-              <p style={{ marginBottom: '24px' }}>Access your electronic health records, check symptoms, and review guidelines.</p>
-
-              {/* Login Switcher Tabs */}
-              <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px' }}>
-                <button 
-                  className="btn" 
-                  style={{ flex: 1, background: loginRole === 'patient' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '8px' }}
-                  onClick={() => { setLoginRole('patient'); setErrorMessage(''); }}
-                >
-                  Patient Portal
-                </button>
-                <button 
-                  className="btn" 
-                  style={{ flex: 1, background: loginRole === 'staff' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '8px' }}
-                  onClick={() => { setLoginRole('staff'); setErrorMessage(''); }}
-                >
-                  Healthcare Staff
-                </button>
-              </div>
-
-              {/* Login Forms */}
-              <form onSubmit={handleLogin}>
-                {loginRole === 'patient' ? (
-                  <>
-                    <div className="form-group">
-                      <label htmlFor="patientId">South African ID Number</label>
-                      <input 
-                        type="text" 
-                        id="patientId" 
-                        value={patientIdNumber} 
-                        onChange={(e) => setPatientIdNumber(e.target.value)} 
-                        placeholder="e.g. 9001015000083" 
-                        required 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label htmlFor="patientDob">Date of Birth</label>
-                      <input 
-                        type="date" 
-                        id="patientDob" 
-                        value={patientDob} 
-                        onChange={(e) => setPatientDob(e.target.value)} 
-                        required 
-                      />
-                    </div>
-                    <div style={{ textAlign: 'left', marginBottom: '20px', background: 'rgba(79, 70, 229, 0.1)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(79, 70, 229, 0.2)' }}>
-                      <p style={{ fontSize: '0.8rem', color: '#a5b4fc' }}>
-                        💡 <strong>Demo Patient Login:</strong> Use ID <code>9001015000083</code> and Date of Birth <code>1990-01-01</code> to view the pre-seeded patient (diabetic, hypertensive, penicillin allergic).
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="form-group">
-                      <label htmlFor="staffNum">Staff Number</label>
-                      <input 
-                        type="text" 
-                        id="staffNum" 
-                        value={staffNumber} 
-                        onChange={(e) => setStaffNumber(e.target.value)} 
-                        placeholder="e.g. DOC001 or NUR001" 
-                        required 
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label htmlFor="staffPass">Password</label>
-                      <input 
-                        type="password" 
-                        id="staffPass" 
-                        value={staffPassword} 
-                        onChange={(e) => setStaffPassword(e.target.value)} 
-                        placeholder="••••••••" 
-                        required 
-                      />
-                    </div>
-                    <div style={{ textAlign: 'left', marginBottom: '20px', background: 'rgba(79, 70, 229, 0.1)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(79, 70, 229, 0.2)' }}>
-                      <p style={{ fontSize: '0.8rem', color: '#a5b4fc' }}>
-                        💡 <strong>Demo Staff Logins:</strong><br />
-                        - Doctor: <code>DOC001</code> / <code>Doctor@123</code><br />
-                        - Nurse: <code>NUR001</code> / <code>Nurse@123</code><br />
-                        - Pharmacist: <code>PHARM001</code> / <code>Pharmacist@123</code>
-                      </p>
-                    </div>
-                  </>
-                )}
-
-                <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
-                  {loading ? 'Logging in...' : 'Sign In'}
-                </button>
-              </form>
             </div>
           </div>
         )}

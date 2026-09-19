@@ -29,6 +29,10 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // The built React app is served as static files from this same
+                // service in production (see Dockerfile) — it has to be reachable
+                // before login, otherwise no one can even load the page to log in.
+                .requestMatchers("/", "/index.html", "/assets/**", "/favicon.svg", "/icons.svg", "/vite.svg").permitAll()
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/patient/me/**").hasRole("PATIENT")
                 .requestMatchers("/api/symptom-checker/**").hasRole("PATIENT")

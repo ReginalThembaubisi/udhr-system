@@ -57,7 +57,32 @@ public class SecurityConfig {
                 .requestMatchers("/api/visits/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
                 .requestMatchers("/api/vitals/**").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/pharmacy/**").hasRole("PHARMACIST")
-                .requestMatchers("/api/facilities/**").hasRole("ADMIN")
+                .requestMatchers("/api/immunizations/**").hasAnyRole("DOCTOR", "NURSE")
+
+                // ---- Reception/intake queue: check-in and calling a patient into consultation
+                // are clinical intake decisions; the rest (today's queue, pharmacy queue,
+                // complete/cancel/urgency) stays open to ADMIN/PHARMACIST as shared/read.
+                .requestMatchers(HttpMethod.POST, "/api/queue/check-in").hasAnyRole("DOCTOR", "NURSE")
+                .requestMatchers(HttpMethod.POST, "/api/queue/*/call").hasAnyRole("DOCTOR", "NURSE")
+                .requestMatchers("/api/queue/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST", "ADMIN")
+
+                // Referral creation/response is a clinical judgement call; the inbox/outgoing/report
+                // views are shared/read.
+                .requestMatchers("/api/referrals/report/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/referrals").hasAnyRole("DOCTOR", "NURSE")
+                .requestMatchers(HttpMethod.POST, "/api/referrals/*/respond").hasAnyRole("DOCTOR", "NURSE")
+                .requestMatchers("/api/referrals/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
+
+                // ---- Dispensing/stock: DOCTOR + NURSE + PHARMACIST, never ADMIN ----
+                .requestMatchers("/api/dispensing/report/**").hasRole("ADMIN")
+                .requestMatchers("/api/dispensing/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
+                .requestMatchers("/api/stock/report/**").hasRole("ADMIN")
+                .requestMatchers("/api/stock/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
+
+                // Facility creation is administrative; listing facilities (needed for the
+                // referral-destination dropdown) is shared/read with DOCTOR/NURSE too.
+                .requestMatchers(HttpMethod.POST, "/api/facilities").hasRole("ADMIN")
+                .requestMatchers("/api/facilities/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
                 .requestMatchers("/api/staff/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )

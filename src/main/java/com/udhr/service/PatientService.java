@@ -56,6 +56,11 @@ public class PatientService {
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
     }
 
+    public Patient findById(Long id) {
+        return patientRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+    }
+
     /**
      * Generates a unique Medical Record Number in the form MRN-{year}-{6 digits},
      * retrying on the rare chance of a collision.

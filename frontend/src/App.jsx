@@ -104,6 +104,27 @@ function App() {
   const [checkinReason, setCheckinReason] = useState('');
   const [recentCheckIns, setRecentCheckIns] = useState([]);
 
+  // Restored feature: Reception queue (Doctor/Nurse check patients into today's facility queue)
+  const [queueList, setQueueList] = useState([]);
+  const [queueCheckInForm, setQueueCheckInForm] = useState({ department: 'GP', urgency: 'GREEN', reason: '' });
+
+  // Restored feature: Referrals (Doctor/Nurse refer a patient to another facility)
+  const [referralInbox, setReferralInbox] = useState([]);
+  const [referralOutgoing, setReferralOutgoing] = useState([]);
+  const [facilitiesForReferral, setFacilitiesForReferral] = useState([]);
+  const [referralForm, setReferralForm] = useState({ toFacilityId: '', urgency: 'ROUTINE', reason: '', clinicalSummary: '' });
+
+  // Restored feature: Immunizations (EPI schedule) — shown against a loaded patient record
+  const [patientImmunizations, setPatientImmunizations] = useState([]);
+
+  // Restored feature: Pharmacist stock/inventory tracking and a dispense event log
+  const [pharmacistTab, setPharmacistTab] = useState('dispense'); // 'dispense' or 'stock'
+  const [stockItems, setStockItems] = useState([]);
+  const [newStockItemForm, setNewStockItemForm] = useState({ medicationName: '', unit: 'tablets', quantityOnHand: 0, reorderLevel: 10 });
+  const [stockAdjustAmount, setStockAdjustAmount] = useState({});
+  const [dispenseHistory, setDispenseHistory] = useState([]);
+  const [dispenseLogForm, setDispenseLogForm] = useState({ prescriptionId: '', quantityDispensed: '', daysSupply: '', pharmacyNotes: '' });
+
   // Setup Authorization headers
   const getAuthHeaders = () => {
     return {
@@ -301,6 +322,8 @@ function App() {
       setAddDiagnosisForm(prev => ({ ...prev, patientId: data.patient.id }));
       setAddPrescriptionForm(prev => ({ ...prev, patientId: data.patient.id }));
       setAddAlertForm(prev => ({ ...prev, patientId: data.patient.id }));
+      fetchImmunizations(data.patient.id);
+      if (facilitiesForReferral.length === 0) fetchReferrals();
 
       // Trigger automatic CDS evaluation on patient file search to generate alerts in real time
       await fetch(`/api/clinical-alerts/patient/${data.patient.id}/evaluate`, {
@@ -537,6 +560,7 @@ function App() {
         throw new Error(data.message || 'Patient not found');
       }
       setPharmacyRecord(data);
+      fetchDispenseHistoryForPatient(data.patient.id);
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -897,6 +921,254 @@ function App() {
       setErrorMessage(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Some restored-feature endpoints return a plain-text error body instead of JSON;
+  // this reads either shape without throwing a JSON parse error.
+  const parseResponseBody = async (response) => {
+    const text = await response.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text };
+    }
+  };
+
+  // ===== Restored feature: Reception Queue =====
+  const fetchQueue = async () => {
+    try {
+      const response = await fetch('/api/queue/today', { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to load queue');
+      setQueueList(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleQueueCheckIn = async (e) => {
+    e.preventDefault();
+    if (!searchedPatientRecord) {
+      setErrorMessage('Locate a patient first, then check them into the queue.');
+      return;
+    }
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch('/api/queue/check-in', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ patientId: searchedPatientRecord.patient.id, ...queueCheckInForm })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Check-in failed');
+      setSuccessMessage(`Checked in — queue number ${data.queueNumber}`);
+      setQueueCheckInForm({ department: 'GP', urgency: 'GREEN', reason: '' });
+      fetchQueue();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQueueAction = async (id, action) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/queue/${id}/${action}`, { method: 'POST', headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || `Failed to ${action} queue entry`);
+      fetchQueue();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // ===== Restored feature: Referrals =====
+  const fetchReferrals = async () => {
+    try {
+      const [inRes, outRes, facRes] = await Promise.all([
+        fetch('/api/referrals/incoming', { headers: getAuthHeaders() }),
+        fetch('/api/referrals/outgoing', { headers: getAuthHeaders() }),
+        fetch('/api/facilities', { headers: getAuthHeaders() })
+      ]);
+      const inData = await parseResponseBody(inRes);
+      const outData = await parseResponseBody(outRes);
+      if (inRes.ok) setReferralInbox(inData);
+      if (outRes.ok) setReferralOutgoing(outData);
+      if (facRes.ok) setFacilitiesForReferral(await parseResponseBody(facRes));
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleCreateReferral = async (e) => {
+    e.preventDefault();
+    if (!searchedPatientRecord) {
+      setErrorMessage('Locate a patient first, then refer them to another facility.');
+      return;
+    }
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch('/api/referrals', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ patientId: searchedPatientRecord.patient.id, ...referralForm })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Referral failed');
+      setSuccessMessage('Referral sent.');
+      setReferralForm({ toFacilityId: '', urgency: 'ROUTINE', reason: '', clinicalSummary: '' });
+      fetchReferrals();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRespondReferral = async (id, status) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/referrals/${id}/respond`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to respond to referral');
+      setSuccessMessage(`Referral marked ${status.toLowerCase()}.`);
+      fetchReferrals();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // ===== Restored feature: Immunizations (EPI schedule) =====
+  const fetchImmunizations = async (patientId) => {
+    try {
+      const response = await fetch(`/api/immunizations/patient/${patientId}`, { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (response.ok) setPatientImmunizations(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleGenerateImmunizationSchedule = async (patientId) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/immunizations/patient/${patientId}/schedule`, { method: 'POST', headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to generate immunization schedule');
+      setPatientImmunizations(data);
+      setSuccessMessage('EPI immunization schedule generated.');
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleImmunizationAction = async (id, action) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const options = { method: 'POST', headers: getAuthHeaders() };
+      if (action === 'administer') options.body = JSON.stringify({});
+      const response = await fetch(`/api/immunizations/${id}/${action}`, options);
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || `Failed to update immunization`);
+      if (searchedPatientRecord) fetchImmunizations(searchedPatientRecord.patient.id);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // ===== Restored feature: Pharmacy stock/inventory =====
+  const fetchStockItems = async () => {
+    try {
+      const response = await fetch('/api/stock', { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (response.ok) setStockItems(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleAddStockItem = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch('/api/stock', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(newStockItemForm)
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to add stock item');
+      setSuccessMessage(`${data.medicationName} added to stock.`);
+      setNewStockItemForm({ medicationName: '', unit: 'tablets', quantityOnHand: 0, reorderLevel: 10 });
+      fetchStockItems();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleAdjustStock = async (stockItemId) => {
+    const quantityChange = parseInt(stockAdjustAmount[stockItemId], 10);
+    if (!quantityChange) return;
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch('/api/stock/adjust', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ stockItemId, quantityChange, notes: 'Manual adjustment' })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to adjust stock');
+      setStockAdjustAmount(prev => ({ ...prev, [stockItemId]: '' }));
+      fetchStockItems();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // ===== Restored feature: Dispense event log =====
+  const fetchDispenseHistoryForPatient = async (patientId) => {
+    try {
+      const response = await fetch(`/api/dispensing/patient/${patientId}`, { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (response.ok) setDispenseHistory(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleLogDispense = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch('/api/dispensing', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(dispenseLogForm)
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to log dispense');
+      setSuccessMessage('Dispense event logged and stock updated.');
+      setDispenseLogForm({ prescriptionId: '', quantityDispensed: '', daysSupply: '', pharmacyNotes: '' });
+      if (pharmacyRecord) fetchDispenseHistoryForPatient(pharmacyRecord.patient.id);
+    } catch (err) {
+      setErrorMessage(err.message);
     }
   };
 
@@ -1688,6 +1960,26 @@ function App() {
           <div>
             {isPharmacist ? (
               <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'left' }}>
+                {/* Pharmacist Tab Switcher */}
+                <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '480px' }}>
+                  <button
+                    className="btn"
+                    style={{ flex: 1, background: pharmacistTab === 'dispense' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
+                    onClick={() => setPharmacistTab('dispense')}
+                  >
+                    Dispense to Patient
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ flex: 1, background: pharmacistTab === 'stock' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
+                    onClick={() => { setPharmacistTab('stock'); fetchStockItems(); }}
+                  >
+                    Stock & Inventory
+                  </button>
+                </div>
+
+                {pharmacistTab === 'dispense' ? (
+                <>
                 {/* Pharmacy Lookup Card */}
                 <div className="glass-card" style={{ marginBottom: '20px' }}>
                   <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1732,7 +2024,7 @@ function App() {
                     </div>
 
                     {/* Pending prescriptions to dispense */}
-                    <div className="glass-card">
+                    <div className="glass-card" style={{ marginBottom: '20px' }}>
                       <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <Pill /> Prescriptions Waiting to Be Dispensed
                       </h3>
@@ -1765,12 +2057,117 @@ function App() {
                         </div>
                       )}
                     </div>
+
+                    {/* Restored feature: log a detailed dispense event (quantity, days supply, stock deduction) */}
+                    <div className="glass-card" style={{ marginBottom: '20px' }}>
+                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Clipboard size={18} /> Log Dispense Event
+                      </h3>
+                      <form onSubmit={handleLogDispense} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Prescription ID</label>
+                          <input type="number" value={dispenseLogForm.prescriptionId} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, prescriptionId: e.target.value })} required />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Quantity Dispensed</label>
+                          <input type="text" placeholder="e.g. 30 tablets" value={dispenseLogForm.quantityDispensed} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, quantityDispensed: e.target.value })} required />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Days Supply</label>
+                          <input type="number" value={dispenseLogForm.daysSupply} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, daysSupply: e.target.value })} />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Pharmacy Notes</label>
+                          <input type="text" value={dispenseLogForm.pharmacyNotes} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, pharmacyNotes: e.target.value })} />
+                        </div>
+                        <button type="submit" className="btn btn-primary" style={{ gridColumn: '1 / -1' }}>Log Dispense</button>
+                      </form>
+
+                      {dispenseHistory.length > 0 && (
+                        <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <h4 style={{ color: '#a5b4fc', fontSize: '0.9rem' }}>Dispense History for This Patient</h4>
+                          {dispenseHistory.map(d => (
+                            <div key={d.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '8px', borderRadius: '8px', fontSize: '0.8rem' }}>
+                              <span style={{ color: '#fff' }}>{d.prescription.medication}</span> — {d.quantityDispensed}
+                              {d.daysSupply ? ` (${d.daysSupply} days)` : ''} by {d.dispensedBy.firstName} {d.dispensedBy.lastName} on {new Date(d.dispensedAt).toLocaleDateString()}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </>
                 ) : (
                   <div className="glass-card" style={{ padding: '60px 20px', textAlign: 'center' }}>
                     <Pill size={56} className="text-muted" style={{ margin: '0 auto 16px', opacity: 0.3 }} />
                     <h3 style={{ color: '#fff', marginBottom: '8px' }}>No Patient Loaded</h3>
                     <p className="text-muted">Look a patient up by their ID number to see what's waiting to be dispensed.</p>
+                  </div>
+                )}
+                </>
+                ) : (
+                  /* Restored feature: Stock & Inventory */
+                  <div>
+                    <div className="glass-card" style={{ marginBottom: '20px' }}>
+                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <PlusCircle size={18} /> Add Stock Item
+                      </h3>
+                      <form onSubmit={handleAddStockItem} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '10px', alignItems: 'flex-end' }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Medication Name</label>
+                          <input type="text" value={newStockItemForm.medicationName} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, medicationName: e.target.value })} required />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Unit</label>
+                          <input type="text" value={newStockItemForm.unit} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, unit: e.target.value })} />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Quantity</label>
+                          <input type="number" value={newStockItemForm.quantityOnHand} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, quantityOnHand: parseInt(e.target.value, 10) || 0 })} />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label>Reorder Level</label>
+                          <input type="number" value={newStockItemForm.reorderLevel} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, reorderLevel: parseInt(e.target.value, 10) || 0 })} />
+                        </div>
+                        <button type="submit" className="btn btn-primary" style={{ gridColumn: '1 / -1' }}>Add Item</button>
+                      </form>
+                    </div>
+
+                    <div className="glass-card">
+                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px' }}>Facility Stock Levels</h3>
+                      {stockItems.length === 0 ? (
+                        <p className="text-muted" style={{ fontSize: '0.85rem' }}>No stock items tracked yet. Add one above.</p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {stockItems.map(item => (
+                            <div key={item.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                              <div>
+                                <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
+                                  {item.medicationName}{' '}
+                                  {item.quantityOnHand <= item.reorderLevel && (
+                                    <span className="badge badge-red" style={{ marginLeft: '6px', fontSize: '0.7rem' }}>LOW STOCK</span>
+                                  )}
+                                </p>
+                                <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+                                  {item.quantityOnHand} {item.unit} on hand — reorder below {item.reorderLevel}
+                                </p>
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                <input
+                                  type="number"
+                                  placeholder="+/- qty"
+                                  value={stockAdjustAmount[item.id] || ''}
+                                  onChange={(e) => setStockAdjustAmount(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                  style={{ width: '90px' }}
+                                />
+                                <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '0.8rem' }} onClick={() => handleAdjustStock(item.id)}>
+                                  Adjust
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2041,7 +2438,7 @@ function App() {
             ) : (
             <>
             {/* Tab Switcher for Staff */}
-            <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '600px', margin: '0 auto' }}>
+            <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '820px', margin: '0 auto', flexWrap: 'wrap' }}>
               <button 
                 className="btn" 
                 style={{ flex: 1, background: activeTabStaff === 'patients' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
@@ -2071,9 +2468,113 @@ function App() {
                   </span>
                 )}
               </button>
+              <button
+                className="btn"
+                style={{ flex: 1, background: activeTabStaff === 'queue' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
+                onClick={() => { setActiveTabStaff('queue'); fetchQueue(); }}
+              >
+                Reception Queue
+              </button>
+              <button
+                className="btn"
+                style={{ flex: 1, background: activeTabStaff === 'referrals' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
+                onClick={() => { setActiveTabStaff('referrals'); fetchReferrals(); }}
+              >
+                Referrals
+              </button>
             </div>
 
-            {activeTabStaff === 'patients' ? (
+            {activeTabStaff === 'queue' ? (
+              <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'left' }}>
+                <div className="glass-card">
+                  <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Clock size={18} /> Today's Facility Queue
+                  </h3>
+                  {queueList.length === 0 ? (
+                    <p className="text-muted" style={{ fontSize: '0.85rem' }}>
+                      No one in the queue yet. Locate a patient under "Locate & Manage Patients" and use "Check In to Queue" there.
+                    </p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {queueList.map(entry => (
+                        <div key={entry.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                          <div>
+                            <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
+                              #{entry.queueNumber} — {entry.patient.firstName} {entry.patient.lastName}{' '}
+                              <span className={`badge ${entry.urgency === 'RED' ? 'badge-red' : entry.urgency === 'YELLOW' ? 'badge-yellow' : 'badge-green'}`} style={{ marginLeft: '6px', fontSize: '0.7rem' }}>
+                                {entry.urgency}
+                              </span>
+                            </p>
+                            <p className="text-muted" style={{ fontSize: '0.8rem' }}>{entry.department} — {entry.reason}</p>
+                            <p className="text-muted" style={{ fontSize: '0.75rem' }}>Status: {entry.status.replaceAll('_', ' ')}</p>
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {entry.status === 'WAITING' && (
+                              <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: '0.8rem' }} onClick={() => handleQueueAction(entry.id, 'call')}>Call</button>
+                            )}
+                            {entry.status === 'IN_CONSULTATION' && (
+                              <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '0.8rem' }} onClick={() => handleQueueAction(entry.id, 'complete')}>Complete</button>
+                            )}
+                            {(entry.status === 'WAITING' || entry.status === 'IN_CONSULTATION') && (
+                              <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '0.8rem' }} onClick={() => handleQueueAction(entry.id, 'cancel')}>Cancel</button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : activeTabStaff === 'referrals' ? (
+              <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'left' }}>
+                <div className="glass-card" style={{ marginBottom: '20px' }}>
+                  <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px' }}>Incoming Referrals</h3>
+                  {referralInbox.length === 0 ? (
+                    <p className="text-muted" style={{ fontSize: '0.85rem' }}>No incoming referrals for your facility.</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {referralInbox.map(r => (
+                        <div key={r.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                          <div>
+                            <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
+                              {r.patient.firstName} {r.patient.lastName} from {r.fromFacility.name}{' '}
+                              <span className={`badge ${r.urgency === 'EMERGENCY' ? 'badge-red' : r.urgency === 'URGENT' ? 'badge-yellow' : 'badge-green'}`} style={{ marginLeft: '6px', fontSize: '0.7rem' }}>{r.urgency}</span>
+                            </p>
+                            <p className="text-muted" style={{ fontSize: '0.8rem' }}>{r.reason}</p>
+                            <p className="text-muted" style={{ fontSize: '0.75rem' }}>Status: {r.status}</p>
+                          </div>
+                          {r.status === 'PENDING' && (
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: '0.8rem' }} onClick={() => handleRespondReferral(r.id, 'ACCEPTED')}>Accept</button>
+                              <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '0.8rem' }} onClick={() => handleRespondReferral(r.id, 'DECLINED')}>Decline</button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="glass-card">
+                  <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px' }}>Outgoing Referrals</h3>
+                  {referralOutgoing.length === 0 ? (
+                    <p className="text-muted" style={{ fontSize: '0.85rem' }}>
+                      No outgoing referrals yet. Locate a patient under "Locate & Manage Patients" and use "Refer to Another Facility" there.
+                    </p>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {referralOutgoing.map(r => (
+                        <div key={r.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
+                          <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>{r.patient.firstName} {r.patient.lastName} → {r.toFacility.name}</p>
+                          <p className="text-muted" style={{ fontSize: '0.8rem' }}>{r.reason}</p>
+                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Status: {r.status}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : activeTabStaff === 'patients' ? (
               isNurse ? (
                 <div style={{ maxWidth: '700px', margin: '0 auto' }}>
                   {/* Nurse: Look up patient by ID */}
@@ -2496,6 +2997,89 @@ function App() {
                             <RefreshCw size={14} /> Analyze Response (CDS)
                           </button>
                         </div>
+                      </div>
+
+                      {/* Restored feature: check the loaded patient into today's reception queue, or refer them elsewhere */}
+                      <div className="glass-card" style={{ textAlign: 'left' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '12px' }}>Reception & Referral</h3>
+                        <div className="grid grid-cols-2" style={{ gap: '20px' }}>
+                          <form onSubmit={handleQueueCheckIn}>
+                            <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '8px' }}>Check In to Today's Queue</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <select value={queueCheckInForm.department} onChange={(e) => setQueueCheckInForm({ ...queueCheckInForm, department: e.target.value })}>
+                                <option value="GP">GP</option>
+                                <option value="DENTAL">Dental</option>
+                                <option value="MATERNITY">Maternity</option>
+                                <option value="PEDIATRICS">Pediatrics</option>
+                                <option value="CASUALTY">Casualty</option>
+                                <option value="CHRONIC_CLUB">Chronic Club</option>
+                              </select>
+                              <select value={queueCheckInForm.urgency} onChange={(e) => setQueueCheckInForm({ ...queueCheckInForm, urgency: e.target.value })}>
+                                <option value="GREEN">Green (routine)</option>
+                                <option value="YELLOW">Yellow (priority)</option>
+                                <option value="RED">Red (urgent)</option>
+                              </select>
+                              <input type="text" placeholder="Reason for visit" value={queueCheckInForm.reason} onChange={(e) => setQueueCheckInForm({ ...queueCheckInForm, reason: e.target.value })} required />
+                              <button type="submit" className="btn btn-primary" disabled={loading}>Check In</button>
+                            </div>
+                          </form>
+                          <form onSubmit={handleCreateReferral}>
+                            <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '8px' }}>Refer to Another Facility</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <select value={referralForm.toFacilityId} onChange={(e) => setReferralForm({ ...referralForm, toFacilityId: e.target.value })} required>
+                                <option value="">Select destination facility...</option>
+                                {facilitiesForReferral.map(f => (
+                                  <option key={f.id} value={f.id}>{f.name}</option>
+                                ))}
+                              </select>
+                              <select value={referralForm.urgency} onChange={(e) => setReferralForm({ ...referralForm, urgency: e.target.value })}>
+                                <option value="ROUTINE">Routine</option>
+                                <option value="URGENT">Urgent</option>
+                                <option value="EMERGENCY">Emergency</option>
+                              </select>
+                              <input type="text" placeholder="Reason for referral" value={referralForm.reason} onChange={(e) => setReferralForm({ ...referralForm, reason: e.target.value })} required />
+                              <textarea placeholder="Clinical summary" value={referralForm.clinicalSummary} onChange={(e) => setReferralForm({ ...referralForm, clinicalSummary: e.target.value })} rows={2} />
+                              <button type="submit" className="btn btn-primary" disabled={loading}>Send Referral</button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+
+                      {/* Restored feature: EPI Immunization schedule for this patient */}
+                      <div className="glass-card" style={{ textAlign: 'left' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span>Immunizations (EPI Schedule)</span>
+                          {patientImmunizations.length === 0 && (
+                            <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }} onClick={() => handleGenerateImmunizationSchedule(searchedPatientRecord.patient.id)}>
+                              Generate Schedule
+                            </button>
+                          )}
+                        </h3>
+                        {patientImmunizations.length === 0 ? (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No immunization records yet.</p>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {patientImmunizations.map(imm => (
+                              <div key={imm.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '10px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                <div>
+                                  <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{imm.vaccineName} {imm.doseNumber ? `(dose ${imm.doseNumber})` : ''}</p>
+                                  <p className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                    Scheduled: {imm.scheduledDate} {imm.administeredDate ? `— Given: ${imm.administeredDate}` : ''}
+                                  </p>
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                  <span className={`badge ${imm.status === 'GIVEN' ? 'badge-green' : imm.status === 'MISSED' ? 'badge-red' : 'badge-yellow'}`} style={{ fontSize: '0.7rem' }}>{imm.status}</span>
+                                  {imm.status === 'DUE' && (
+                                    <>
+                                      <button className="btn btn-primary" style={{ padding: '6px 10px', fontSize: '0.75rem' }} onClick={() => handleImmunizationAction(imm.id, 'administer')}>Administer</button>
+                                      <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: '0.75rem' }} onClick={() => handleImmunizationAction(imm.id, 'miss')}>Mark Missed</button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
 
                       {/* Vitals — captured by the nurse, visible to the doctor with no extra lookup */}

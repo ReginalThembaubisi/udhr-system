@@ -85,6 +85,9 @@ function App() {
     testName: '', result: '', unit: '', normalRange: '', notes: ''
   });
 
+  // Nurse: collapsed-by-default section for registering a brand new patient
+  const [showNurseRegister, setShowNurseRegister] = useState(false);
+
   // Admin: staff & facility management (no patient data — admin isn't clinical staff)
   const [staffList, setStaffList] = useState([]);
   const [facilityList, setFacilityList] = useState([]);
@@ -2255,6 +2258,71 @@ function App() {
                     </div>
                     </>
                   )}
+
+                  {/* Register New Patient — collapsed by default, reuses the same form Doctor/Admin use */}
+                  <div className="glass-card" style={{ textAlign: 'left', marginTop: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showNurseRegister ? '16px' : 0 }}>
+                      <h3 style={{ color: '#fff', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                        <PlusCircle size={18} /> Register New Patient
+                      </h3>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => setShowNurseRegister(!showNurseRegister)}
+                        style={{ padding: '6px 14px', fontSize: '0.8rem' }}
+                      >
+                        {showNurseRegister ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    {showNurseRegister && (
+                      <form onSubmit={handleRegisterPatient}>
+                        <div className="form-group">
+                          <label>ID Number</label>
+                          <input type="text" value={patientRegForm.idNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, idNumber: e.target.value })} placeholder="SA ID number (optional)" />
+                        </div>
+                        <div className="form-group">
+                          <label>Passport Number</label>
+                          <input type="text" value={patientRegForm.passportNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, passportNumber: e.target.value })} placeholder="Passport number (optional)" />
+                        </div>
+                        <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '12px' }}>
+                          An MRN is auto-assigned to every patient regardless — ID number and passport number are optional.
+                        </p>
+                        <div className="form-group">
+                          <label>First Name</label>
+                          <input type="text" value={patientRegForm.firstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, firstName: e.target.value })} required />
+                        </div>
+                        <div className="form-group">
+                          <label>Last Name</label>
+                          <input type="text" value={patientRegForm.lastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, lastName: e.target.value })} required />
+                        </div>
+                        <div className="form-group">
+                          <label>Date of Birth</label>
+                          <input type="date" value={patientRegForm.dateOfBirth} onChange={(e) => setPatientRegForm({ ...patientRegForm, dateOfBirth: e.target.value })} required />
+                        </div>
+                        <div className="form-group">
+                          <label>Gender</label>
+                          <select value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })}>
+                            <option value="MALE">Male</option>
+                            <option value="FEMALE">Female</option>
+                            <option value="OTHER">Other</option>
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label>Contact Number</label>
+                          <input type="text" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value })} />
+                        </div>
+                        <div className="form-group">
+                          <label>Email Address</label>
+                          <input type="email" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@gmail.com" />
+                        </div>
+                        <div className="form-group">
+                          <label>Address</label>
+                          <textarea value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} />
+                        </div>
+                        <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Create Patient Record</button>
+                      </form>
+                    )}
+                  </div>
                 </div>
               ) : (
               <div className="dashboard-grid">

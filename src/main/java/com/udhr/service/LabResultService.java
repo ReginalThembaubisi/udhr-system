@@ -14,7 +14,7 @@ public class LabResultService {
     private LabResultRepository labResultRepository;
 
     @Autowired
-    private PatientRepository patientRepository;
+    private PatientService patientService;
 
     @Autowired
     private StaffRepository staffRepository;
@@ -23,13 +23,13 @@ public class LabResultService {
     private VisitService visitService;
 
     /**
-     * Staff (nurse or doctor) looks the patient up by ID number and pastes the
-     * result straight in — same "find patient, act on their current visit"
-     * pattern as vitals, so nobody needs to know a visit ID or facility ID.
+     * Staff (nurse or doctor) looks the patient up by ID number or MRN and
+     * pastes the result straight in — same "find patient, act on their
+     * current visit" pattern as vitals, so nobody needs to know a visit ID
+     * or facility ID.
      */
     public LabResult addLabResult(LabResultRequest request, String staffNumber) {
-        Patient patient = patientRepository.findByIdNumber(request.getIdNumber())
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        Patient patient = patientService.findByIdentifier(request.getIdNumber());
 
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Logged in staff not found"));

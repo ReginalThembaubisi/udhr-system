@@ -4,7 +4,6 @@ import com.udhr.dto.CheckInRequest;
 import com.udhr.model.Patient;
 import com.udhr.model.Staff;
 import com.udhr.model.Visit;
-import com.udhr.repository.PatientRepository;
 import com.udhr.repository.StaffRepository;
 import com.udhr.repository.VisitRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +14,7 @@ import java.util.List;
 public class CheckInService {
 
     @Autowired
-    private PatientRepository patientRepository;
+    private PatientService patientService;
 
     @Autowired
     private StaffRepository staffRepository;
@@ -33,8 +32,7 @@ public class CheckInService {
      * diagnosis, or prescriptions happen here or anywhere else Admin touches.
      */
     public Visit checkIn(CheckInRequest request, String staffNumber) {
-        Patient patient = patientRepository.findByIdNumber(request.getIdNumber())
-                .orElseThrow(() -> new RuntimeException("Patient not found. Register them first."));
+        Patient patient = patientService.findByIdentifier(request.getIdNumber());
 
         Staff admin = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Logged in staff not found"));

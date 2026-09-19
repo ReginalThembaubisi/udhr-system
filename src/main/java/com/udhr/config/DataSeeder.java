@@ -158,6 +158,7 @@ public class DataSeeder implements CommandLineRunner {
         Patient patient = null;
         if (patientRepository.count() == 0) {
             patient = new Patient();
+            patient.setMrn("MRN-2020-000001");
             patient.setIdNumber("9001015000083");
             patient.setFirstName("Reginal");
             patient.setLastName("Themba");

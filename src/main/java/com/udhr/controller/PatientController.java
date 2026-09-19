@@ -34,15 +34,15 @@ public class PatientController {
         return null;
     }
 
-    @GetMapping("/{idNumber}")
-    public ResponseEntity<?> getPatientByIdNumber(@PathVariable String idNumber, HttpServletRequest request) {
+    @GetMapping("/{identifier}")
+    public ResponseEntity<?> getPatientByIdentifier(@PathVariable String identifier, HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);
         if (staffNumber == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
         try {
-            Patient patient = patientService.findByIdNumber(idNumber);
+            Patient patient = patientService.findByIdentifier(identifier);
             return ResponseEntity.ok(patient);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
@@ -64,15 +64,15 @@ public class PatientController {
         }
     }
 
-    @GetMapping("/{idNumber}/record")
-    public ResponseEntity<?> getFullPatientRecord(@PathVariable String idNumber, HttpServletRequest request) {
+    @GetMapping("/{identifier}/record")
+    public ResponseEntity<?> getFullPatientRecord(@PathVariable String identifier, HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);
         if (staffNumber == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
         try {
-            PatientRecordResponse record = patientService.getFullRecord(idNumber, staffNumber);
+            PatientRecordResponse record = patientService.getFullRecord(identifier, staffNumber);
             return ResponseEntity.ok(record);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());

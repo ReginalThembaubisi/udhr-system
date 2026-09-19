@@ -57,7 +57,7 @@ function App() {
   
   // Forms for Staff
   const [patientRegForm, setPatientRegForm] = useState({
-    idNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: ''
+    idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: ''
   });
   const [addDiagnosisForm, setAddDiagnosisForm] = useState({
     patientId: '', conditionName: '', notes: ''
@@ -388,10 +388,10 @@ function App() {
       if (!response.ok) {
         throw new Error(data.message || 'Registration failed');
       }
-      setSuccessMessage(`Patient '${data.firstName} ${data.lastName}' registered successfully!`);
-      setSearchId(data.idNumber);
+      setSuccessMessage(`Patient '${data.firstName} ${data.lastName}' registered successfully! MRN: ${data.mrn}`);
+      setSearchId(data.idNumber || data.mrn);
       setPatientRegForm({
-        idNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: ''
+        idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: ''
       });
       // Load the newly registered patient record
       setSearchedPatientRecord({
@@ -1692,13 +1692,13 @@ function App() {
                   </h3>
                   <form onSubmit={handleSearchPharmacyPatient} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
                     <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                      <label htmlFor="pharmacySearchId">ID Number</label>
+                      <label htmlFor="pharmacySearchId">ID Number or MRN</label>
                       <input
                         type="text"
                         id="pharmacySearchId"
                         value={pharmacySearchId}
                         onChange={(e) => setPharmacySearchId(e.target.value)}
-                        placeholder="Enter patient ID number"
+                        placeholder="Enter patient ID number or MRN"
                         required
                       />
                     </div>
@@ -1716,7 +1716,7 @@ function App() {
                         {pharmacyRecord.patient.firstName} {pharmacyRecord.patient.lastName}
                       </h2>
                       <p className="text-muted" style={{ marginTop: '4px' }}>
-                        ID Number: {pharmacyRecord.patient.idNumber}
+                        {pharmacyRecord.patient.idNumber ? `ID Number: ${pharmacyRecord.patient.idNumber} | ` : ''}MRN: {pharmacyRecord.patient.mrn}
                       </p>
                       {pharmacyRecord.currentVisit ? (
                         <p className="text-muted" style={{ marginTop: '8px', color: '#c7d2fe', fontSize: '0.85rem' }}>
@@ -1809,8 +1809,15 @@ function App() {
                         <form onSubmit={handleRegisterPatient}>
                           <div className="form-group">
                             <label>ID Number</label>
-                            <input type="text" value={patientRegForm.idNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, idNumber: e.target.value })} required placeholder="SA ID number" />
+                            <input type="text" value={patientRegForm.idNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, idNumber: e.target.value })} placeholder="SA ID number (optional)" />
                           </div>
+                          <div className="form-group">
+                            <label>Passport Number</label>
+                            <input type="text" value={patientRegForm.passportNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, passportNumber: e.target.value })} placeholder="Passport number (optional)" />
+                          </div>
+                          <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '12px' }}>
+                            An MRN is auto-assigned to every patient regardless — ID number and passport number are optional.
+                          </p>
                           <div className="form-group">
                             <label>First Name</label>
                             <input type="text" value={patientRegForm.firstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, firstName: e.target.value })} required />
@@ -1853,16 +1860,16 @@ function App() {
                           <CheckCircle size={18} /> Check In Patient
                         </h3>
                         <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>
-                          Logs that the patient has arrived so the nurse can find them straight away by ID number — no queue ticket needed.
+                          Logs that the patient has arrived so the nurse can find them straight away by ID number or MRN — no queue ticket needed.
                         </p>
                         <form onSubmit={handleCheckIn}>
                           <div className="form-group">
-                            <label>ID Number</label>
+                            <label>ID Number or MRN</label>
                             <input
                               type="text"
                               value={checkinSearchId}
                               onChange={(e) => setCheckinSearchId(e.target.value)}
-                              placeholder="Enter patient ID number"
+                              placeholder="Enter patient ID number or MRN"
                               required
                             />
                           </div>
@@ -1890,7 +1897,7 @@ function App() {
                           {recentCheckIns.map(v => (
                             <div key={v.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                               <div>
-                                <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{v.patient.firstName} {v.patient.lastName} <span className="text-muted" style={{ fontWeight: 400 }}>({v.patient.idNumber})</span></p>
+                                <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{v.patient.firstName} {v.patient.lastName} <span className="text-muted" style={{ fontWeight: 400 }}>({v.patient.idNumber || v.patient.mrn})</span></p>
                                 <p className="text-muted" style={{ fontSize: '0.75rem' }}>{v.reason}</p>
                               </div>
                               <div style={{ textAlign: 'right' }}>
@@ -2069,17 +2076,17 @@ function App() {
                   {/* Nurse: Look up patient by ID */}
                   <div className="glass-card" style={{ textAlign: 'left', marginBottom: '20px' }}>
                     <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Search size={18} /> Find Patient by ID Number
+                      <Search size={18} /> Find Patient by ID Number or MRN
                     </h3>
                     <form onSubmit={handleLookupForVitals} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
                       <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                        <label htmlFor="vitalsSearchId">ID Number</label>
+                        <label htmlFor="vitalsSearchId">ID Number or MRN</label>
                         <input
                           type="text"
                           id="vitalsSearchId"
                           value={vitalsSearchId}
                           onChange={(e) => setVitalsSearchId(e.target.value)}
-                          placeholder="Enter patient ID number"
+                          placeholder="Enter patient ID number or MRN"
                           required
                         />
                       </div>
@@ -2096,7 +2103,7 @@ function App() {
                         {vitalsPatient.firstName} {vitalsPatient.lastName}
                       </h2>
                       <p className="text-muted" style={{ marginBottom: '20px' }}>
-                        ID Number: {vitalsPatient.idNumber} | Gender: {vitalsPatient.gender} | DOB: {vitalsPatient.dateOfBirth}
+                        {vitalsPatient.idNumber ? `ID Number: ${vitalsPatient.idNumber} | ` : ''}MRN: {vitalsPatient.mrn} | Gender: {vitalsPatient.gender} | DOB: {vitalsPatient.dateOfBirth}
                       </p>
 
                       <form onSubmit={handleRecordVitals}>
@@ -2262,14 +2269,14 @@ function App() {
                     </h3>
                     <form onSubmit={handleSearchPatient}>
                       <div className="form-group" style={{ marginBottom: '12px' }}>
-                        <label htmlFor="searchId">ID Number</label>
-                        <input 
-                          type="text" 
-                          id="searchId" 
-                          value={searchId} 
-                          onChange={(e) => setSearchId(e.target.value)} 
-                          placeholder="Enter patient ID number"
-                          required 
+                        <label htmlFor="searchId">ID Number or MRN</label>
+                        <input
+                          type="text"
+                          id="searchId"
+                          value={searchId}
+                          onChange={(e) => setSearchId(e.target.value)}
+                          placeholder="Enter patient ID number or MRN"
+                          required
                         />
                       </div>
                       <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
@@ -2286,21 +2293,32 @@ function App() {
                     <form onSubmit={handleRegisterPatient}>
                       <div className="form-group">
                         <label>ID Number</label>
-                        <input 
-                          type="text" 
-                          value={patientRegForm.idNumber} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, idNumber: e.target.value})} 
-                          required 
-                          placeholder="SA ID number"
+                        <input
+                          type="text"
+                          value={patientRegForm.idNumber}
+                          onChange={(e) => setPatientRegForm({...patientRegForm, idNumber: e.target.value})}
+                          placeholder="SA ID number (optional)"
                         />
                       </div>
                       <div className="form-group">
+                        <label>Passport Number</label>
+                        <input
+                          type="text"
+                          value={patientRegForm.passportNumber}
+                          onChange={(e) => setPatientRegForm({...patientRegForm, passportNumber: e.target.value})}
+                          placeholder="Passport number (optional)"
+                        />
+                      </div>
+                      <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '12px' }}>
+                        An MRN is auto-assigned to every patient regardless — ID number and passport number are optional.
+                      </p>
+                      <div className="form-group">
                         <label>First Name</label>
-                        <input 
-                          type="text" 
-                          value={patientRegForm.firstName} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, firstName: e.target.value})} 
-                          required 
+                        <input
+                          type="text"
+                          value={patientRegForm.firstName}
+                          onChange={(e) => setPatientRegForm({...patientRegForm, firstName: e.target.value})}
+                          required
                         />
                       </div>
                       <div className="form-group">
@@ -2373,7 +2391,7 @@ function App() {
                         <div>
                           <h2 style={{ color: '#fff' }}>Patient File: {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}</h2>
                           <p className="text-muted" style={{ marginTop: '4px' }}>
-                            ID Number: {searchedPatientRecord.patient.idNumber} | Gender: {searchedPatientRecord.patient.gender} | DOB: {searchedPatientRecord.patient.dateOfBirth}
+                            {searchedPatientRecord.patient.idNumber ? `ID Number: ${searchedPatientRecord.patient.idNumber} | ` : ''}MRN: {searchedPatientRecord.patient.mrn} | Gender: {searchedPatientRecord.patient.gender} | DOB: {searchedPatientRecord.patient.dateOfBirth}
                           </p>
                           <p className="text-muted" style={{ marginTop: '4px' }}>
                             Contact: {searchedPatientRecord.patient.contactNumber || 'N/A'} | Email: {searchedPatientRecord.patient.email || 'N/A'}
@@ -2876,7 +2894,7 @@ function App() {
                                   {alert.severity} SEVERITY
                                 </span>
                                 <h3 style={{ color: '#fff', fontSize: '1.2rem', marginTop: '6px' }}>
-                                  Patient: {item.patient.firstName} {item.patient.lastName} ({item.patient.idNumber})
+                                  Patient: {item.patient.firstName} {item.patient.lastName} ({item.patient.idNumber || item.patient.mrn})
                                 </h3>
                                 <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '4px' }}>
                                   Fired: {new Date(alert.createdAt).toLocaleString()} | Alert Type: {alert.alertType}

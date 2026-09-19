@@ -5,7 +5,6 @@ import com.udhr.model.Patient;
 import com.udhr.model.Staff;
 import com.udhr.model.Visit;
 import com.udhr.model.Vitals;
-import com.udhr.repository.PatientRepository;
 import com.udhr.repository.StaffRepository;
 import com.udhr.repository.VitalsRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,7 +18,7 @@ public class VitalsService {
     private VitalsRepository vitalsRepository;
 
     @Autowired
-    private PatientRepository patientRepository;
+    private PatientService patientService;
 
     @Autowired
     private StaffRepository staffRepository;
@@ -28,14 +27,13 @@ public class VitalsService {
     private VisitService visitService;
 
     /**
-     * Nurse looks the patient up by ID number and records vitals in one step.
-     * No queue ticket is needed: this opens (or reuses) the patient's current
-     * visit and immediately hands it off to the doctor by moving the visit
-     * status to VITALS_DONE.
+     * Nurse looks the patient up by ID number or MRN and records vitals in one
+     * step. No queue ticket is needed: this opens (or reuses) the patient's
+     * current visit and immediately hands it off to the doctor by moving the
+     * visit status to VITALS_DONE.
      */
     public Vitals recordVitals(VitalsRequest request, String staffNumber) {
-        Patient patient = patientRepository.findByIdNumber(request.getIdNumber())
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        Patient patient = patientService.findByIdentifier(request.getIdNumber());
 
         Staff nurse = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Logged in staff not found"));

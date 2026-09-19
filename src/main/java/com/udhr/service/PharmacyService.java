@@ -7,7 +7,6 @@ import com.udhr.model.Prescription;
 import com.udhr.model.Staff;
 import com.udhr.model.Visit;
 import com.udhr.repository.AuditLogRepository;
-import com.udhr.repository.PatientRepository;
 import com.udhr.repository.PrescriptionRepository;
 import com.udhr.repository.StaffRepository;
 import com.udhr.repository.VisitRepository;
@@ -20,7 +19,7 @@ import java.util.List;
 public class PharmacyService {
 
     @Autowired
-    private PatientRepository patientRepository;
+    private PatientService patientService;
 
     @Autowired
     private PrescriptionRepository prescriptionRepository;
@@ -35,13 +34,12 @@ public class PharmacyService {
     private AuditLogRepository auditLogRepository;
 
     /**
-     * Pharmacist looks the patient up by ID number — no need to ask which
-     * doctor sent them or chase a paper script. This shows exactly where
-     * the patient came from and what's still waiting to be dispensed.
+     * Pharmacist looks the patient up by ID number or MRN — no need to ask
+     * which doctor sent them or chase a paper script. This shows exactly
+     * where the patient came from and what's still waiting to be dispensed.
      */
-    public PharmacyLookupResponse lookup(String idNumber, String staffNumber) {
-        Patient patient = patientRepository.findByIdNumber(idNumber)
-                .orElseThrow(() -> new RuntimeException("Patient not found"));
+    public PharmacyLookupResponse lookup(String identifier, String staffNumber) {
+        Patient patient = patientService.findByIdentifier(identifier);
 
         List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
         Visit currentVisit = visits.isEmpty() ? null : visits.get(0);
@@ -55,7 +53,7 @@ public class PharmacyService {
             auditLog.setStaff(staff);
             auditLog.setPatient(patient);
             auditLog.setAction("PHARMACY_LOOKUP");
-            auditLog.setDescription("Pharmacy looked up patient: " + idNumber);
+            auditLog.setDescription("Pharmacy looked up patient: " + patient.getMrn());
             auditLogRepository.save(auditLog);
         }
 

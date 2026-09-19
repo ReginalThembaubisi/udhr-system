@@ -3,6 +3,8 @@ package com.udhr.controller;
 import com.udhr.dto.LabResultReportResponse;
 import com.udhr.dto.LabResultRequest;
 import com.udhr.model.LabResult;
+import com.udhr.model.Patient;
+import com.udhr.repository.PatientRepository;
 import com.udhr.service.LabResultService;
 import com.udhr.security.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -11,6 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -24,6 +27,9 @@ public class LabResultController {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private PatientRepository patientRepository;
 
     private String extractStaffNumber(HttpServletRequest request) {
         String authHeader = request.getHeader("Authorization");
@@ -62,6 +68,19 @@ public class LabResultController {
 
         try {
             List<LabResult> labResults = labResultService.getLabResultsByPatient(patientId);
+            return ResponseEntity.ok(labResults);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/my-results")
+    public ResponseEntity<?> getMyLabResults() {
+        try {
+            String idNumber = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            Patient patient = patientRepository.findByIdNumber(idNumber)
+                    .orElseThrow(() -> new RuntimeException("Patient not found"));
+            List<LabResult> labResults = labResultService.getLabResultsByPatient(patient.getId());
             return ResponseEntity.ok(labResults);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());

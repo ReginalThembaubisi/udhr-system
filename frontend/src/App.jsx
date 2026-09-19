@@ -33,6 +33,8 @@ function App() {
   const [triageResult, setTriageResult] = useState(null);
   const [triageHistory, setTriageHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [myLabResults, setMyLabResults] = useState([]);
+  const [patientPortalTab, setPatientPortalTab] = useState('overview'); // 'overview' | 'symptoms' | 'medications' | 'food' | 'labs'
 
   // Feature 3: Food Checker State
   const [foodInputMethod, setFoodInputMethod] = useState('type'); // 'type', 'search', 'upload'
@@ -326,6 +328,13 @@ function App() {
       if (patientAlertsRes.ok) {
         const patientAlertsData = await patientAlertsRes.json();
         setPatientAlerts(patientAlertsData);
+      }
+
+      // 9. Fetch My Lab Results
+      const myLabResultsRes = await fetch('/api/lab-results/my-results', { headers: getAuthHeaders() });
+      if (myLabResultsRes.ok) {
+        const myLabResultsData = await myLabResultsRes.json();
+        setMyLabResults(myLabResultsData);
       }
     } catch (err) {
       console.error("Error fetching patient portal data", err);
@@ -854,17 +863,6 @@ function App() {
     }
   };
 
-  // Map urgency level string to color class
-  const getUrgencyBadge = (level) => {
-    if (level === 'RED') {
-      return <span className="badge badge-red"><ShieldAlert size={14} />🔴 High (Go to Emergency)</span>;
-    } else if (level === 'YELLOW') {
-      return <span className="badge badge-yellow"><AlertTriangle size={14} />🟡 Moderate (Visit Clinic within 24h)</span>;
-    } else {
-      return <span className="badge badge-green"><CheckCircle size={14} />🟢 Low (Rest & Monitor at Home)</span>;
-    }
-  };
-
   // Update Medication Adherence (Patient Portal)
   const handleUpdateAdherence = async (adherenceId, status, notes = '') => {
     setErrorMessage('');
@@ -1357,6 +1355,470 @@ function App() {
     );
   }
 
+  // 2. Patient Portal — light clinical redesign. Single-column, tabbed layout
+  // replacing the old one-long-scroll dashboard. Reuses every existing
+  // patient-portal state value and handler as-is; only presentation and
+  // navigation (tabs vs. scroll) changed.
+  if (token && userRole === 'PATIENT' && !mustChangePassword) {
+    const hasUrgentFlag = (patientAlerts && patientAlerts.length > 0) || (drugFoodConflicts && drugFoodConflicts.length > 0);
+    const urgentFlagText = drugFoodConflicts && drugFoodConflicts.length > 0
+      ? drugFoodConflicts[0].message
+      : (patientAlerts && patientAlerts[0]?.message);
+
+    return (
+      <div className="udhr-page">
+        <div className="udhr-page-inner">
+          <header className="udhr-page-header">
+            <div className="udhr-page-logo">
+              <div className="udhr-page-logo-chip">
+                <Activity size={16} color="#fff" />
+              </div>
+              UDHR
+            </div>
+            <button className="udhr-logout-link" onClick={handleLogout}>
+              <LogOut size={15} /> Log out
+            </button>
+          </header>
+
+          <div className="udhr-greeting">
+            <h1>Hi, {patientProfile?.firstName || 'there'}</h1>
+            <p>Here's where things stand today.</p>
+          </div>
+
+          {errorMessage && (
+            <div className="udhr-alert-banner error" style={{ marginTop: '16px' }}>
+              <AlertCircle size={16} />
+              <span style={{ flex: 1 }}>{errorMessage}</span>
+              <button type="button" onClick={() => setErrorMessage('')}>×</button>
+            </div>
+          )}
+          {successMessage && (
+            <div className="udhr-alert-banner success" style={{ marginTop: '16px' }}>
+              <CheckCircle size={16} />
+              <span style={{ flex: 1 }}>{successMessage}</span>
+              <button type="button" onClick={() => setSuccessMessage('')}>×</button>
+            </div>
+          )}
+
+          {hasUrgentFlag && urgentFlagText && (
+            <div className="udhr-alert-banner error" style={{ marginTop: '16px', alignItems: 'flex-start' }}>
+              <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '1px' }} />
+              <div>
+                <p style={{ margin: 0, fontWeight: 600 }}>Possible interaction flagged</p>
+                <p style={{ margin: '2px 0 0' }}>{urgentFlagText}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="udhr-tab-bar" style={{ marginTop: '20px' }}>
+            {[
+              ['overview', 'Overview'],
+              ['symptoms', 'Symptom Checker'],
+              ['medications', 'Medications'],
+              ['food', 'Food Checker'],
+              ['labs', 'Lab Results'],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                className={`udhr-tab-pill ${patientPortalTab === key ? 'active' : ''}`}
+                onClick={() => setPatientPortalTab(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* ===== Overview ===== */}
+          {patientPortalTab === 'overview' && (
+            <>
+              <div className="udhr-stat-grid">
+                <div className="udhr-stat-card">
+                  <p className="udhr-stat-label">Weekly adherence</p>
+                  <p className="udhr-stat-value">
+                    {reminderData?.stats?.totalDoses > 0 ? `${reminderData.stats.adherenceScore}%` : '—'}
+                  </p>
+                </div>
+                <div className="udhr-stat-card">
+                  <p className="udhr-stat-label">Last triage</p>
+                  <p className="udhr-stat-value" style={{
+                    color: triageHistory[0]?.urgencyLevel === 'RED' ? 'var(--udhr-danger)' : triageHistory[0]?.urgencyLevel === 'YELLOW' ? 'var(--udhr-warning)' : undefined
+                  }}>
+                    {triageHistory[0]?.urgencyLevel || '—'}
+                  </p>
+                </div>
+                <div className="udhr-stat-card">
+                  <p className="udhr-stat-label">Active alerts</p>
+                  <p className="udhr-stat-value" style={{ color: patientAlerts.length > 0 ? 'var(--udhr-danger)' : undefined }}>
+                    {patientAlerts.length}
+                  </p>
+                </div>
+              </div>
+
+              {(healthGuidance?.conditions?.length > 0 || healthGuidance?.allergies?.length > 0) && (
+                <>
+                  <h2 className="udhr-section-title">Your health profile</h2>
+                  <div className="udhr-chip-row">
+                    {healthGuidance?.conditions.map((c, i) => (
+                      <span key={`c-${i}`} className="udhr-tag info">Condition: {c}</span>
+                    ))}
+                    {healthGuidance?.allergies.map((a, i) => (
+                      <span key={`a-${i}`} className="udhr-tag danger">⚠️ Allergy: {a}</span>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <h2 className="udhr-section-title">Quick actions</h2>
+              <div className="udhr-quick-grid">
+                <button type="button" className="udhr-quick-card" onClick={() => setPatientPortalTab('symptoms')}>
+                  <Search size={20} color="#2563eb" />
+                  <span>Check my symptoms</span>
+                </button>
+                <button type="button" className="udhr-quick-card" onClick={() => setPatientPortalTab('food')}>
+                  <FileSpreadsheet size={20} color="#2563eb" />
+                  <span>Check food ingredients</span>
+                </button>
+              </div>
+
+              {patientAlerts && patientAlerts.length > 0 && (
+                <>
+                  <h2 className="udhr-section-title">Clinical warnings & doctor's instructions</h2>
+                  {patientAlerts.map((alert) => (
+                    <div key={alert.id} className="udhr-card">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span className={`udhr-tag ${alert.severity === 'CRITICAL' ? 'danger' : 'info'}`}>{alert.severity} WARNING</span>
+                        <span className="udhr-row-subtitle">{new Date(alert.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '13.5px', color: 'var(--udhr-text-secondary)' }}>{alert.message}</p>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {((healthGuidance?.dietaryGuidelines?.length > 0) || (healthGuidance?.healthTips?.length > 0)) && (
+                <>
+                  <h2 className="udhr-section-title" style={{ marginTop: '24px' }}>Dietary guidelines & lifestyle tips</h2>
+                  {healthGuidance?.dietaryGuidelines?.filter(g => g.foodType === 'EAT').map((item) => (
+                    <div key={`eat-${item.id}`} className="udhr-card">
+                      <p className="udhr-row-title" style={{ color: 'var(--udhr-success)' }}>✓ Eat: {item.foodItem}</p>
+                      <p className="udhr-row-subtitle">{item.description}</p>
+                    </div>
+                  ))}
+                  {healthGuidance?.dietaryGuidelines?.filter(g => g.foodType === 'AVOID').map((item) => (
+                    <div key={`avoid-${item.id}`} className="udhr-card">
+                      <p className="udhr-row-title" style={{ color: 'var(--udhr-danger)' }}>✕ Avoid: {item.foodItem}</p>
+                      <p className="udhr-row-subtitle">{item.description}</p>
+                    </div>
+                  ))}
+                  {healthGuidance?.healthTips?.map((tip) => (
+                    <div key={`tip-${tip.id}`} className="udhr-card">
+                      <p className="udhr-row-title">{tip.title} <span className="udhr-tag info" style={{ marginLeft: '6px' }}>{tip.tipType}</span></p>
+                      <p className="udhr-row-subtitle">{tip.description}</p>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {healthGuidance?.medicationWarnings && Object.keys(healthGuidance.medicationWarnings).length > 0 && (
+                <>
+                  <h2 className="udhr-section-title" style={{ marginTop: '24px' }}>Medication allergy warnings</h2>
+                  {Object.entries(healthGuidance.medicationWarnings).map(([allergen, warnings]) => (
+                    <div key={allergen} className="udhr-card">
+                      <p className="udhr-row-title">Allergen: {allergen.toUpperCase()}</p>
+                      {warnings.length === 0 ? (
+                        <p className="udhr-empty-note">No FDA alerts found for this allergen. Consult your doctor.</p>
+                      ) : (
+                        warnings.map((w, idx) => (
+                          <p key={idx} className="udhr-row-subtitle" style={{ marginTop: '8px' }}>
+                            ⚠️ Avoid <strong style={{ color: 'var(--udhr-text)' }}>{w.genericName}</strong> ({w.brandName}) — {w.warningText}
+                          </p>
+                        ))
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+
+          {/* ===== Symptom Checker ===== */}
+          {patientPortalTab === 'symptoms' && (
+            <>
+              <p style={{ color: 'var(--udhr-text-muted)', fontSize: '13.5px', margin: '0 0 14px' }}>
+                Select what you're feeling and our care navigation engine (powered by Infermedica) will guide you on next steps. <em>This is not a diagnosis.</em>
+              </p>
+              <div className="udhr-chip-row">
+                {symptomsList.map((symptom) => {
+                  const isSelected = selectedSymptoms.includes(symptom.id);
+                  return (
+                    <button
+                      key={symptom.id}
+                      type="button"
+                      className={`udhr-chip ${isSelected ? 'active' : ''}`}
+                      onClick={() => handleSymptomToggle(symptom.id)}
+                    >
+                      {symptom.name}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+                <button
+                  type="button"
+                  className="udhr-btn-primary"
+                  style={{ width: 'auto', padding: '12px 20px' }}
+                  onClick={handleSymptomCheckSubmit}
+                  disabled={selectedSymptoms.length === 0 || loading}
+                >
+                  {loading ? 'Analyzing...' : 'Get guidance'}
+                </button>
+                {selectedSymptoms.length > 0 && (
+                  <button type="button" className="udhr-btn-neutral" onClick={() => setSelectedSymptoms([])}>
+                    Clear selection
+                  </button>
+                )}
+              </div>
+
+              {triageResult && (
+                <div className={`udhr-result-card ${triageResult.urgencyLevel === 'RED' ? 'danger' : triageResult.urgencyLevel === 'YELLOW' ? 'warning' : 'success'}`}>
+                  <span className={`udhr-tag ${triageResult.urgencyLevel === 'RED' ? 'danger' : 'info'}`}>
+                    {triageResult.urgencyLevel === 'RED' ? '🔴 High · go to Emergency' : triageResult.urgencyLevel === 'YELLOW' ? '🟡 Moderate · visit a clinic within 24h' : '🟢 Low · rest & monitor at home'}
+                  </span>
+                  <p style={{ margin: '10px 0 0', fontSize: '13.5px', color: 'var(--udhr-text-secondary)' }}>
+                    {triageResult.recommendation.split('[')[0]}
+                  </p>
+                  <p style={{ margin: '10px 0 0', fontSize: '12px', color: 'var(--udhr-text-muted)' }}>
+                    ⚠️ This tool only provides care recommendations based on symptoms. It does not replace professional medical evaluation.
+                  </p>
+                  <button type="button" className="udhr-btn-neutral" style={{ marginTop: '12px' }} onClick={() => setTriageResult(null)}>
+                    Acknowledge & close
+                  </button>
+                </div>
+              )}
+
+              {triageHistory.length > 0 && (
+                <>
+                  <h2 className="udhr-section-title" style={{ marginTop: '24px' }}>Symptom check history</h2>
+                  {triageHistory.map((check) => (
+                    <div key={check.id} className="udhr-card">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span className="udhr-row-subtitle">{new Date(check.checkedAt).toLocaleDateString()}</span>
+                        <span className={`udhr-tag ${check.urgencyLevel === 'RED' ? 'danger' : 'info'}`}>{check.urgencyLevel}</span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '13.5px' }}>{check.recommendation.split('[')[0]}</p>
+                      {check.details && check.details.length > 0 && (
+                        <div className="udhr-chip-row" style={{ marginTop: '8px', marginBottom: 0 }}>
+                          {check.details.map((d, idx) => (
+                            <span key={idx} className="udhr-tag info">🩺 {d.symptom.name}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+
+          {/* ===== Medications ===== */}
+          {patientPortalTab === 'medications' && (
+            <>
+              {reminderData?.stats && reminderData.stats.totalDoses > 0 && (
+                <div className="udhr-card" style={{ marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '14px', fontWeight: 600 }}>Weekly adherence score</span>
+                    <span style={{ fontSize: '17px', fontWeight: 700, color: reminderData.stats.adherenceScore >= 80 ? 'var(--udhr-success)' : reminderData.stats.adherenceScore >= 50 ? 'var(--udhr-warning)' : 'var(--udhr-danger)' }}>
+                      {reminderData.stats.adherenceScore}%
+                    </span>
+                  </div>
+                  <div className="udhr-progress-track">
+                    <div className="udhr-progress-fill" style={{ width: `${reminderData.stats.adherenceScore}%` }}></div>
+                  </div>
+                  <p className="udhr-row-subtitle">
+                    You've taken {reminderData.stats.takenDoses} out of {reminderData.stats.totalDoses} scheduled doses this week. Keep it up!
+                  </p>
+                </div>
+              )}
+
+              {!reminderData || reminderData.adherenceLogs.length === 0 ? (
+                <p className="udhr-empty-note">No medication reminders scheduled for today.</p>
+              ) : (
+                reminderData.adherenceLogs.map((log) => {
+                  const timeString = new Date(log.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  return (
+                    <div key={log.id} className="udhr-row-card" style={{ alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1, minWidth: '200px' }}>
+                        <p className="udhr-row-title">{log.reminder.prescription.medication} <span className="udhr-row-subtitle">({log.reminder.prescription.dosage})</span></p>
+                        <p className="udhr-row-subtitle">{timeString} · {log.reminder.frequency}</p>
+                        {log.takenAt && (
+                          <p className="udhr-row-subtitle" style={{ color: 'var(--udhr-success)' }}>
+                            Taken at {new Date(log.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        )}
+                        {log.status === 'PENDING' ? (
+                          <input
+                            type="text"
+                            className="udhr-note-input"
+                            placeholder="How does this make you feel? (e.g. side effects, dizzy...)"
+                            value={adherenceNotes[log.id] || ''}
+                            onChange={(e) => setAdherenceNotes({ ...adherenceNotes, [log.id]: e.target.value })}
+                          />
+                        ) : (
+                          log.notes && (
+                            <p className="udhr-row-subtitle" style={{ fontStyle: 'italic' }}>Patient feedback: "{log.notes}"</p>
+                          )
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {log.status === 'PENDING' ? (
+                          <>
+                            <button type="button" className="udhr-btn-soft-success" onClick={() => handleUpdateAdherence(log.id, 'TAKEN', adherenceNotes[log.id] || '')}>Taken</button>
+                            <button type="button" className="udhr-btn-neutral" onClick={() => handleUpdateAdherence(log.id, 'MISSED', adherenceNotes[log.id] || '')}>Skip</button>
+                          </>
+                        ) : (
+                          <span className={`udhr-tag ${log.status === 'TAKEN' ? 'info' : 'danger'}`}>{log.status}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </>
+          )}
+
+          {/* ===== Food Checker ===== */}
+          {patientPortalTab === 'food' && (
+            <>
+              <p style={{ color: 'var(--udhr-text-muted)', fontSize: '13.5px', margin: '0 0 16px' }}>
+                Type an ingredients list, look one up via Open Food Facts, or scan a label photo (OCR) to check it against your medical record.
+              </p>
+
+              <div className="udhr-segmented" style={{ maxWidth: '460px' }}>
+                <button type="button" className={`udhr-segmented-btn ${foodInputMethod === 'type' ? 'active' : ''}`} onClick={() => setFoodInputMethod('type')}>Type</button>
+                <button type="button" className={`udhr-segmented-btn ${foodInputMethod === 'search' ? 'active' : ''}`} onClick={() => setFoodInputMethod('search')}>Open Food Facts</button>
+                <button type="button" className={`udhr-segmented-btn ${foodInputMethod === 'upload' ? 'active' : ''}`} onClick={() => setFoodInputMethod('upload')}>Upload Label</button>
+              </div>
+
+              {foodInputMethod === 'type' && (
+                <div className="udhr-form-group" style={{ marginTop: '16px' }}>
+                  <label className="udhr-label">Ingredients (separate with commas)</label>
+                  <textarea
+                    className="udhr-textarea"
+                    value={ingredientsInput}
+                    onChange={(e) => setIngredientsInput(e.target.value)}
+                    placeholder="e.g. Sugar, Wheat Flour, Sodium Chloride, Peanut Butter, Vegetable Fat, Milk..."
+                    rows={4}
+                  />
+                </div>
+              )}
+
+              {foodInputMethod === 'search' && (
+                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <div style={{ width: '150px' }} className="udhr-form-group">
+                      <label className="udhr-label">Lookup type</label>
+                      <select className="udhr-input" value={lookupType} onChange={(e) => setLookupType(e.target.value)}>
+                        <option value="barcode">Barcode</option>
+                        <option value="search">Product Name</option>
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }} className="udhr-form-group">
+                      <label className="udhr-label">{lookupType === 'barcode' ? 'Product Barcode' : 'Search Terms'}</label>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <input
+                          type="text"
+                          className="udhr-input"
+                          value={productQuery}
+                          onChange={(e) => setProductQuery(e.target.value)}
+                          placeholder={lookupType === 'barcode' ? 'e.g. 737628064502' : 'e.g. wheat bread'}
+                        />
+                        <button type="button" className="udhr-btn-neutral" style={{ whiteSpace: 'nowrap' }} onClick={handleProductLookup} disabled={loading}>
+                          Fetch
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  {ingredientsInput && (
+                    <div className="udhr-form-group">
+                      <label className="udhr-label">Fetched ingredients</label>
+                      <textarea className="udhr-textarea" value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {foodInputMethod === 'upload' && (
+                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <label className="udhr-label">Upload food label photo</label>
+                  <div style={{ border: '2px dashed var(--udhr-border)', borderRadius: '12px', padding: '24px', textAlign: 'center', background: '#f8fafc', position: 'relative', cursor: 'pointer' }}>
+                    <Upload size={28} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
+                    <p style={{ fontSize: '13.5px', color: 'var(--udhr-text-muted)', margin: 0 }}>Choose label file or drag it here</p>
+                    <p style={{ fontSize: '12px', color: 'var(--udhr-text-muted-2)', marginTop: '4px' }}>PNG, JPG or JPEG. Max size 5MB.</p>
+                    <input type="file" accept="image/*" onChange={handleOcrUpload} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} />
+                  </div>
+                  {ingredientsInput && (
+                    <div className="udhr-form-group">
+                      <label className="udhr-label">Extracted ingredients (OCR text)</label>
+                      <textarea className="udhr-textarea" value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} />
+                    </div>
+                  )}
+                  <p style={{ fontSize: '12.5px', color: 'var(--udhr-text-muted)' }}>
+                    💡 Demo trigger: pick any file whose name contains <code>juice</code>, <code>chips</code>, or <code>bread</code> to auto-extract matching ingredients.
+                  </p>
+                </div>
+              )}
+
+              {ingredientsInput && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+                  <button type="button" className="udhr-btn-primary" style={{ width: 'auto', padding: '11px 20px' }} onClick={handleCheckIngredients} disabled={loading}>
+                    {loading ? 'Analyzing...' : 'Check against my record'}
+                  </button>
+                </div>
+              )}
+
+              {checkResults.length > 0 && (
+                <div style={{ marginTop: '24px' }}>
+                  <h2 className="udhr-section-title">Scanned ingredients analysis</h2>
+                  {checkResults.map((res, i) => (
+                    <div key={i} className="udhr-row-card">
+                      <div>
+                        <span className="udhr-row-title">{res.name}</span>
+                        <p className="udhr-row-subtitle">{res.reason}</p>
+                      </div>
+                      <span className={`udhr-tag ${res.status === 'DANGER' ? 'danger' : 'info'}`}>{res.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ===== Lab Results ===== */}
+          {patientPortalTab === 'labs' && (
+            <>
+              <p style={{ color: 'var(--udhr-text-muted)', fontSize: '13.5px', margin: '0 0 14px' }}>
+                Results your care team has recorded, most recent first.
+              </p>
+              {myLabResults.length === 0 ? (
+                <p className="udhr-empty-note">No lab results recorded yet.</p>
+              ) : (
+                myLabResults.map((l) => (
+                  <div key={l.id} className="udhr-row-card">
+                    <p className="udhr-row-title">{l.testName}</p>
+                    <p style={{ margin: 0, fontSize: '13.5px', fontWeight: 700 }}>
+                      {l.result}{l.unit ? ` ${l.unit}` : ''} <span className="udhr-row-subtitle" style={{ fontWeight: 400 }}>{l.normalRange ? `(normal: ${l.normalRange})` : ''}</span>
+                    </p>
+                  </div>
+                ))
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-container">
       {/* Header */}
@@ -1454,640 +1916,6 @@ function App() {
               >
                 Cancel & Log Out
               </button>
-            </div>
-          </div>
-        )}
-
-        {/* 2. Patient Portal View */}
-        {token && userRole === 'PATIENT' && !mustChangePassword && (
-          <div className="dashboard-grid">
-            
-            {/* Sidebar Demographics Card */}
-            <div className="dashboard-sidebar">
-              <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '16px' }}>
-                  <div style={{ background: 'var(--primary)', width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.8rem', fontWeight: 'bold', marginBottom: '12px', alignSelf: 'center' }}>
-                    {patientProfile ? patientProfile.firstName.charAt(0) + patientProfile.lastName.charAt(0) : <User />}
-                  </div>
-                  <h3 style={{ color: '#fff' }}>{patientProfile?.firstName} {patientProfile?.lastName}</h3>
-                  <p className="text-muted" style={{ fontSize: '0.85rem' }}>National Health ID: {patientProfile?.idNumber}</p>
-                </div>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.9rem', textAlign: 'left' }}>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <Calendar size={16} className="text-muted" />
-                    <div>
-                      <p className="text-muted" style={{ fontSize: '0.75rem' }}>Date of Birth</p>
-                      <p style={{ color: '#fff' }}>{patientProfile?.dateOfBirth}</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <Compass size={16} className="text-muted" />
-                    <div>
-                      <p className="text-muted" style={{ fontSize: '0.75rem' }}>Gender</p>
-                      <p style={{ color: '#fff' }}>{patientProfile?.gender}</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <Phone size={16} className="text-muted" />
-                    <div>
-                      <p className="text-muted" style={{ fontSize: '0.75rem' }}>Contact Number</p>
-                      <p style={{ color: '#fff' }}>{patientProfile?.contactNumber || 'Not provided'}</p>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <MapPin size={16} className="text-muted" />
-                    <div>
-                      <p className="text-muted" style={{ fontSize: '0.75rem' }}>Address</p>
-                      <p style={{ color: '#fff', fontSize: '0.85rem' }}>{patientProfile?.address || 'Not provided'}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Triage History List */}
-              <div className="glass-card">
-                <h3 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.2rem', color: '#fff' }}>
-                  <Clock size={18} /> Symptom Check History
-                </h3>
-                {triageHistory.length === 0 ? (
-                  <p className="text-muted" style={{ fontSize: '0.9rem' }}>No symptom checks completed yet.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '350px', overflowY: 'auto' }}>
-                    {triageHistory.map((check) => (
-                      <div key={check.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', textAlign: 'left' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            {new Date(check.checkedAt).toLocaleDateString()}
-                          </span>
-                          <span style={{ 
-                            fontSize: '0.7rem', 
-                            fontWeight: 'bold', 
-                            color: check.urgencyLevel === 'RED' ? 'var(--danger)' : check.urgencyLevel === 'YELLOW' ? 'var(--warning)' : 'var(--success)'
-                          }}>
-                            {check.urgencyLevel}
-                          </span>
-                        </div>
-                        <p style={{ fontSize: '0.85rem', color: '#fff', margin: 0 }}>{check.recommendation.split('[')[0]}</p>
-                        {check.details && check.details.length > 0 && (
-                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
-                            {check.details.map((d, idx) => (
-                              <span key={idx} style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#cbd5e1', border: '1px solid rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem' }}>
-                                🩺 {d.symptom.name}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Main Portal Panels */}
-            <div className="dashboard-main">
-              
-              {/* Dynamic Health Guidance Banner */}
-              <div className="glass-card" style={{ borderLeft: '4px solid var(--primary)', background: 'linear-gradient(90deg, rgba(79, 70, 229, 0.1) 0%, rgba(14, 165, 233, 0.05) 100%)', textAlign: 'left' }}>
-                <h2 style={{ fontSize: '1.5rem', marginBottom: '8px', color: '#fff' }}>Personalized Health Guidance Portal</h2>
-                <p style={{ fontSize: '0.95rem', marginBottom: '16px' }}>
-                  Based on your active conditions, we have compiled specialized dietary guidelines and safety warnings.
-                </p>
-                
-                {/* Active Tags */}
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  {healthGuidance?.conditions.map((c, i) => (
-                    <span key={i} style={{ background: 'rgba(79, 70, 229, 0.2)', color: '#a5b4fc', border: '1px solid rgba(79, 70, 229, 0.3)', padding: '4px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600 }}>
-                      Condition: {c}
-                    </span>
-                  ))}
-                  {healthGuidance?.allergies.map((a, i) => (
-                    <span key={i} style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '4px 12px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600 }}>
-                      ⚠️ Allergy: {a}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Doctor Clinical Warnings Panel */}
-              {patientAlerts && patientAlerts.length > 0 && (
-                <div className="glass-card" style={{ borderLeft: '4px solid #f59e0b', background: 'rgba(245, 158, 11, 0.05)', textAlign: 'left' }}>
-                  <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <ShieldAlert color="#f59e0b" /> Clinical Warnings & Doctor's Instructions
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {patientAlerts.map((alert) => (
-                      <div key={alert.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                          <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: alert.severity === 'CRITICAL' ? '#ef4444' : '#f59e0b' }}>
-                            {alert.severity} WARNING
-                          </span>
-                          <span className="text-muted" style={{ fontSize: '0.75rem' }}>
-                            {new Date(alert.createdAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <p style={{ color: '#fff', fontSize: '0.85rem', lineHeight: '1.4' }}>{alert.message}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Drug-Food Conflict Audit Panel (Patient dashboard warning) */}
-              {drugFoodConflicts && drugFoodConflicts.length > 0 && (
-                <div className="glass-card" style={{ borderLeft: '4px solid #ef4444', background: 'rgba(239, 68, 68, 0.05)', textAlign: 'left' }}>
-                  <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <AlertTriangle color="#ef4444" /> Active Drug-Food Interactions Flagged
-                  </h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {drugFoodConflicts.map((c, i) => (
-                      <div key={i} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                        <p style={{ color: '#fff', fontSize: '0.85rem' }}><strong>Medication:</strong> {c.medication} | <strong>Ingredient:</strong> {c.ingredient}</p>
-                        <p style={{ fontSize: '0.8rem', color: c.severity === 'CRITICAL' ? '#fca5a5' : '#fde047', marginTop: '4px', lineHeight: 1.4 }}>{c.message}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Medication Reminders & Adherence Widget */}
-              <div className="glass-card" style={{ textAlign: 'left' }}>
-                <h2 style={{ fontSize: '1.4rem', color: '#fff', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <AlertCircle className="text-secondary" style={{ color: '#f59e0b' }} /> 🔔 Medication Reminders & Adherence
-                </h2>
-                
-                {/* Adherence Compliance Widget */}
-                {reminderData?.stats && reminderData.stats.totalDoses > 0 && (
-                  <div style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.9rem', color: '#fff', fontWeight: 600 }}>Weekly Adherence Score</span>
-                      <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: reminderData.stats.adherenceScore >= 80 ? 'var(--success)' : reminderData.stats.adherenceScore >= 50 ? 'var(--warning)' : 'var(--danger)' }}>
-                        {reminderData.stats.adherenceScore}%
-                      </span>
-                    </div>
-                    <div style={{ background: 'rgba(255,255,255,0.1)', height: '10px', borderRadius: '5px', overflow: 'hidden', marginBottom: '8px' }}>
-                      <div style={{ background: 'linear-gradient(90deg, #10b981 0%, #3b82f6 100%)', width: `${reminderData.stats.adherenceScore}%`, height: '100%' }}></div>
-                    </div>
-                    <p className="text-muted" style={{ fontSize: '0.8rem' }}>
-                      You have taken {reminderData.stats.takenDoses} out of {reminderData.stats.totalDoses} scheduled doses this week. Keep it up!
-                    </p>
-                  </div>
-                )}
-
-                {/* Today's Reminders List */}
-                {!reminderData || reminderData.adherenceLogs.length === 0 ? (
-                  <p className="text-muted" style={{ fontSize: '0.95rem' }}>No medication reminders scheduled for today.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {reminderData.adherenceLogs.map((log) => {
-                      const timeString = new Date(log.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                      return (
-                        <div 
-                          key={log.id} 
-                          style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center', 
-                            padding: '16px', 
-                            borderRadius: '12px', 
-                            background: log.status === 'TAKEN' ? 'rgba(16, 185, 129, 0.08)' : log.status === 'MISSED' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(15, 23, 42, 0.4)',
-                            border: `1px solid ${log.status === 'TAKEN' ? 'rgba(16, 185, 129, 0.2)' : log.status === 'MISSED' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.05)'}`
-                          }}
-                        >
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ fontSize: '1rem', fontWeight: 600, color: '#fff' }}>{log.reminder.prescription.medication}</span>
-                              <span className="text-muted" style={{ fontSize: '0.8rem' }}>({log.reminder.prescription.dosage})</span>
-                            </div>
-                            <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
-                              Scheduled Time: <strong style={{ color: '#fff' }}>{timeString}</strong> | Frequency: {log.reminder.frequency}
-                            </p>
-                            {log.takenAt && (
-                              <p className="text-muted" style={{ fontSize: '0.7rem', color: '#a7f3d0', marginTop: '2px' }}>
-                                Taken at: {new Date(log.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </p>
-                            )}
-                            {log.status === 'PENDING' ? (
-                              <input 
-                                type="text"
-                                placeholder="How does this make you feel? (e.g. side effects, dizzy...)"
-                                value={adherenceNotes[log.id] || ''}
-                                onChange={(e) => setAdherenceNotes({ ...adherenceNotes, [log.id]: e.target.value })}
-                                style={{
-                                  marginTop: '8px',
-                                  width: '100%',
-                                  padding: '6px 10px',
-                                  fontSize: '0.8rem',
-                                  borderRadius: '6px',
-                                  background: 'rgba(255, 255, 255, 0.05)',
-                                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                                  color: '#fff'
-                                }}
-                              />
-                            ) : (
-                              log.notes && (
-                                <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '6px', fontStyle: 'italic', color: '#fca5a5' }}>
-                                  Patient feedback: "{log.notes}"
-                                </p>
-                              )
-                            )}
-                          </div>
-
-                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                            {log.status === 'PENDING' ? (
-                              <>
-                                <button className="btn btn-success" onClick={() => handleUpdateAdherence(log.id, 'TAKEN', adherenceNotes[log.id] || '')} style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <CheckCircle size={14} /> Taken
-                                </button>
-                                <button className="btn btn-danger" onClick={() => handleUpdateAdherence(log.id, 'MISSED', adherenceNotes[log.id] || '')} style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                  <XCircle size={14} /> Missed
-                                </button>
-                              </>
-                            ) : (
-                              <span className={`badge ${log.status === 'TAKEN' ? 'badge-green' : 'badge-red'}`}>
-                                {log.status}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Interactive Symptom Checker */}
-              <div className="glass-card" style={{ textAlign: 'left' }}>
-                <h2 style={{ fontSize: '1.4rem', color: '#fff', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Heart className="text-secondary" /> Symptom Checker & Care Navigator
-                </h2>
-                <p className="text-muted" style={{ marginBottom: '20px', fontSize: '0.9rem' }}>
-                  Select the symptoms you are currently experiencing. Our care navigation engine (powered by Infermedica) will recommend the appropriate urgency level. <em>Note: This is not a diagnosis.</em>
-                </p>
-
-                {/* Symptom Checkbox Grid */}
-                <div className="grid grid-cols-3" style={{ gap: '12px', marginBottom: '24px' }}>
-                  {symptomsList.map((symptom) => {
-                    const isSelected = selectedSymptoms.includes(symptom.id);
-                    return (
-                      <div 
-                        key={symptom.id} 
-                        className="flex items-center gap-4"
-                        onClick={() => handleSymptomToggle(symptom.id)}
-                        style={{ 
-                          padding: '12px', 
-                          background: isSelected ? 'rgba(79, 70, 229, 0.25)' : 'rgba(15, 23, 42, 0.4)', 
-                          border: isSelected ? '1px solid var(--primary)' : '1px solid rgba(255,255,255,0.05)',
-                          borderRadius: '12px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        <input 
-                          type="checkbox" 
-                          checked={isSelected}
-                          onChange={() => {}} // Handled by div onClick
-                          style={{ width: '18px', height: '18px', cursor: 'pointer', pointerEvents: 'none' }}
-                        />
-                        <div>
-                          <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 500 }}>{symptom.name}</p>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>ICD-10: {symptom.icd10Code || 'N/A'}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-                  {selectedSymptoms.length > 0 && (
-                    <button className="btn btn-secondary" onClick={() => setSelectedSymptoms([])}>
-                      Clear Selection
-                    </button>
-                  )}
-                  <button className="btn btn-primary" onClick={handleSymptomCheckSubmit} disabled={selectedSymptoms.length === 0 || loading}>
-                    {loading ? 'Analyzing...' : `Analyze ${selectedSymptoms.length} Symptom(s)`}
-                  </button>
-                </div>
-
-                {/* Triage Recommendation Output Modal */}
-                {triageResult && (
-                   <div style={{
-                     position: 'fixed',
-                     top: 0,
-                     left: 0,
-                     width: '100%',
-                     height: '100%',
-                     background: 'rgba(15,23,42,0.85)',
-                     display: 'flex',
-                     justifyContent: 'center',
-                     alignItems: 'center',
-                     zIndex: 9999,
-                     backdropFilter: 'blur(8px)',
-                     padding: '20px'
-                   }}>
-                     <div className="glass-card" style={{ 
-                       maxWidth: '550px', 
-                       width: '100%', 
-                       border: '1px solid rgba(255,255,255,0.1)', 
-                       background: '#0f172a',
-                       padding: '24px',
-                       borderRadius: '16px',
-                       boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-                       textAlign: 'left'
-                     }}>
-                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px', marginBottom: '16px' }}>
-                         <h4 style={{ color: '#fff', fontSize: '1.25rem', fontWeight: 'bold' }}>Triage Recommendation</h4>
-                         {getUrgencyBadge(triageResult.urgencyLevel)}
-                       </div>
-                       <p style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 500, lineHeight: 1.6, marginBottom: '16px' }}>
-                         {triageResult.recommendation.split('[')[0]}
-                       </p>
-                       <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '24px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '12px' }}>
-                         ⚠️ <strong>Disclaimer:</strong> This tool only provides care recommendations based on symptoms. It does not replace professional medical evaluation. If you feel extremely unwell, seek medical help immediately.
-                       </p>
-                       <button 
-                         className="btn btn-primary" 
-                         onClick={() => setTriageResult(null)} 
-                         style={{ width: '100%', padding: '10px' }}
-                       >
-                         Acknowledge & Close
-                       </button>
-                     </div>
-                   </div>
-                 )}
-              </div>
-
-              {/* Feature 3: Interactive Food Ingredient Checker */}
-              <div className="glass-card" style={{ textAlign: 'left' }}>
-                <h2 style={{ fontSize: '1.4rem', color: '#fff', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <FileSpreadsheet className="text-secondary" style={{ color: '#0ea5e9' }} /> Food Ingredient Checker & Safety Scanner
-                </h2>
-                <p className="text-muted" style={{ marginBottom: '20px', fontSize: '0.9rem' }}>
-                  Input ingredient lists manually, query items via Open Food Facts, or scan labels from packaging photographs (OCR) to evaluate their safety against your medical records.
-                </p>
-
-                {/* Input Method Selector */}
-                <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '20px', maxWidth: '500px' }}>
-                  <button 
-                    className="btn" 
-                    style={{ flex: 1, background: foodInputMethod === 'type' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '6px 12px', fontSize: '0.85rem' }}
-                    onClick={() => setFoodInputMethod('type')}
-                  >
-                    Type Ingredients
-                  </button>
-                  <button 
-                    className="btn" 
-                    style={{ flex: 1, background: foodInputMethod === 'search' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '6px 12px', fontSize: '0.85rem' }}
-                    onClick={() => setFoodInputMethod('search')}
-                  >
-                    Open Food Facts
-                  </button>
-                  <button 
-                    className="btn" 
-                    style={{ flex: 1, background: foodInputMethod === 'upload' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '6px 12px', fontSize: '0.85rem' }}
-                    onClick={() => setFoodInputMethod('upload')}
-                  >
-                    Upload Label (OCR)
-                  </button>
-                </div>
-
-                {/* Dynamic Inputs based on Selector */}
-                {foodInputMethod === 'type' && (
-                  <div className="form-group">
-                    <label>Ingredients List (separate with commas)</label>
-                    <textarea 
-                      value={ingredientsInput} 
-                      onChange={(e) => setIngredientsInput(e.target.value)} 
-                      placeholder="e.g. Sugar, Wheat Flour, Sodium Chloride, Peanut Butter, Vegetable Fat, Milk..." 
-                      rows={3}
-                    />
-                  </div>
-                )}
-
-                {foodInputMethod === 'search' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                      <div style={{ width: '150px' }}>
-                        <label>Lookup Type</label>
-                        <select value={lookupType} onChange={(e) => setLookupType(e.target.value)} style={{ marginTop: '8px' }}>
-                          <option value="barcode">Barcode</option>
-                          <option value="search">Product Name</option>
-                        </select>
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <label>{lookupType === 'barcode' ? 'Product Barcode' : 'Search Terms'}</label>
-                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                          <input 
-                            type="text" 
-                            value={productQuery} 
-                            onChange={(e) => setProductQuery(e.target.value)} 
-                            placeholder={lookupType === 'barcode' ? 'e.g. 737628064502' : 'e.g. wheat bread'} 
-                          />
-                          <button className="btn btn-secondary" onClick={handleProductLookup} disabled={loading} style={{ whiteSpace: 'nowrap' }}>
-                            {lookupType === 'barcode' ? <Barcode size={18} /> : <Search size={18} />} Fetch
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    {ingredientsInput && (
-                      <div className="form-group">
-                        <label>Fetched Ingredients</label>
-                        <textarea value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {foodInputMethod === 'upload' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '20px' }}>
-                    <label>Upload Food Label Photo</label>
-                    <div style={{ border: '2px dashed var(--card-border)', borderRadius: '12px', padding: '24px', textAlign: 'center', background: 'rgba(15, 23, 42, 0.4)', position: 'relative', cursor: 'pointer' }}>
-                      <Upload size={32} className="text-muted" style={{ margin: '0 auto 8px' }} />
-                      <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Choose label file or drag it here</p>
-                      <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px' }}>PNG, JPG or JPEG. Max size 5MB.</p>
-                      <input 
-                        type="file" 
-                        accept="image/*"
-                        onChange={handleOcrUpload}
-                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
-                      />
-                    </div>
-                    {ingredientsInput && (
-                      <div className="form-group">
-                        <label>Extracted Ingredients (OCR Text)</label>
-                        <textarea value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} />
-                      </div>
-                    )}
-                    <div style={{ background: 'rgba(14, 165, 233, 0.1)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(14, 165, 233, 0.2)' }}>
-                      <p style={{ fontSize: '0.8rem', color: '#7dd3fc' }}>
-                        💡 <strong>OCR Demo Trigger:</strong> Select any file. If the file name contains <code>juice</code>, <code>chips</code>, or <code>bread</code>, it will automatically extract matching condition-specific ingredients!
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {ingredientsInput && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-                    <button className="btn btn-primary" onClick={handleCheckIngredients} disabled={loading}>
-                      {loading ? 'Analyzing...' : 'Analyze Safety Profiles'}
-                    </button>
-                  </div>
-                )}
-
-                {/* Analysis Results Display */}
-                {checkResults.length > 0 && (
-                  <div style={{ marginTop: '24px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '20px' }}>
-                    <h4 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Scanned Ingredients Analysis</h4>
-                    
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {checkResults.map((res, i) => (
-                        <div 
-                          key={i} 
-                          style={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center', 
-                            padding: '12px 16px', 
-                            borderRadius: '12px',
-                            background: res.status === 'DANGER' ? 'rgba(239, 68, 68, 0.08)' : res.status === 'CAUTION' ? 'rgba(245, 158, 11, 0.08)' : 'rgba(16, 185, 129, 0.08)',
-                            border: `1px solid ${res.status === 'DANGER' ? 'rgba(239, 68, 68, 0.2)' : res.status === 'CAUTION' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)'}`
-                          }}
-                        >
-                          <div>
-                            <span style={{ fontWeight: 600, color: '#fff', fontSize: '0.95rem' }}>{res.name}</span>
-                            <p style={{ 
-                              fontSize: '0.8rem', 
-                              color: res.status === 'DANGER' ? '#fca5a5' : res.status === 'CAUTION' ? '#fde047' : '#a7f3d0',
-                              marginTop: '2px' 
-                            }}>
-                              {res.reason}
-                            </p>
-                          </div>
-                          
-                          <span className={`badge ${res.status === 'DANGER' ? 'badge-red' : res.status === 'CAUTION' ? 'badge-yellow' : 'badge-green'}`}>
-                            {res.status}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Health Guidance Details */}
-              <div className="grid grid-cols-2">
-                
-                {/* Dietary Guidelines Panel */}
-                <div className="glass-card" style={{ textAlign: 'left' }}>
-                  <h3 style={{ fontSize: '1.25rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Compass style={{ color: '#10b981' }} /> Personal Dietary Guidelines
-                  </h3>
-                  
-                  {healthGuidance?.dietaryGuidelines.length === 0 ? (
-                    <p className="text-muted" style={{ fontSize: '0.9rem' }}>No dietary guidelines matching your conditions.</p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                      {/* Foods to Eat */}
-                      <div>
-                        <h4 style={{ fontSize: '0.9rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                          <CheckCircle size={16} /> Recommended Foods to Eat
-                        </h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {healthGuidance?.dietaryGuidelines.filter(g => g.foodType === 'EAT').map((item) => (
-                            <div key={item.id} style={{ background: 'rgba(16, 185, 129, 0.05)', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                              <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>{item.foodItem}</p>
-                              <p className="text-muted" style={{ fontSize: '0.8rem' }}>{item.description}</p>
-                              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Source: {item.source} (ICD-10 Aligned)</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Foods to Avoid */}
-                      <div>
-                        <h4 style={{ fontSize: '0.9rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
-                          <XCircle size={16} /> Foods to Strict Limit / Avoid
-                        </h4>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {healthGuidance?.dietaryGuidelines.filter(g => g.foodType === 'AVOID').map((item) => (
-                            <div key={item.id} style={{ background: 'rgba(239, 68, 68, 0.05)', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
-                              <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>{item.foodItem}</p>
-                              <p className="text-muted" style={{ fontSize: '0.8rem' }}>{item.description}</p>
-                              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Source: {item.source} (ICD-10 Aligned)</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Health & Lifestyle Tips Panel */}
-                <div className="glass-card" style={{ textAlign: 'left' }}>
-                  <h3 style={{ fontSize: '1.25rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Clipboard style={{ color: '#f59e0b' }} /> Lifestyle & Management Tips
-                  </h3>
-                  
-                  {healthGuidance?.healthTips.length === 0 ? (
-                    <p className="text-muted" style={{ fontSize: '0.9rem' }}>No custom health tips available.</p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {healthGuidance?.healthTips.map((tip) => (
-                        <div key={tip.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--warning)', fontWeight: 600, background: 'rgba(245, 158, 11, 0.1)', padding: '2px 8px', borderRadius: '4px', float: 'right' }}>
-                            {tip.tipType}
-                          </span>
-                          <h4 style={{ color: '#fff', fontSize: '0.95rem', fontWeight: 600, marginBottom: '6px' }}>{tip.title}</h4>
-                          <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '6px' }}>{tip.description}</p>
-                          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Source: {tip.source} (SA Dept of Health)</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* FDA Medication Warnings Panel */}
-              <div className="glass-card" style={{ textAlign: 'left' }}>
-                <h3 style={{ fontSize: '1.25rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <ShieldAlert className="text-danger" style={{ color: '#ef4444' }} /> Medication Allergy & OpenFDA Safety Warnings
-                </h3>
-
-                {healthGuidance?.medicationWarnings && Object.keys(healthGuidance.medicationWarnings).length === 0 ? (
-                  <p className="text-muted" style={{ fontSize: '0.9rem' }}>No medication allergies registered.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    {healthGuidance?.medicationWarnings && Object.entries(healthGuidance.medicationWarnings).map(([allergen, warnings]) => (
-                      <div key={allergen} style={{ border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '12px', padding: '16px', background: 'rgba(239, 68, 68, 0.02)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                          <span style={{ background: '#ef4444', color: '#fff', padding: '4px 10px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                            ALLERGEN: {allergen.toUpperCase()}
-                          </span>
-                          <span className="text-muted" style={{ fontSize: '0.85rem' }}>Medication cross-reactivity and warnings from OpenFDA:</span>
-                        </div>
-
-                        {warnings.length === 0 ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No FDA alerts found for this allergen. Consult your doctor.</p>
-                        ) : (
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
-                            {warnings.map((w, idx) => (
-                              <div key={idx} style={{ background: 'rgba(15, 23, 42, 0.5)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>
-                                  ⚠️ Avoid: <span style={{ color: '#fca5a5' }}>{w.genericName}</span> ({w.brandName})
-                                </p>
-                                <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '4px', lineHeight: 1.4, background: 'rgba(0,0,0,0.2)', padding: '8px', borderRadius: '6px', fontStyle: 'italic' }}>
-                                  {w.warningText}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         )}

@@ -56,3 +56,232 @@
     grid-template-columns: 320px 1fr;
   }
 }
+
+/* ===== UDHR Redesign: Login screen (light clinical theme) ===== */
+.udhr-login-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--udhr-surface);
+  font-family: 'Inter', sans-serif;
+  color: var(--udhr-text);
+}
+
+.udhr-login-brand {
+  flex: 1 1 420px;
+  min-width: 320px;
+  background: var(--udhr-primary);
+  color: #fff;
+  padding: 56px 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.udhr-login-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.udhr-login-logo-chip {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--udhr-radius-md);
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.udhr-login-headline {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0 0 16px;
+}
+
+.udhr-login-tagline {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.85);
+  max-width: 380px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.udhr-login-copyright {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+}
+
+.udhr-login-form-pane {
+  flex: 1 1 480px;
+  min-width: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.udhr-login-form-col {
+  width: 100%;
+  max-width: 380px;
+}
+
+.udhr-login-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--udhr-text);
+}
+
+.udhr-login-subtitle {
+  color: var(--udhr-text-muted);
+  font-size: 14px;
+  margin: 0 0 20px;
+}
+
+.udhr-segmented {
+  display: flex;
+  background: #eef2f7;
+  border-radius: var(--udhr-radius-md);
+  padding: 4px;
+  margin-bottom: 24px;
+}
+
+.udhr-segmented-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--udhr-text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.udhr-segmented-btn.active {
+  background: #fff;
+  color: var(--udhr-primary);
+  box-shadow: var(--udhr-shadow-tab);
+}
+
+.udhr-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.udhr-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--udhr-text-secondary);
+}
+
+.udhr-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--udhr-border);
+  border-radius: var(--udhr-radius-md);
+  font-size: 14px;
+  background: #fff;
+  color: var(--udhr-text);
+  font-family: inherit;
+}
+
+.udhr-input:focus {
+  outline: none;
+  border-color: var(--udhr-primary);
+  box-shadow: 0 0 0 3px var(--udhr-primary-tint);
+}
+
+.udhr-btn-primary {
+  width: 100%;
+  padding: 13px;
+  border: none;
+  border-radius: var(--udhr-radius-md);
+  background: var(--udhr-primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease;
+}
+
+.udhr-btn-primary:hover:not(:disabled) {
+  background: var(--udhr-primary-hover);
+}
+
+.udhr-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.udhr-demo-note {
+  font-size: 12.5px;
+  color: var(--udhr-text-muted);
+  background: var(--udhr-primary-tint);
+  border: 1px solid #dbeafe;
+  border-radius: var(--udhr-radius-sm);
+  padding: 10px 12px;
+  margin: 0 0 16px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.udhr-demo-note code {
+  background: rgba(37, 99, 235, 0.1);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.udhr-alert-banner {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  border-radius: var(--udhr-radius-lg);
+  padding: 14px 16px;
+  margin: 0 0 16px;
+  font-size: 13.5px;
+}
+
+.udhr-alert-banner.error {
+  background: var(--udhr-danger-tint);
+  border: 1px solid #fecaca;
+  color: var(--udhr-danger-text-2);
+}
+
+.udhr-alert-banner.success {
+  background: var(--udhr-success-tint);
+  border: 1px solid #bbf7d0;
+  color: var(--udhr-success-text);
+}
+
+.udhr-alert-banner button {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 14px;
+}
+
+@media (max-width: 860px) {
+  .udhr-login-brand {
+    padding: 40px 28px;
+  }
+  .udhr-login-form-pane {
+    padding: 28px 20px 48px;
+  }
+}

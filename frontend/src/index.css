@@ -86,6 +86,44 @@
   --color-ring: var(--shadcn-ring);
 }
 
+/* UDHR redesign tokens — light clinical theme, rolled out screen by screen.
+   Prefixed --udhr-* so it can't collide with the dark-theme variables below,
+   which the not-yet-migrated screens still use. Once every screen has moved
+   over, these become the only theme and the dark variables/.glass-card can
+   be deleted. */
+:root {
+  --udhr-bg: #f5f7fa;
+  --udhr-surface: #ffffff;
+  --udhr-border: #e2e8f0;
+  --udhr-border-subtle: #f1f5f9;
+  --udhr-text: #0f172a;
+  --udhr-text-secondary: #334155;
+  --udhr-text-secondary-2: #475569;
+  --udhr-text-muted: #64748b;
+  --udhr-text-muted-2: #94a3b8;
+  --udhr-primary: #2563eb;
+  --udhr-primary-hover: #1d4ed8;
+  --udhr-primary-tint: #eff6ff;
+  --udhr-success: #059669;
+  --udhr-success-tint: #f0fdf4;
+  --udhr-success-text: #166534;
+  --udhr-warning: #d97706;
+  --udhr-warning-tint: #fffbeb;
+  --udhr-warning-text: #92400e;
+  --udhr-danger: #dc2626;
+  --udhr-danger-tint: #fef2f2;
+  --udhr-danger-text: #991b1b;
+  --udhr-danger-text-2: #b91c1c;
+  --udhr-radius-sm: 8px;
+  --udhr-radius-md: 10px;
+  --udhr-radius-lg: 12px;
+  --udhr-radius-xl: 14px;
+  --udhr-radius-pill: 999px;
+  --udhr-shadow-tab: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --udhr-shadow-pill: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --udhr-shadow-drawer: 4px 0 24px rgba(15, 23, 42, 0.15);
+}
+
 :root {
   --primary: #4f46e5;
   --primary-hover: #4338ca;

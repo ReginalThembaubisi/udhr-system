@@ -1,8 +1,8 @@
 package com.udhr.controller;
 
-import com.udhr.dto.LabResultRequest;
-import com.udhr.model.LabResult;
-import com.udhr.service.LabResultService;
+import com.udhr.dto.CheckInRequest;
+import com.udhr.model.Visit;
+import com.udhr.service.CheckInService;
 import com.udhr.security.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,11 +12,11 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/lab-results")
-public class LabResultController {
+@RequestMapping("/api/checkin")
+public class CheckInController {
 
     @Autowired
-    private LabResultService labResultService;
+    private CheckInService checkInService;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -35,30 +35,30 @@ public class LabResultController {
     }
 
     @PostMapping
-    public ResponseEntity<?> addLabResult(@RequestBody LabResultRequest labResultRequest, HttpServletRequest request) {
+    public ResponseEntity<?> checkIn(@RequestBody CheckInRequest checkInRequest, HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);
         if (staffNumber == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
         try {
-            LabResult labResult = labResultService.addLabResult(labResultRequest, staffNumber);
-            return ResponseEntity.status(HttpStatus.CREATED).body(labResult);
+            Visit visit = checkInService.checkIn(checkInRequest, staffNumber);
+            return ResponseEntity.status(HttpStatus.CREATED).body(visit);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }
     }
 
-    @GetMapping("/patient/{patientId}")
-    public ResponseEntity<?> getLabResultsByPatient(@PathVariable Long patientId, HttpServletRequest request) {
+    @GetMapping("/recent")
+    public ResponseEntity<?> getRecentCheckIns(HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);
         if (staffNumber == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
         try {
-            List<LabResult> labResults = labResultService.getLabResultsByPatient(patientId);
-            return ResponseEntity.ok(labResults);
+            List<Visit> visits = checkInService.getRecentCheckIns(staffNumber);
+            return ResponseEntity.ok(visits);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }

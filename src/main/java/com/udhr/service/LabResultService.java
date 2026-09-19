@@ -20,28 +20,26 @@ public class LabResultService {
     private StaffRepository staffRepository;
 
     @Autowired
-    private FacilityRepository facilityRepository;
+    private VisitService visitService;
 
-    @Autowired
-    private VisitRepository visitRepository;
-
-    public LabResult addLabResult(LabResultRequest request) {
-        Patient patient = patientRepository.findById(request.getPatientId())
+    /**
+     * Staff (nurse or doctor) looks the patient up by ID number and pastes the
+     * result straight in — same "find patient, act on their current visit"
+     * pattern as vitals, so nobody needs to know a visit ID or facility ID.
+     */
+    public LabResult addLabResult(LabResultRequest request, String staffNumber) {
+        Patient patient = patientRepository.findByIdNumber(request.getIdNumber())
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
-        Staff staff = staffRepository.findById(request.getStaffId())
-                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Logged in staff not found"));
 
-        Facility facility = facilityRepository.findById(request.getFacilityId())
-                .orElseThrow(() -> new RuntimeException("Facility not found"));
-
-        Visit visit = visitRepository.findById(request.getVisitId())
-                .orElseThrow(() -> new RuntimeException("Visit not found"));
+        Visit visit = visitService.findOrCreateOpenVisit(patient, staff, "Lab test");
 
         LabResult labResult = new LabResult();
         labResult.setPatient(patient);
         labResult.setStaff(staff);
-        labResult.setFacility(facility);
+        labResult.setFacility(staff.getFacility());
         labResult.setVisit(visit);
         labResult.setTestName(request.getTestName());
         labResult.setResult(request.getResult());

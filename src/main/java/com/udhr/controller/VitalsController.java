@@ -1,8 +1,8 @@
 package com.udhr.controller;
 
-import com.udhr.dto.LabResultRequest;
-import com.udhr.model.LabResult;
-import com.udhr.service.LabResultService;
+import com.udhr.dto.VitalsRequest;
+import com.udhr.model.Vitals;
+import com.udhr.service.VitalsService;
 import com.udhr.security.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,11 +12,11 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/lab-results")
-public class LabResultController {
+@RequestMapping("/api/vitals")
+public class VitalsController {
 
     @Autowired
-    private LabResultService labResultService;
+    private VitalsService vitalsService;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -35,30 +35,30 @@ public class LabResultController {
     }
 
     @PostMapping
-    public ResponseEntity<?> addLabResult(@RequestBody LabResultRequest labResultRequest, HttpServletRequest request) {
+    public ResponseEntity<?> recordVitals(@RequestBody VitalsRequest vitalsRequest, HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);
         if (staffNumber == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
         try {
-            LabResult labResult = labResultService.addLabResult(labResultRequest, staffNumber);
-            return ResponseEntity.status(HttpStatus.CREATED).body(labResult);
+            Vitals vitals = vitalsService.recordVitals(vitalsRequest, staffNumber);
+            return ResponseEntity.status(HttpStatus.CREATED).body(vitals);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }
     }
 
     @GetMapping("/patient/{patientId}")
-    public ResponseEntity<?> getLabResultsByPatient(@PathVariable Long patientId, HttpServletRequest request) {
+    public ResponseEntity<?> getVitalsByPatient(@PathVariable Long patientId, HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);
         if (staffNumber == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
         try {
-            List<LabResult> labResults = labResultService.getLabResultsByPatient(patientId);
-            return ResponseEntity.ok(labResults);
+            List<Vitals> vitals = vitalsService.getVitalsByPatient(patientId);
+            return ResponseEntity.ok(vitals);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }

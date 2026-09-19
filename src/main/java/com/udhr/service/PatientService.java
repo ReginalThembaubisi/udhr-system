@@ -39,6 +39,9 @@ public class PatientService {
     @Autowired
     private StaffRepository staffRepository;
 
+    @Autowired
+    private VitalsRepository vitalsRepository;
+
     public Patient findByIdNumber(String idNumber) {
         return patientRepository.findByIdNumber(idNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
@@ -84,6 +87,8 @@ public class PatientService {
         List<Diagnosis> diagnoses = diagnosisRepository.findByPatientIdOrderByDiagnosedAtDesc(patient.getId());
         List<Prescription> prescriptions = prescriptionRepository.findByPatientIdOrderByCreatedAtDesc(patient.getId());
         List<LabResult> labResults = labResultRepository.findByPatientIdOrderByTestDateDesc(patient.getId());
+        List<Vitals> vitals = vitalsRepository.findByPatientIdOrderByRecordedAtDesc(patient.getId());
+        Visit currentVisit = visits.isEmpty() ? null : visits.get(0);
 
         // Log the view action in AuditLog
         Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
@@ -103,7 +108,9 @@ public class PatientService {
                 visits,
                 diagnoses,
                 prescriptions,
-                labResults
+                labResults,
+                vitals,
+                currentVisit
         );
     }
 }

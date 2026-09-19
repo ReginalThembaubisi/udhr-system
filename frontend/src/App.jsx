@@ -63,11 +63,43 @@ function App() {
     patientId: '', conditionName: '', notes: ''
   });
   const [addPrescriptionForm, setAddPrescriptionForm] = useState({
-    patientId: '', medicationName: '', dosage: '', frequency: 'Once daily', durationDays: 7, notes: ''
+    patientId: '', medicationName: '', dosage: '', frequency: 'Once daily', durationDays: 7, notes: '', dispenseMethod: 'PHARMACY'
   });
   const [addAlertForm, setAddAlertForm] = useState({
     patientId: '', severity: 'HIGH', message: ''
   });
+
+  // Nurse: Vitals capture (look patient up by ID, no queue ticket needed)
+  const [vitalsSearchId, setVitalsSearchId] = useState('9001015000083');
+  const [vitalsPatient, setVitalsPatient] = useState(null);
+  const [vitalsForm, setVitalsForm] = useState({
+    bloodPressure: '', temperatureCelsius: '', pulseBpm: '', respirationRate: '', oxygenSaturation: '', weightKg: '', heightCm: '', notes: ''
+  });
+
+  // Pharmacy: look patient up by ID, see where they came from, dispense
+  const [pharmacySearchId, setPharmacySearchId] = useState('9001015000083');
+  const [pharmacyRecord, setPharmacyRecord] = useState(null);
+
+  // Nurse: paste in a lab result for the patient they've just looked up
+  const [labResultForm, setLabResultForm] = useState({
+    testName: '', result: '', unit: '', normalRange: '', notes: ''
+  });
+
+  // Admin: staff & facility management (no patient data — admin isn't clinical staff)
+  const [staffList, setStaffList] = useState([]);
+  const [facilityList, setFacilityList] = useState([]);
+  const [adminTab, setAdminTab] = useState('frontdesk'); // 'frontdesk', 'staff', or 'facilities'
+  const [newStaffForm, setNewStaffForm] = useState({
+    staffNumber: '', firstName: '', lastName: '', role: 'NURSE', facilityId: '', email: '', password: ''
+  });
+  const [newFacilityForm, setNewFacilityForm] = useState({
+    name: '', type: 'CLINIC', province: '', address: ''
+  });
+
+  // Admin front desk: register a new patient (reuses patientRegForm below) and check existing patients in
+  const [checkinSearchId, setCheckinSearchId] = useState('');
+  const [checkinReason, setCheckinReason] = useState('');
+  const [recentCheckIns, setRecentCheckIns] = useState([]);
 
   // Setup Authorization headers
   const getAuthHeaders = () => {
@@ -146,6 +178,12 @@ function App() {
     setPatientTimeline(null);
     setDrugFoodConflicts([]);
     setActiveTabStaff('patients');
+    setVitalsPatient(null);
+    setPharmacyRecord(null);
+    setStaffList([]);
+    setFacilityList([]);
+    setAdminTab('frontdesk');
+    setRecentCheckIns([]);
   };
 
   // Fetch data on login
@@ -153,8 +191,12 @@ function App() {
     if (token) {
       if (userRole === 'PATIENT') {
         fetchPatientPortalData();
-      } else {
+      } else if (userRole === 'DOCTOR' || userRole === 'NURSE') {
         fetchClinicalAlerts();
+      } else if (userRole === 'ADMIN') {
+        fetchStaffList();
+        fetchFacilityList();
+        fetchRecentCheckIns();
       }
     }
   }, [token, userRole]);
@@ -407,9 +449,260 @@ function App() {
       if (!response.ok) {
         throw new Error(data.message || 'Failed to add prescription');
       }
-      setSuccessMessage('Prescription added successfully!');
-      setAddPrescriptionForm(prev => ({ ...prev, medicationName: '', dosage: '', frequency: 'Once daily', durationDays: 7, notes: '' }));
+      setSuccessMessage(
+        addPrescriptionForm.dispenseMethod === 'SELF'
+          ? 'Prescription saved and marked as dispensed to the patient.'
+          : 'Prescription sent to the pharmacy for dispensing.'
+      );
+      setAddPrescriptionForm(prev => ({ ...prev, medicationName: '', dosage: '', frequency: 'Once daily', durationDays: 7, notes: '', dispenseMethod: 'PHARMACY' }));
       handleSearchPatient(); // Refresh record
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // Nurse looks a patient up by ID number before capturing vitals — no queue ticket needed
+  const handleLookupForVitals = async (e) => {
+    if (e) e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setVitalsPatient(null);
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/patients/${vitalsSearchId}`, { headers: getAuthHeaders() });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Patient not found');
+      }
+      setVitalsPatient(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Nurse records vitals; this automatically hands the patient off to the doctor
+  const handleRecordVitals = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const payload = {
+        idNumber: vitalsSearchId,
+        bloodPressure: vitalsForm.bloodPressure,
+        temperatureCelsius: vitalsForm.temperatureCelsius ? parseFloat(vitalsForm.temperatureCelsius) : null,
+        pulseBpm: vitalsForm.pulseBpm ? parseInt(vitalsForm.pulseBpm) : null,
+        respirationRate: vitalsForm.respirationRate ? parseInt(vitalsForm.respirationRate) : null,
+        oxygenSaturation: vitalsForm.oxygenSaturation ? parseInt(vitalsForm.oxygenSaturation) : null,
+        weightKg: vitalsForm.weightKg ? parseFloat(vitalsForm.weightKg) : null,
+        heightCm: vitalsForm.heightCm ? parseFloat(vitalsForm.heightCm) : null,
+        notes: vitalsForm.notes
+      };
+      const response = await fetch('/api/vitals', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to record vitals');
+      }
+      setSuccessMessage(`Vitals recorded for ${vitalsPatient.firstName} ${vitalsPatient.lastName}. They're now ready for the doctor — no need to send them to a queue.`);
+      setVitalsForm({ bloodPressure: '', temperatureCelsius: '', pulseBpm: '', respirationRate: '', oxygenSaturation: '', weightKg: '', heightCm: '', notes: '' });
+      setVitalsPatient(null);
+      setVitalsSearchId('');
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Pharmacist looks a patient up by ID and sees exactly where they came from
+  const handleSearchPharmacyPatient = async (e) => {
+    if (e) e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setPharmacyRecord(null);
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/pharmacy/patient/${pharmacySearchId}`, { headers: getAuthHeaders() });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Patient not found');
+      }
+      setPharmacyRecord(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Pharmacist dispenses one pending prescription
+  const handleDispense = async (prescriptionId) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/pharmacy/dispense/${prescriptionId}`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to dispense prescription');
+      }
+      setSuccessMessage('Marked as dispensed.');
+      handleSearchPharmacyPatient();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // Nurse pastes a lab result in for the patient they've already looked up for vitals
+  const handleAddLabResult = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const payload = { idNumber: vitalsSearchId, ...labResultForm };
+      const response = await fetch('/api/lab-results', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to save lab result');
+      }
+      setSuccessMessage('Lab result saved to the patient\'s file.');
+      setLabResultForm({ testName: '', result: '', unit: '', normalRange: '', notes: '' });
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // Admin: staff & facility management
+  const fetchStaffList = async () => {
+    setErrorMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch('/api/staff', { headers: getAuthHeaders() });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to load staff');
+      setStaffList(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchFacilityList = async () => {
+    setErrorMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch('/api/facilities', { headers: getAuthHeaders() });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to load facilities');
+      setFacilityList(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegisterStaff = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch('/api/staff', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(newStaffForm)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to register staff member');
+      setSuccessMessage(`Staff member '${data.firstName} ${data.lastName}' (${data.role}) created.`);
+      setNewStaffForm({ staffNumber: '', firstName: '', lastName: '', role: 'NURSE', facilityId: newStaffForm.facilityId, email: '', password: '' });
+      fetchStaffList();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleDeactivateStaff = async (staffId) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/staff/${staffId}/deactivate`, {
+        method: 'PUT',
+        headers: getAuthHeaders()
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to deactivate staff member');
+      setSuccessMessage('Staff member deactivated.');
+      fetchStaffList();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleAddFacility = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch('/api/facilities', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(newFacilityForm)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to add facility');
+      setSuccessMessage(`Facility '${data.name}' added.`);
+      setNewFacilityForm({ name: '', type: 'CLINIC', province: '', address: '' });
+      fetchFacilityList();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // Front desk: log that a patient has arrived — pure paperwork, no clinical action.
+  // The nurse still just types the ID number; this simply means the visit is
+  // already open and waiting for her by the time she does.
+  const fetchRecentCheckIns = async () => {
+    setErrorMessage('');
+    try {
+      const response = await fetch('/api/checkin/recent', { headers: getAuthHeaders() });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to load check-ins');
+      setRecentCheckIns(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleCheckIn = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch('/api/checkin', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ idNumber: checkinSearchId, reason: checkinReason })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || 'Failed to check patient in');
+      setSuccessMessage(`Checked in ${data.patient.firstName} ${data.patient.lastName}. The nurse can now find them by ID number — no queue ticket needed.`);
+      setCheckinSearchId('');
+      setCheckinReason('');
+      fetchRecentCheckIns();
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -604,6 +897,12 @@ function App() {
     }
   };
 
+  // Role helpers — each staff role gets a purpose-built screen instead of one shared dashboard
+  const isNurse = userRole === 'NURSE';
+  const isPharmacist = userRole === 'PHARMACIST';
+  const isDoctor = userRole === 'DOCTOR';
+  const isAdmin = userRole === 'ADMIN';
+
   return (
     <div className="app-container">
       {/* Header */}
@@ -732,7 +1031,8 @@ function App() {
                       <p style={{ fontSize: '0.8rem', color: '#a5b4fc' }}>
                         💡 <strong>Demo Staff Logins:</strong><br />
                         - Doctor: <code>DOC001</code> / <code>Doctor@123</code><br />
-                        - Nurse: <code>NUR001</code> / <code>Nurse@123</code>
+                        - Nurse: <code>NUR001</code> / <code>Nurse@123</code><br />
+                        - Pharmacist: <code>PHARM001</code> / <code>Pharmacist@123</code>
                       </p>
                     </div>
                   </>
@@ -1383,6 +1683,353 @@ function App() {
         {/* 3. Healthcare Staff View */}
         {token && userRole !== 'PATIENT' && (
           <div>
+            {isPharmacist ? (
+              <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'left' }}>
+                {/* Pharmacy Lookup Card */}
+                <div className="glass-card" style={{ marginBottom: '20px' }}>
+                  <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Search size={18} /> Look Up Patient
+                  </h3>
+                  <form onSubmit={handleSearchPharmacyPatient} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                    <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                      <label htmlFor="pharmacySearchId">ID Number</label>
+                      <input
+                        type="text"
+                        id="pharmacySearchId"
+                        value={pharmacySearchId}
+                        onChange={(e) => setPharmacySearchId(e.target.value)}
+                        placeholder="Enter patient ID number"
+                        required
+                      />
+                    </div>
+                    <button type="submit" className="btn btn-primary" disabled={loading}>
+                      <Search size={16} /> {loading ? 'Searching...' : 'Find Patient'}
+                    </button>
+                  </form>
+                </div>
+
+                {pharmacyRecord ? (
+                  <>
+                    {/* Where the patient came from */}
+                    <div className="glass-card" style={{ marginBottom: '20px' }}>
+                      <h2 style={{ color: '#fff' }}>
+                        {pharmacyRecord.patient.firstName} {pharmacyRecord.patient.lastName}
+                      </h2>
+                      <p className="text-muted" style={{ marginTop: '4px' }}>
+                        ID Number: {pharmacyRecord.patient.idNumber}
+                      </p>
+                      {pharmacyRecord.currentVisit ? (
+                        <p className="text-muted" style={{ marginTop: '8px', color: '#c7d2fe', fontSize: '0.85rem' }}>
+                          📋 <strong>Coming from:</strong> {pharmacyRecord.currentVisit.staff ? `${pharmacyRecord.currentVisit.staff.firstName} ${pharmacyRecord.currentVisit.staff.lastName} (${pharmacyRecord.currentVisit.staff.role})` : 'Unknown staff member'} — <em>{pharmacyRecord.currentVisit.reason}</em>
+                          <br />Visit status: <span className="badge badge-green" style={{ marginLeft: '4px' }}>{pharmacyRecord.currentVisit.status}</span>
+                        </p>
+                      ) : (
+                        <p className="text-muted" style={{ marginTop: '8px', fontSize: '0.85rem' }}>No visit on file for this patient yet.</p>
+                      )}
+                    </div>
+
+                    {/* Pending prescriptions to dispense */}
+                    <div className="glass-card">
+                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Pill /> Prescriptions Waiting to Be Dispensed
+                      </h3>
+                      {pharmacyRecord.pendingPrescriptions.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                          <CheckCircle size={40} style={{ color: 'var(--success)', margin: '0 auto 12px', opacity: 0.6 }} />
+                          <p className="text-muted">Nothing waiting for this patient at the pharmacy right now.</p>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {pharmacyRecord.pendingPrescriptions.map(p => (
+                            <div key={p.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                              <div>
+                                <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>{p.medication}</p>
+                                <p className="text-muted" style={{ fontSize: '0.8rem' }}>Dosage: {p.dosage} | Frequency: {p.frequency}</p>
+                                <p className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                  Prescribed by {p.doctor ? `${p.doctor.firstName} ${p.doctor.lastName}` : 'doctor'} on {new Date(p.createdAt).toLocaleDateString()}
+                                </p>
+                                {p.notes && <p className="text-muted" style={{ fontSize: '0.75rem', fontStyle: 'italic' }}>Notes: {p.notes}</p>}
+                              </div>
+                              <button
+                                className="btn btn-primary"
+                                onClick={() => handleDispense(p.id)}
+                                style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                              >
+                                Mark Dispensed
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="glass-card" style={{ padding: '60px 20px', textAlign: 'center' }}>
+                    <Pill size={56} className="text-muted" style={{ margin: '0 auto 16px', opacity: 0.3 }} />
+                    <h3 style={{ color: '#fff', marginBottom: '8px' }}>No Patient Loaded</h3>
+                    <p className="text-muted">Look a patient up by their ID number to see what's waiting to be dispensed.</p>
+                  </div>
+                )}
+              </div>
+            ) : isAdmin ? (
+              <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'left' }}>
+                {/* Admin Tab Switcher — staff & facility management only, no patient data */}
+                <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '560px' }}>
+                  <button
+                    className="btn"
+                    style={{ flex: 1, background: adminTab === 'frontdesk' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
+                    onClick={() => { setAdminTab('frontdesk'); fetchRecentCheckIns(); }}
+                  >
+                    Front Desk
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ flex: 1, background: adminTab === 'staff' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
+                    onClick={() => { setAdminTab('staff'); fetchStaffList(); }}
+                  >
+                    Manage Staff
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ flex: 1, background: adminTab === 'facilities' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
+                    onClick={() => { setAdminTab('facilities'); fetchFacilityList(); }}
+                  >
+                    Manage Facilities
+                  </button>
+                </div>
+
+                {adminTab === 'frontdesk' ? (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                      {/* Register New Patient */}
+                      <div className="glass-card" style={{ textAlign: 'left' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <PlusCircle size={18} /> Register New Patient
+                        </h3>
+                        <form onSubmit={handleRegisterPatient}>
+                          <div className="form-group">
+                            <label>ID Number</label>
+                            <input type="text" value={patientRegForm.idNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, idNumber: e.target.value })} required placeholder="SA ID number" />
+                          </div>
+                          <div className="form-group">
+                            <label>First Name</label>
+                            <input type="text" value={patientRegForm.firstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, firstName: e.target.value })} required />
+                          </div>
+                          <div className="form-group">
+                            <label>Last Name</label>
+                            <input type="text" value={patientRegForm.lastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, lastName: e.target.value })} required />
+                          </div>
+                          <div className="form-group">
+                            <label>Date of Birth</label>
+                            <input type="date" value={patientRegForm.dateOfBirth} onChange={(e) => setPatientRegForm({ ...patientRegForm, dateOfBirth: e.target.value })} required />
+                          </div>
+                          <div className="form-group">
+                            <label>Gender</label>
+                            <select value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })}>
+                              <option value="MALE">Male</option>
+                              <option value="FEMALE">Female</option>
+                              <option value="OTHER">Other</option>
+                            </select>
+                          </div>
+                          <div className="form-group">
+                            <label>Contact Number</label>
+                            <input type="text" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value })} />
+                          </div>
+                          <div className="form-group">
+                            <label>Email Address</label>
+                            <input type="email" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@gmail.com" />
+                          </div>
+                          <div className="form-group">
+                            <label>Address</label>
+                            <textarea value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} />
+                          </div>
+                          <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Create Patient Record</button>
+                        </form>
+                      </div>
+
+                      {/* Check In Existing Patient */}
+                      <div className="glass-card" style={{ textAlign: 'left' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <CheckCircle size={18} /> Check In Patient
+                        </h3>
+                        <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>
+                          Logs that the patient has arrived so the nurse can find them straight away by ID number — no queue ticket needed.
+                        </p>
+                        <form onSubmit={handleCheckIn}>
+                          <div className="form-group">
+                            <label>ID Number</label>
+                            <input
+                              type="text"
+                              value={checkinSearchId}
+                              onChange={(e) => setCheckinSearchId(e.target.value)}
+                              placeholder="Enter patient ID number"
+                              required
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>Reason for Visit (optional)</label>
+                            <input
+                              type="text"
+                              value={checkinReason}
+                              onChange={(e) => setCheckinReason(e.target.value)}
+                              placeholder="e.g. Follow-up, flu symptoms..."
+                            />
+                          </div>
+                          <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Check In</button>
+                        </form>
+                      </div>
+                    </div>
+
+                    {/* Recent Check-Ins log */}
+                    <div className="glass-card">
+                      <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Recent Check-Ins</h3>
+                      {recentCheckIns.length === 0 ? (
+                        <p className="text-muted" style={{ fontSize: '0.85rem' }}>No check-ins logged yet today.</p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
+                          {recentCheckIns.map(v => (
+                            <div key={v.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                              <div>
+                                <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{v.patient.firstName} {v.patient.lastName} <span className="text-muted" style={{ fontWeight: 400 }}>({v.patient.idNumber})</span></p>
+                                <p className="text-muted" style={{ fontSize: '0.75rem' }}>{v.reason}</p>
+                              </div>
+                              <div style={{ textAlign: 'right' }}>
+                                <span className={`badge ${v.status === 'COMPLETE' ? 'badge-green' : 'badge-yellow'}`} style={{ fontSize: '0.65rem' }}>{v.status.replaceAll('_', ' ')}</span>
+                                <p className="text-muted" style={{ fontSize: '0.7rem', marginTop: '2px' }}>{new Date(v.visitDate).toLocaleString()}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : adminTab === 'staff' ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    {/* Register Staff */}
+                    <div className="glass-card">
+                      <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Register Staff Member</h3>
+                      <form onSubmit={handleRegisterStaff}>
+                        <div className="form-group">
+                          <label>Staff Number</label>
+                          <input type="text" value={newStaffForm.staffNumber} onChange={(e) => setNewStaffForm({ ...newStaffForm, staffNumber: e.target.value })} placeholder="e.g. NUR002" required />
+                        </div>
+                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div>
+                            <label>First Name</label>
+                            <input type="text" value={newStaffForm.firstName} onChange={(e) => setNewStaffForm({ ...newStaffForm, firstName: e.target.value })} required />
+                          </div>
+                          <div>
+                            <label>Last Name</label>
+                            <input type="text" value={newStaffForm.lastName} onChange={(e) => setNewStaffForm({ ...newStaffForm, lastName: e.target.value })} required />
+                          </div>
+                        </div>
+                        <div className="form-group">
+                          <label>Role</label>
+                          <select value={newStaffForm.role} onChange={(e) => setNewStaffForm({ ...newStaffForm, role: e.target.value })} required>
+                            <option value="DOCTOR">Doctor</option>
+                            <option value="NURSE">Nurse</option>
+                            <option value="PHARMACIST">Pharmacist</option>
+                            <option value="ADMIN">Admin</option>
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label>Facility</label>
+                          <select value={newStaffForm.facilityId} onChange={(e) => setNewStaffForm({ ...newStaffForm, facilityId: e.target.value })} required>
+                            <option value="">Select a facility...</option>
+                            {facilityList.map(f => (
+                              <option key={f.id} value={f.id}>{f.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label>Email</label>
+                          <input type="email" value={newStaffForm.email} onChange={(e) => setNewStaffForm({ ...newStaffForm, email: e.target.value })} required />
+                        </div>
+                        <div className="form-group">
+                          <label>Temporary Password</label>
+                          <input type="password" value={newStaffForm.password} onChange={(e) => setNewStaffForm({ ...newStaffForm, password: e.target.value })} required />
+                        </div>
+                        <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Create Staff Account</button>
+                      </form>
+                    </div>
+
+                    {/* Staff List */}
+                    <div className="glass-card">
+                      <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>All Staff</h3>
+                      {staffList.length === 0 ? (
+                        <p className="text-muted" style={{ fontSize: '0.85rem' }}>{loading ? 'Loading...' : 'No staff members yet.'}</p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '500px', overflowY: 'auto' }}>
+                          {staffList.map(s => (
+                            <div key={s.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div>
+                                <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{s.firstName} {s.lastName} <span className="text-muted" style={{ fontWeight: 400 }}>({s.role})</span></p>
+                                <p className="text-muted" style={{ fontSize: '0.75rem' }}>{s.staffNumber} | {s.email}</p>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span className={`badge ${s.active ? 'badge-green' : 'badge-red'}`} style={{ fontSize: '0.65rem' }}>{s.active ? 'Active' : 'Inactive'}</span>
+                                {s.active && (
+                                  <button className="btn" onClick={() => handleDeactivateStaff(s.id)} style={{ padding: '4px 10px', fontSize: '0.75rem', background: 'rgba(239,68,68,0.15)', color: '#fca5a5' }}>
+                                    Deactivate
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    {/* Add Facility */}
+                    <div className="glass-card">
+                      <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Add Facility</h3>
+                      <form onSubmit={handleAddFacility}>
+                        <div className="form-group">
+                          <label>Name</label>
+                          <input type="text" value={newFacilityForm.name} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, name: e.target.value })} required />
+                        </div>
+                        <div className="form-group">
+                          <label>Type</label>
+                          <select value={newFacilityForm.type} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, type: e.target.value })}>
+                            <option value="CLINIC">Clinic</option>
+                            <option value="HOSPITAL">Hospital</option>
+                          </select>
+                        </div>
+                        <div className="form-group">
+                          <label>Province</label>
+                          <input type="text" value={newFacilityForm.province} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, province: e.target.value })} required />
+                        </div>
+                        <div className="form-group">
+                          <label>Address</label>
+                          <textarea value={newFacilityForm.address} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, address: e.target.value })} rows={2} />
+                        </div>
+                        <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Add Facility</button>
+                      </form>
+                    </div>
+
+                    {/* Facility List */}
+                    <div className="glass-card">
+                      <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>All Facilities</h3>
+                      {facilityList.length === 0 ? (
+                        <p className="text-muted" style={{ fontSize: '0.85rem' }}>{loading ? 'Loading...' : 'No facilities yet.'}</p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '500px', overflowY: 'auto' }}>
+                          {facilityList.map(f => (
+                            <div key={f.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
+                              <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{f.name} <span className="text-muted" style={{ fontWeight: 400 }}>({f.type})</span></p>
+                              <p className="text-muted" style={{ fontSize: '0.75rem' }}>{f.province} — {f.address}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+            <>
             {/* Tab Switcher for Staff */}
             <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '600px', margin: '0 auto' }}>
               <button 
@@ -1390,7 +2037,7 @@ function App() {
                 style={{ flex: 1, background: activeTabStaff === 'patients' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
                 onClick={() => setActiveTabStaff('patients')}
               >
-                Locate & Manage Patients
+                {isNurse ? 'Record Vitals' : 'Locate & Manage Patients'}
               </button>
               <button 
                 className="btn" 
@@ -1417,6 +2064,192 @@ function App() {
             </div>
 
             {activeTabStaff === 'patients' ? (
+              isNurse ? (
+                <div style={{ maxWidth: '700px', margin: '0 auto' }}>
+                  {/* Nurse: Look up patient by ID */}
+                  <div className="glass-card" style={{ textAlign: 'left', marginBottom: '20px' }}>
+                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Search size={18} /> Find Patient by ID Number
+                    </h3>
+                    <form onSubmit={handleLookupForVitals} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+                      <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                        <label htmlFor="vitalsSearchId">ID Number</label>
+                        <input
+                          type="text"
+                          id="vitalsSearchId"
+                          value={vitalsSearchId}
+                          onChange={(e) => setVitalsSearchId(e.target.value)}
+                          placeholder="Enter patient ID number"
+                          required
+                        />
+                      </div>
+                      <button type="submit" className="btn btn-primary" disabled={loading}>
+                        <Search size={16} /> {loading ? 'Searching...' : 'Find Patient'}
+                      </button>
+                    </form>
+                  </div>
+
+                  {vitalsPatient && (
+                    <>
+                    <div className="glass-card" style={{ textAlign: 'left' }}>
+                      <h2 style={{ color: '#fff', fontSize: '1.2rem' }}>
+                        {vitalsPatient.firstName} {vitalsPatient.lastName}
+                      </h2>
+                      <p className="text-muted" style={{ marginBottom: '20px' }}>
+                        ID Number: {vitalsPatient.idNumber} | Gender: {vitalsPatient.gender} | DOB: {vitalsPatient.dateOfBirth}
+                      </p>
+
+                      <form onSubmit={handleRecordVitals}>
+                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div>
+                            <label>Blood Pressure</label>
+                            <input
+                              type="text"
+                              value={vitalsForm.bloodPressure}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, bloodPressure: e.target.value })}
+                              placeholder="e.g. 120/80"
+                            />
+                          </div>
+                          <div>
+                            <label>Temperature (°C)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={vitalsForm.temperatureCelsius}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, temperatureCelsius: e.target.value })}
+                              placeholder="e.g. 36.8"
+                            />
+                          </div>
+                        </div>
+                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div>
+                            <label>Pulse (bpm)</label>
+                            <input
+                              type="number"
+                              value={vitalsForm.pulseBpm}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, pulseBpm: e.target.value })}
+                              placeholder="e.g. 78"
+                            />
+                          </div>
+                          <div>
+                            <label>Respiration Rate</label>
+                            <input
+                              type="number"
+                              value={vitalsForm.respirationRate}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, respirationRate: e.target.value })}
+                              placeholder="e.g. 16"
+                            />
+                          </div>
+                        </div>
+                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                          <div>
+                            <label>O2 Saturation (%)</label>
+                            <input
+                              type="number"
+                              value={vitalsForm.oxygenSaturation}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, oxygenSaturation: e.target.value })}
+                              placeholder="e.g. 98"
+                            />
+                          </div>
+                          <div>
+                            <label>Weight (kg)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={vitalsForm.weightKg}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, weightKg: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label>Height (cm)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={vitalsForm.heightCm}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, heightCm: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                        <div className="form-group">
+                          <label>Notes</label>
+                          <textarea
+                            value={vitalsForm.notes}
+                            onChange={(e) => setVitalsForm({ ...vitalsForm, notes: e.target.value })}
+                            rows={2}
+                            placeholder="Anything the doctor should know before seeing the patient..."
+                          />
+                        </div>
+                        <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+                          {loading ? 'Saving...' : 'Save Vitals & Send to Doctor'}
+                        </button>
+                      </form>
+                    </div>
+
+                    {/* Lab result — paste in a result that's come back for this patient */}
+                    <div className="glass-card" style={{ textAlign: 'left', marginTop: '20px' }}>
+                      <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <FileSpreadsheet size={18} /> Add Lab Result
+                      </h3>
+                      <form onSubmit={handleAddLabResult}>
+                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div>
+                            <label>Test Name</label>
+                            <input
+                              type="text"
+                              value={labResultForm.testName}
+                              onChange={(e) => setLabResultForm({ ...labResultForm, testName: e.target.value })}
+                              placeholder="e.g. Full Blood Count"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label>Result</label>
+                            <input
+                              type="text"
+                              value={labResultForm.result}
+                              onChange={(e) => setLabResultForm({ ...labResultForm, result: e.target.value })}
+                              placeholder="e.g. 13.5"
+                              required
+                            />
+                          </div>
+                        </div>
+                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                          <div>
+                            <label>Unit</label>
+                            <input
+                              type="text"
+                              value={labResultForm.unit}
+                              onChange={(e) => setLabResultForm({ ...labResultForm, unit: e.target.value })}
+                              placeholder="e.g. g/dL"
+                            />
+                          </div>
+                          <div>
+                            <label>Normal Range</label>
+                            <input
+                              type="text"
+                              value={labResultForm.normalRange}
+                              onChange={(e) => setLabResultForm({ ...labResultForm, normalRange: e.target.value })}
+                              placeholder="e.g. 12-16"
+                            />
+                          </div>
+                        </div>
+                        <div className="form-group">
+                          <label>Notes</label>
+                          <textarea
+                            value={labResultForm.notes}
+                            onChange={(e) => setLabResultForm({ ...labResultForm, notes: e.target.value })}
+                            rows={2}
+                          />
+                        </div>
+                        <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
+                          Save Lab Result
+                        </button>
+                      </form>
+                    </div>
+                    </>
+                  )}
+                </div>
+              ) : (
               <div className="dashboard-grid">
                 
                 {/* Search Patient & Register Panel */}
@@ -1566,7 +2399,9 @@ function App() {
                           })()}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
-                          <span className="badge badge-green">Status: Active</span>
+                          <span className={`badge ${searchedPatientRecord.currentVisit && searchedPatientRecord.currentVisit.status === 'VITALS_DONE' ? 'badge-yellow' : 'badge-green'}`}>
+                            Visit Status: {searchedPatientRecord.currentVisit ? searchedPatientRecord.currentVisit.status.replaceAll('_', ' ') : 'No open visit'}
+                          </span>
                           <button 
                             className="btn btn-primary" 
                             onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}
@@ -1575,6 +2410,64 @@ function App() {
                             <RefreshCw size={14} /> Analyze Response (CDS)
                           </button>
                         </div>
+                      </div>
+
+                      {/* Vitals — captured by the nurse, visible to the doctor with no extra lookup */}
+                      <div className="glass-card" style={{ textAlign: 'left' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <Activity size={18} /> Latest Vitals
+                        </h3>
+                        {searchedPatientRecord.vitals && searchedPatientRecord.vitals.length > 0 ? (
+                          (() => {
+                            const v = searchedPatientRecord.vitals[0];
+                            return (
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px' }}>
+                                <div><p className="text-muted" style={{ fontSize: '0.75rem' }}>Blood Pressure</p><p style={{ color: '#fff', fontWeight: 600 }}>{v.bloodPressure || 'N/A'}</p></div>
+                                <div><p className="text-muted" style={{ fontSize: '0.75rem' }}>Temperature</p><p style={{ color: '#fff', fontWeight: 600 }}>{v.temperatureCelsius != null ? `${v.temperatureCelsius}°C` : 'N/A'}</p></div>
+                                <div><p className="text-muted" style={{ fontSize: '0.75rem' }}>Pulse</p><p style={{ color: '#fff', fontWeight: 600 }}>{v.pulseBpm != null ? `${v.pulseBpm} bpm` : 'N/A'}</p></div>
+                                <div><p className="text-muted" style={{ fontSize: '0.75rem' }}>Respiration</p><p style={{ color: '#fff', fontWeight: 600 }}>{v.respirationRate != null ? `${v.respirationRate}/min` : 'N/A'}</p></div>
+                                <div><p className="text-muted" style={{ fontSize: '0.75rem' }}>O2 Saturation</p><p style={{ color: '#fff', fontWeight: 600 }}>{v.oxygenSaturation != null ? `${v.oxygenSaturation}%` : 'N/A'}</p></div>
+                                <div><p className="text-muted" style={{ fontSize: '0.75rem' }}>Weight / Height</p><p style={{ color: '#fff', fontWeight: 600 }}>{v.weightKg != null ? `${v.weightKg}kg` : 'N/A'} / {v.heightCm != null ? `${v.heightCm}cm` : 'N/A'}</p></div>
+                                {v.notes && (
+                                  <div style={{ gridColumn: '1 / -1' }}>
+                                    <p className="text-muted" style={{ fontSize: '0.75rem' }}>Nurse's Notes</p>
+                                    <p style={{ color: '#fff' }}>{v.notes}</p>
+                                  </div>
+                                )}
+                                <div style={{ gridColumn: '1 / -1' }}>
+                                  <p className="text-muted" style={{ fontSize: '0.7rem' }}>Recorded by {v.recordedBy ? `${v.recordedBy.firstName} ${v.recordedBy.lastName}` : 'nurse'} on {new Date(v.recordedAt).toLocaleString()}</p>
+                                </div>
+                              </div>
+                            );
+                          })()
+                        ) : (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No vitals recorded yet for this patient. Check with the nurse before consulting.</p>
+                        )}
+                      </div>
+
+                      {/* Lab Results — read-only here; the nurse pastes these in */}
+                      <div className="glass-card" style={{ textAlign: 'left' }}>
+                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <FileSpreadsheet size={18} /> Lab Results
+                        </h3>
+                        {searchedPatientRecord.labResults && searchedPatientRecord.labResults.length > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {searchedPatientRecord.labResults.map(l => (
+                              <div key={l.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                                <div>
+                                  <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{l.testName}</p>
+                                  <p className="text-muted" style={{ fontSize: '0.75rem' }}>
+                                    Result: {l.result} {l.unit || ''} {l.normalRange ? `(Normal: ${l.normalRange})` : ''}
+                                  </p>
+                                  {l.notes && <p className="text-muted" style={{ fontSize: '0.7rem', fontStyle: 'italic' }}>{l.notes}</p>}
+                                </div>
+                                <p className="text-muted" style={{ fontSize: '0.7rem' }}>{new Date(l.testDate).toLocaleDateString()}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No lab results on file for this patient.</p>
+                        )}
                       </div>
 
                       {/* Treatment Response Timeline (CDS View) */}
@@ -1724,7 +2617,12 @@ function App() {
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 {searchedPatientRecord.prescriptions.map(p => (
                                   <div key={p.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
-                                    <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{p.medication}</p>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{p.medication}</p>
+                                      <span className={`badge ${p.dispensed ? 'badge-green' : 'badge-yellow'}`} style={{ fontSize: '0.65rem' }}>
+                                        {p.dispensed ? (p.dispenseMethod === 'SELF' ? 'Dispensed by doctor' : 'Dispensed by pharmacy') : 'Waiting at pharmacy'}
+                                      </span>
+                                    </div>
                                     <p className="text-muted" style={{ fontSize: '0.75rem' }}>Dosage: {p.dosage} | Frequency: {p.frequency} | Duration: {p.durationDays} days</p>
                                     <p className="text-muted" style={{ fontSize: '0.7rem', marginTop: '2px' }}>Notes: {p.notes}</p>
                                   </div>
@@ -1879,8 +2777,19 @@ function App() {
                                 required 
                               />
                             </div>
+                            <div className="form-group">
+                              <label>Dispensing</label>
+                              <select
+                                value={addPrescriptionForm.dispenseMethod}
+                                onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, dispenseMethod: e.target.value})}
+                                required
+                              >
+                                <option value="PHARMACY">Send to Pharmacy</option>
+                                <option value="SELF">Give to Patient Myself</option>
+                              </select>
+                            </div>
                             <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
-                              Issue Prescription
+                              {addPrescriptionForm.dispenseMethod === 'SELF' ? 'Issue & Dispense Now' : 'Send to Pharmacy'}
                             </button>
                           </form>
                         </div>
@@ -1928,6 +2837,7 @@ function App() {
                   )}
                 </div>
               </div>
+              )
             ) : (
               /* Feature 5: Clinical Alerts Feed Layout */
               <div style={{ maxWidth: '1200px', margin: '0 auto 40px', padding: '0 20px', textAlign: 'left' }}>
@@ -2069,6 +2979,8 @@ function App() {
                   )}
                 </div>
               </div>
+            )}
+            </>
             )}
           </div>
         )}

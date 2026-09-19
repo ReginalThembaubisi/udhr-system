@@ -77,6 +77,13 @@ public class DiagnosisService {
         diagnosis.setDiagnosis(disease);
         diagnosis.setNotes(request.getNotes());
 
+        // Move the visit forward — the patient has now been seen by the doctor.
+        Visit finalVisit = visit;
+        visitRepository.findById(finalVisit.getId()).ifPresent(v -> {
+            v.setStatus("DIAGNOSED");
+            visitRepository.save(v);
+        });
+
         if (disease != null) {
             String norm = disease.toLowerCase();
             if (norm.contains("diabetes")) {

@@ -16,4 +16,5 @@ public class PrescriptionRequest {
     private String endDate;   // LocalDate string
     private Integer durationDays; // Added for frontend mapping compatibility
     private String notes;
+    private String dispenseMethod; // "PHARMACY" (default) or "SELF" — doctor's choice at the point of prescribing
 }

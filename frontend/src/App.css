@@ -101,6 +101,13 @@
   line-height: 1.2;
   letter-spacing: -0.02em;
   margin: 0 0 16px;
+  /* Reset the dark-theme's global h1 gradient-text-clip (index.css) — this
+     screen wants a plain solid-color heading, not the old gradient effect. */
+  color: #fff;
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  -webkit-text-fill-color: initial;
 }
 
 .udhr-login-tagline {
@@ -284,4 +291,364 @@
   .udhr-login-form-pane {
     padding: 28px 20px 48px;
   }
+}
+
+/* ===== UDHR Redesign: shared building blocks (light clinical theme) ===== */
+.udhr-page {
+  min-height: 100vh;
+  background: var(--udhr-bg);
+  color: var(--udhr-text);
+  font-family: 'Inter', sans-serif;
+}
+
+.udhr-page-inner {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+}
+
+.udhr-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0 20px;
+}
+
+.udhr-page-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.udhr-page-logo-chip {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--udhr-radius-sm);
+  background: var(--udhr-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.udhr-logout-link {
+  border: none;
+  background: none;
+  color: var(--udhr-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+}
+
+.udhr-logout-link:hover {
+  color: var(--udhr-text);
+}
+
+.udhr-greeting h1 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 2px;
+  /* Reset the dark-theme's global h1 gradient-text-clip (index.css), which
+     otherwise makes this heading render nearly invisible on a light page. */
+  color: var(--udhr-text);
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  -webkit-text-fill-color: initial;
+}
+
+.udhr-greeting p {
+  color: var(--udhr-text-muted);
+  font-size: 14px;
+  margin: 0;
+}
+
+.udhr-tab-bar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--udhr-border);
+}
+
+.udhr-tab-pill {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--udhr-text-muted);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: var(--udhr-radius-pill);
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.udhr-tab-pill.active {
+  background: var(--udhr-primary-tint);
+  color: var(--udhr-primary);
+}
+
+.udhr-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.udhr-stat-card {
+  background: var(--udhr-surface);
+  border: 1px solid var(--udhr-border);
+  border-radius: var(--udhr-radius-lg);
+  padding: 16px;
+}
+
+.udhr-stat-label {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--udhr-text-muted);
+  font-weight: 600;
+}
+
+.udhr-stat-value {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--udhr-text);
+}
+
+.udhr-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  color: var(--udhr-text);
+}
+
+.udhr-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.udhr-quick-card {
+  text-align: left;
+  background: var(--udhr-surface);
+  border: 1px solid var(--udhr-border);
+  border-radius: var(--udhr-radius-lg);
+  padding: 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: inherit;
+}
+
+.udhr-quick-card span {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--udhr-text);
+}
+
+.udhr-card {
+  background: var(--udhr-surface);
+  border: 1px solid var(--udhr-border);
+  border-radius: var(--udhr-radius-lg);
+  padding: 16px;
+  text-align: left;
+}
+
+.udhr-card + .udhr-card {
+  margin-top: 12px;
+}
+
+.udhr-row-card {
+  background: var(--udhr-surface);
+  border: 1px solid var(--udhr-border);
+  border-radius: var(--udhr-radius-lg);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.udhr-row-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--udhr-text);
+}
+
+.udhr-row-subtitle {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--udhr-text-muted);
+}
+
+.udhr-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.udhr-chip {
+  border: 1px solid var(--udhr-border);
+  background: var(--udhr-surface);
+  color: var(--udhr-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 14px;
+  border-radius: var(--udhr-radius-pill);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.udhr-chip.active {
+  background: var(--udhr-primary-tint);
+  border-color: #bfdbfe;
+  color: var(--udhr-primary);
+  font-weight: 600;
+}
+
+.udhr-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: var(--udhr-radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.udhr-tag.info {
+  background: var(--udhr-primary-tint);
+  color: var(--udhr-primary);
+}
+
+.udhr-tag.danger {
+  background: var(--udhr-danger-tint);
+  color: var(--udhr-danger-text);
+}
+
+.udhr-btn-soft-success {
+  padding: 8px 14px;
+  border-radius: var(--udhr-radius-sm);
+  border: 1px solid #bbf7d0;
+  background: var(--udhr-success-tint);
+  color: var(--udhr-success-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.udhr-btn-soft-danger {
+  padding: 8px 14px;
+  border-radius: var(--udhr-radius-sm);
+  border: 1px solid #fecaca;
+  background: var(--udhr-danger-tint);
+  color: var(--udhr-danger-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.udhr-btn-neutral {
+  padding: 8px 14px;
+  border-radius: var(--udhr-radius-sm);
+  border: 1px solid var(--udhr-border);
+  background: var(--udhr-surface);
+  color: var(--udhr-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.udhr-btn-neutral:disabled,
+.udhr-btn-soft-success:disabled,
+.udhr-btn-soft-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.udhr-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--udhr-border);
+  border-radius: var(--udhr-radius-md);
+  font-size: 14px;
+  background: #fff;
+  color: var(--udhr-text);
+  font-family: inherit;
+  resize: vertical;
+}
+
+.udhr-textarea:focus {
+  outline: none;
+  border-color: var(--udhr-primary);
+  box-shadow: 0 0 0 3px var(--udhr-primary-tint);
+}
+
+.udhr-note-input {
+  margin-top: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid var(--udhr-border);
+  color: var(--udhr-text);
+  font-family: inherit;
+}
+
+.udhr-result-card {
+  border-radius: var(--udhr-radius-lg);
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.udhr-result-card.warning {
+  background: var(--udhr-warning-tint);
+  border: 1px solid #fde68a;
+}
+
+.udhr-result-card.danger {
+  background: var(--udhr-danger-tint);
+  border: 1px solid #fecaca;
+}
+
+.udhr-result-card.success {
+  background: var(--udhr-success-tint);
+  border: 1px solid #bbf7d0;
+}
+
+.udhr-empty-note {
+  color: var(--udhr-text-muted);
+  font-size: 13.5px;
+}
+
+.udhr-progress-track {
+  background: var(--udhr-border-subtle);
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.udhr-progress-fill {
+  background: var(--udhr-primary);
+  height: 100%;
 }

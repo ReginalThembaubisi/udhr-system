@@ -3,6 +3,7 @@ package com.udhr.config;
 import com.udhr.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -34,17 +35,29 @@ public class SecurityConfig {
                 .requestMatchers("/api/health-guidance/**").hasRole("PATIENT")
                 .requestMatchers("/api/food-checker/**").hasRole("PATIENT")
                 .requestMatchers("/api/clinical-alerts/drug-food-audit", "/api/clinical-alerts/my-alerts").hasRole("PATIENT")
-                .requestMatchers("/api/clinical-alerts/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
+                .requestMatchers("/api/clinical-alerts/**").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/reminders/patient").hasRole("PATIENT")
                 .requestMatchers("/api/reminders/adherence/**").hasRole("PATIENT")
-                .requestMatchers("/api/reminders/patient/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
-                .requestMatchers("/api/symptoms").hasAnyRole("PATIENT", "DOCTOR", "NURSE", "ADMIN")
-                .requestMatchers("/api/patients/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
-                .requestMatchers("/api/diagnoses/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
-                .requestMatchers("/api/prescriptions/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
-                .requestMatchers("/api/lab-results/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
-                .requestMatchers("/api/visits/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
-                .requestMatchers("/api/facilities/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
+                .requestMatchers("/api/reminders/patient/**").hasAnyRole("DOCTOR", "NURSE")
+                .requestMatchers("/api/symptoms").hasAnyRole("PATIENT", "DOCTOR", "NURSE")
+                // Front desk (Admin) can register a new patient and check patients in,
+                // but the clinical record stays off-limits to Admin.
+                .requestMatchers(HttpMethod.POST, "/api/patients").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
+                // Only the doctor's screen ever reads the full clinical record (diagnoses,
+                // prescriptions, allergies, vitals, labs) — nurse and pharmacist don't need it
+                // and shouldn't be able to pull it even by calling the API directly.
+                .requestMatchers("/api/patients/*/record").hasRole("DOCTOR")
+                // Bare demographic lookup (name/DOB/contact only) — used by the nurse's
+                // vitals screen. Pharmacist and admin have their own dedicated endpoints.
+                .requestMatchers("/api/patients/*").hasAnyRole("DOCTOR", "NURSE")
+                .requestMatchers("/api/checkin/**").hasRole("ADMIN")
+                .requestMatchers("/api/diagnoses/**").hasRole("DOCTOR")
+                .requestMatchers("/api/prescriptions/**").hasRole("DOCTOR")
+                .requestMatchers("/api/lab-results/**").hasAnyRole("DOCTOR", "NURSE")
+                .requestMatchers("/api/visits/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
+                .requestMatchers("/api/vitals/**").hasAnyRole("DOCTOR", "NURSE")
+                .requestMatchers("/api/pharmacy/**").hasRole("PHARMACIST")
+                .requestMatchers("/api/facilities/**").hasRole("ADMIN")
                 .requestMatchers("/api/staff/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )

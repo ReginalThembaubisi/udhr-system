@@ -42,8 +42,15 @@ public class Visit {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
+    // WAITING_VITALS -> VITALS_DONE -> WAITING_DOCTOR -> DIAGNOSED -> SENT_TO_PHARMACY / SELF_DISPENSED -> COMPLETE
+    @Column(nullable = false)
+    private String status = "WAITING_VITALS";
+
     @PrePersist
     protected void onCreate() {
         this.visitDate = LocalDateTime.now();
+        if (this.status == null) {
+            this.status = "WAITING_VITALS";
+        }
     }
 }

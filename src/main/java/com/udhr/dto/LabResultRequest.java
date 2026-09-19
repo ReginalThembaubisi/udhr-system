@@ -4,10 +4,7 @@ import lombok.Data;
 
 @Data
 public class LabResultRequest {
-    private Long patientId;
-    private Long staffId;
-    private Long facilityId;
-    private Long visitId;
+    private String idNumber; // patient's national ID number — how staff look the patient up
     private String testName;
     private String result;
     private String unit;

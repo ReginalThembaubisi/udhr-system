@@ -18,6 +18,9 @@ public class PatientPortalService {
     private PatientRepository patientRepository;
 
     @Autowired
+    private PatientService patientService;
+
+    @Autowired
     private JwtUtil jwtUtil;
 
     @Autowired
@@ -41,9 +44,11 @@ public class PatientPortalService {
     @Autowired
     private AuditLogRepository auditLogRepository;
 
+    @Autowired
+    private VitalsRepository vitalsRepository;
+
     public PatientLoginResponse login(PatientLoginRequest request) {
-        Patient patient = patientRepository.findByIdNumber(request.getIdNumber())
-                .orElseThrow(() -> new RuntimeException("Patient not found with ID number: " + request.getIdNumber()));
+        Patient patient = patientService.findByIdentifier(request.getIdNumber());
 
         LocalDate dob;
         try {
@@ -82,6 +87,8 @@ public class PatientPortalService {
         List<Diagnosis> diagnoses = diagnosisRepository.findByPatientIdOrderByDiagnosedAtDesc(patient.getId());
         List<Prescription> prescriptions = prescriptionRepository.findByPatientIdOrderByCreatedAtDesc(patient.getId());
         List<LabResult> labResults = labResultRepository.findByPatientIdOrderByTestDateDesc(patient.getId());
+        List<Vitals> vitals = vitalsRepository.findByPatientIdOrderByRecordedAtDesc(patient.getId());
+        Visit currentVisit = visits.isEmpty() ? null : visits.get(0);
 
         // Log the view action in AuditLog
         AuditLog auditLog = new AuditLog();
@@ -97,7 +104,9 @@ public class PatientPortalService {
                 visits,
                 diagnoses,
                 prescriptions,
-                labResults
+                labResults,
+                vitals,
+                currentVisit
         );
     }
 }

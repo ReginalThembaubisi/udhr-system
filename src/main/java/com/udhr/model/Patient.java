@@ -20,8 +20,14 @@ public class Patient {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "id_number", unique = true, nullable = false)
+    @Column(name = "id_number", unique = true)
     private String idNumber;
+
+    @Column(name = "mrn", unique = true, nullable = false)
+    private String mrn;
+
+    @Column(name = "passport_number", unique = true)
+    private String passportNumber;
 
     @Column(name = "first_name", nullable = false)
     private String firstName;

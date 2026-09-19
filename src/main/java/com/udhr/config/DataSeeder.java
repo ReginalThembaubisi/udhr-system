@@ -110,6 +110,18 @@ public class DataSeeder implements CommandLineRunner {
             nurse.setActive(true);
             staffRepository.save(nurse);
 
+            // Staff 4: PHARM001
+            Staff pharmacist = new Staff();
+            pharmacist.setStaffNumber("PHARM001");
+            pharmacist.setFirstName("Sipho");
+            pharmacist.setLastName("Nkosi");
+            pharmacist.setRole("PHARMACIST");
+            pharmacist.setFacility(facility);
+            pharmacist.setEmail("sipho@udhr.gov.za");
+            pharmacist.setPassword(passwordEncoder.encode("Pharmacist@123"));
+            pharmacist.setActive(true);
+            staffRepository.save(pharmacist);
+
             System.out.println("Facility and Staff seeded successfully.");
         } else {
             facility = facilityRepository.findAll().get(0);
@@ -146,6 +158,7 @@ public class DataSeeder implements CommandLineRunner {
         Patient patient = null;
         if (patientRepository.count() == 0) {
             patient = new Patient();
+            patient.setMrn("MRN-2020-000001");
             patient.setIdNumber("9001015000083");
             patient.setFirstName("Reginal");
             patient.setLastName("Themba");

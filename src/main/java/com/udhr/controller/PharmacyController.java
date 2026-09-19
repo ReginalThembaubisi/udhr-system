@@ -1,9 +1,8 @@
 package com.udhr.controller;
 
-import com.udhr.dto.PatientRequest;
-import com.udhr.dto.PatientRecordResponse;
-import com.udhr.model.Patient;
-import com.udhr.service.PatientService;
+import com.udhr.dto.PharmacyLookupResponse;
+import com.udhr.model.Prescription;
+import com.udhr.service.PharmacyService;
 import com.udhr.security.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,11 +11,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/patients")
-public class PatientController {
+@RequestMapping("/api/pharmacy")
+public class PharmacyController {
 
     @Autowired
-    private PatientService patientService;
+    private PharmacyService pharmacyService;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -34,48 +33,33 @@ public class PatientController {
         return null;
     }
 
-    @GetMapping("/{identifier}")
-    public ResponseEntity<?> getPatientByIdentifier(@PathVariable String identifier, HttpServletRequest request) {
+    @GetMapping("/patient/{idNumber}")
+    public ResponseEntity<?> lookupPatient(@PathVariable String idNumber, HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);
         if (staffNumber == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
         try {
-            Patient patient = patientService.findByIdentifier(identifier);
-            return ResponseEntity.ok(patient);
+            PharmacyLookupResponse response = pharmacyService.lookup(idNumber, staffNumber);
+            return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
     }
 
-    @PostMapping
-    public ResponseEntity<?> registerPatient(@RequestBody PatientRequest patientRequest, HttpServletRequest request) {
+    @PostMapping("/dispense/{prescriptionId}")
+    public ResponseEntity<?> dispense(@PathVariable Long prescriptionId, HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);
         if (staffNumber == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
 
         try {
-            Patient patient = patientService.registerPatient(patientRequest, staffNumber);
-            return ResponseEntity.status(HttpStatus.CREATED).body(patient);
+            Prescription prescription = pharmacyService.dispense(prescriptionId, staffNumber);
+            return ResponseEntity.ok(prescription);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
-        }
-    }
-
-    @GetMapping("/{identifier}/record")
-    public ResponseEntity<?> getFullPatientRecord(@PathVariable String identifier, HttpServletRequest request) {
-        String staffNumber = extractStaffNumber(request);
-        if (staffNumber == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
-        }
-
-        try {
-            PatientRecordResponse record = patientService.getFullRecord(identifier, staffNumber);
-            return ResponseEntity.ok(record);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
     }
 }

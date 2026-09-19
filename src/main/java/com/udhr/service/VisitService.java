@@ -51,4 +51,32 @@ public class VisitService {
     public List<Visit> getVisitsByPatient(Long patientId) {
         return visitRepository.findByPatientIdOrderByVisitDateDesc(patientId);
     }
+
+    /**
+     * Finds the patient's current open visit (any status other than COMPLETE),
+     * or opens a new one if there isn't one. This is what lets a nurse, doctor
+     * or pharmacist all land on the same visit just by looking the patient up
+     * by ID number, with no queue ticket needed.
+     */
+    public Visit findOrCreateOpenVisit(Patient patient, Staff staff, String reason) {
+        List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
+        if (!visits.isEmpty()) {
+            Visit latest = visits.get(0);
+            if (!"COMPLETE".equals(latest.getStatus())) {
+                return latest;
+            }
+        }
+
+        Visit visit = new Visit();
+        visit.setPatient(patient);
+        visit.setStaff(staff);
+        visit.setFacility(staff.getFacility());
+        visit.setReason(reason != null && !reason.isBlank() ? reason : "Clinic visit");
+        return visitRepository.save(visit);
+    }
+
+    public Visit updateStatus(Visit visit, String status) {
+        visit.setStatus(status);
+        return visitRepository.save(visit);
+    }
 }

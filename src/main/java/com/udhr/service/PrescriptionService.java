@@ -98,12 +98,31 @@ public class PrescriptionService {
         prescription.setNotes(request.getNotes());
         prescription.setActive(true);
 
+        String dispenseMethod = (request.getDispenseMethod() != null && !request.getDispenseMethod().isBlank())
+                ? request.getDispenseMethod().toUpperCase()
+                : "PHARMACY";
+        prescription.setDispenseMethod(dispenseMethod);
+
+        if ("SELF".equals(dispenseMethod)) {
+            // Doctor is giving the medication directly — nothing waits in the pharmacy queue.
+            prescription.setDispensed(true);
+            prescription.setDispensedAt(java.time.LocalDateTime.now());
+            prescription.setDispensedBy(doctor);
+        }
+
         Prescription saved = prescriptionRepository.save(prescription);
         try {
             reminderService.createRemindersForPrescription(saved);
         } catch (Exception e) {
             System.err.println("Failed to create reminders: " + e.getMessage());
         }
+
+        // Move the visit forward so pharmacy (or nobody, for self-dispense) knows what's next.
+        visitRepository.findById(visit.getId()).ifPresent(v -> {
+            v.setStatus("SELF".equals(dispenseMethod) ? "SELF_DISPENSED" : "SENT_TO_PHARMACY");
+            visitRepository.save(v);
+        });
+
         return saved;
     }
 

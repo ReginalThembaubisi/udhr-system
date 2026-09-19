@@ -59,6 +59,20 @@ public class Prescription {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
+    // PHARMACY (patient must collect from the pharmacy) or SELF (doctor dispensed it directly)
+    @Column(name = "dispense_method", nullable = false)
+    private String dispenseMethod = "PHARMACY";
+
+    @Column(nullable = false)
+    private Boolean dispensed = false;
+
+    @Column(name = "dispensed_at")
+    private LocalDateTime dispensedAt;
+
+    @ManyToOne
+    @JoinColumn(name = "dispensed_by_id")
+    private Staff dispensedBy;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

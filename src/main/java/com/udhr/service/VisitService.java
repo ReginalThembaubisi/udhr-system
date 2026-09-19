@@ -1,5 +1,6 @@
 package com.udhr.service;
 
+import com.udhr.dto.DischargeRequest;
 import com.udhr.dto.VisitRequest;
 import com.udhr.model.Facility;
 import com.udhr.model.Patient;
@@ -11,7 +12,10 @@ import com.udhr.repository.StaffRepository;
 import com.udhr.repository.VisitRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class VisitService {
@@ -27,6 +31,13 @@ public class VisitService {
 
     @Autowired
     private FacilityRepository facilityRepository;
+
+    @Autowired
+    private QueueService queueService;
+
+    // A visit is "open" (still eligible to be reused by findOrCreateOpenVisit)
+    // as long as it hasn't reached one of these closing states.
+    private static final Set<String> TERMINAL_STATUSES = Set.of("COMPLETE", "REFERRED", "DISCHARGED");
 
     public Visit addVisit(VisitRequest request) {
         Patient patient = patientRepository.findById(request.getPatientId())
@@ -62,7 +73,7 @@ public class VisitService {
         List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
         if (!visits.isEmpty()) {
             Visit latest = visits.get(0);
-            if (!"COMPLETE".equals(latest.getStatus())) {
+            if (!TERMINAL_STATUSES.contains(latest.getStatus())) {
                 return latest;
             }
         }
@@ -78,5 +89,43 @@ public class VisitService {
     public Visit updateStatus(Visit visit, String status) {
         visit.setStatus(status);
         return visitRepository.save(visit);
+    }
+
+    // Explicitly closes out a visit — a clinical decision distinct from the
+    // routine WAITING_VITALS -> ... -> COMPLETE dispensing flow, and from a
+    // Referral (which closes the visit itself, see ReferralService).
+    public Visit discharge(DischargeRequest request, String staffNumber) {
+        Patient patient = patientRepository.findById(request.getPatientId())
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+
+        Visit visit;
+        if (request.getVisitId() != null) {
+            visit = visitRepository.findById(request.getVisitId())
+                    .orElseThrow(() -> new RuntimeException("Visit not found"));
+        } else {
+            visit = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId()).stream()
+                    .filter(v -> !TERMINAL_STATUSES.contains(v.getStatus()))
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("No active visit to discharge for this patient"));
+        }
+
+        visit.setStatus("DISCHARGED");
+        visit.setDischargeOutcome(request.getDischargeOutcome() != null && !request.getDischargeOutcome().isBlank()
+                ? request.getDischargeOutcome() : "HOME");
+        visit.setDischargeSummary(request.getDischargeSummary());
+        if (request.getFollowUpDate() != null && !request.getFollowUpDate().isBlank()) {
+            visit.setFollowUpDate(LocalDate.parse(request.getFollowUpDate()));
+        }
+        visit.setDischargedBy(staff);
+        visit.setDischargedAt(LocalDateTime.now());
+        Visit saved = visitRepository.save(visit);
+
+        // Same as a referral: the patient is no longer "here" once discharged,
+        // so close out any active queue entry at this facility.
+        queueService.completeActiveEntryForPatientAtFacility(patient.getId(), staff.getFacility().getId());
+
+        return saved;
     }
 }

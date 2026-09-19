@@ -33,6 +33,7 @@ public class SecurityConfig {
                 // service in production (see Dockerfile) — it has to be reachable
                 // before login, otherwise no one can even load the page to log in.
                 .requestMatchers("/", "/index.html", "/assets/**", "/favicon.svg", "/icons.svg", "/vite.svg").permitAll()
+                .requestMatchers("/api/auth/change-password").authenticated()
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/patient/me/**").hasRole("PATIENT")
                 .requestMatchers("/api/symptom-checker/**").hasRole("PATIENT")
@@ -56,8 +57,14 @@ public class SecurityConfig {
                 .requestMatchers("/api/patients/*").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/checkin/**").hasRole("ADMIN")
                 .requestMatchers("/api/diagnoses/**").hasRole("DOCTOR")
+                .requestMatchers("/api/prescriptions/report/**").hasRole("ADMIN")
                 .requestMatchers("/api/prescriptions/**").hasRole("DOCTOR")
+                .requestMatchers("/api/lab-results/report/**").hasRole("ADMIN")
                 .requestMatchers("/api/lab-results/**").hasAnyRole("DOCTOR", "NURSE")
+                // Discharge is the clinical decision that closes a visit out — same footing as
+                // referral creation, never PHARMACIST. The rest of /api/visits/** stays open
+                // to PHARMACIST as shared/read (e.g. seeing where a patient came from).
+                .requestMatchers("/api/visits/discharge").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/visits/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
                 .requestMatchers("/api/vitals/**").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/pharmacy/**").hasRole("PHARMACIST")

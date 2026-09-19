@@ -12,7 +12,9 @@ function App() {
   const [userRole, setUserRole] = useState(localStorage.getItem('role') || '');
   const [userIdNumber, setUserIdNumber] = useState(localStorage.getItem('idNumber') || '');
   const [userName, setUserName] = useState(localStorage.getItem('userName') || '');
-  
+  const [mustChangePassword, setMustChangePassword] = useState(localStorage.getItem('mustChangePassword') === 'true');
+  const [changePasswordForm, setChangePasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+
   const [loginRole, setLoginRole] = useState('patient'); // 'patient' or 'staff'
   const [staffNumber, setStaffNumber] = useState('DOC001');
   const [staffPassword, setStaffPassword] = useState('Doctor@123');
@@ -57,8 +59,11 @@ function App() {
   
   // Forms for Staff
   const [patientRegForm, setPatientRegForm] = useState({
-    idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: ''
+    idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: '',
+    nextOfKinFirstName: '', nextOfKinLastName: '', nextOfKinRelationship: '', nextOfKinPhone: '',
+    motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: ''
   });
+  const [showRegExtras, setShowRegExtras] = useState(false);
   const [addDiagnosisForm, setAddDiagnosisForm] = useState({
     patientId: '', conditionName: '', notes: ''
   });
@@ -166,11 +171,13 @@ function App() {
       localStorage.setItem('role', data.role);
       localStorage.setItem('idNumber', data.idNumber || data.staffNumber);
       localStorage.setItem('userName', data.fullName);
+      localStorage.setItem('mustChangePassword', data.mustChangePassword ? 'true' : 'false');
 
       setToken(data.token);
       setUserRole(data.role);
       setUserIdNumber(data.idNumber || data.staffNumber);
       setUserName(data.fullName);
+      setMustChangePassword(!!data.mustChangePassword);
       setSuccessMessage('Logged in successfully!');
     } catch (err) {
       setErrorMessage(err.message);
@@ -185,10 +192,12 @@ function App() {
     localStorage.removeItem('role');
     localStorage.removeItem('idNumber');
     localStorage.removeItem('userName');
+    localStorage.removeItem('mustChangePassword');
     setToken('');
     setUserRole('');
     setUserIdNumber('');
     setUserName('');
+    setMustChangePassword(false);
     setPatientProfile(null);
     setPatientRecord(null);
     setHealthGuidance(null);
@@ -208,6 +217,41 @@ function App() {
     setFacilityList([]);
     setAdminTab('frontdesk');
     setRecentCheckIns([]);
+  };
+
+  // Forced password change for a new staff account (or an admin reset)
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    if (changePasswordForm.newPassword !== changePasswordForm.confirmPassword) {
+      setErrorMessage('New password and confirmation do not match.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          currentPassword: changePasswordForm.currentPassword,
+          newPassword: changePasswordForm.newPassword
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to change password');
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('mustChangePassword', 'false');
+      setToken(data.token);
+      setMustChangePassword(false);
+      setChangePasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setSuccessMessage('Password updated. Welcome to UDHR!');
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Fetch data on login
@@ -417,8 +461,11 @@ function App() {
       setSuccessMessage(`Patient '${data.firstName} ${data.lastName}' registered successfully! MRN: ${data.mrn}`);
       setSearchId(data.idNumber || data.mrn);
       setPatientRegForm({
-        idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: ''
+        idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: '',
+        nextOfKinFirstName: '', nextOfKinLastName: '', nextOfKinRelationship: '', nextOfKinPhone: '',
+        motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: ''
       });
+      setShowRegExtras(false);
       // Load the newly registered patient record
       setSearchedPatientRecord({
         patient: data, allergies: [], chronicConditions: [], visits: [], diagnoses: [], prescriptions: [], labResults: []
@@ -1221,6 +1268,64 @@ function App() {
           </div>
         )}
 
+        {/* Forced password change gate — blocks everything else until this is cleared */}
+        {token && mustChangePassword && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, padding: '20px 0' }}>
+            <div className="glass-card" style={{ width: '420px', maxWidth: '100%', textAlign: 'center' }}>
+              <Shield size={48} color="#4f46e5" style={{ margin: '0 auto 16px' }} />
+              <h2 style={{ marginBottom: '8px' }}>Set a New Password</h2>
+              <p style={{ marginBottom: '24px' }} className="text-muted">
+                This account was created with a temporary password. Choose your own before continuing.
+              </p>
+              <form onSubmit={handleChangePassword} style={{ textAlign: 'left' }}>
+                <div className="form-group">
+                  <label htmlFor="currentPassword">Temporary / Current Password</label>
+                  <input
+                    type="password"
+                    id="currentPassword"
+                    value={changePasswordForm.currentPassword}
+                    onChange={(e) => setChangePasswordForm({ ...changePasswordForm, currentPassword: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="newPassword">New Password</label>
+                  <input
+                    type="password"
+                    id="newPassword"
+                    placeholder="At least 8 characters"
+                    value={changePasswordForm.newPassword}
+                    onChange={(e) => setChangePasswordForm({ ...changePasswordForm, newPassword: e.target.value })}
+                    required
+                    minLength={8}
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="confirmPassword">Confirm New Password</label>
+                  <input
+                    type="password"
+                    id="confirmPassword"
+                    value={changePasswordForm.confirmPassword}
+                    onChange={(e) => setChangePasswordForm({ ...changePasswordForm, confirmPassword: e.target.value })}
+                    required
+                    minLength={8}
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+                  {loading ? 'Updating...' : 'Set Password & Continue'}
+                </button>
+              </form>
+              <button
+                className="btn btn-secondary"
+                style={{ marginTop: '12px', width: '100%' }}
+                onClick={handleLogout}
+              >
+                Cancel & Log Out
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 1. Login Page */}
         {!token && (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, padding: '20px 0' }}>
@@ -1322,7 +1427,7 @@ function App() {
         )}
 
         {/* 2. Patient Portal View */}
-        {token && userRole === 'PATIENT' && (
+        {token && userRole === 'PATIENT' && !mustChangePassword && (
           <div className="dashboard-grid">
             
             {/* Sidebar Demographics Card */}
@@ -1956,7 +2061,7 @@ function App() {
         )}
 
         {/* 3. Healthcare Staff View */}
-        {token && userRole !== 'PATIENT' && (
+        {token && userRole !== 'PATIENT' && !mustChangePassword && (
           <div>
             {isPharmacist ? (
               <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'left' }}>
@@ -2250,6 +2355,33 @@ function App() {
                             <label>Address</label>
                             <textarea value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} />
                           </div>
+
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ width: '100%', marginBottom: '10px', fontSize: '0.85rem' }}
+                            onClick={() => setShowRegExtras(!showRegExtras)}
+                          >
+                            {showRegExtras ? 'Hide' : 'Add'} Next of Kin / Newborn Details (optional)
+                          </button>
+                          {showRegExtras && (
+                            <div style={{ background: 'rgba(15,23,42,0.4)', padding: '12px', borderRadius: '8px', marginBottom: '10px' }}>
+                              <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>Next of Kin</p>
+                              <div className="form-group"><input type="text" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} /></div>
+                              <div className="form-group"><input type="text" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} /></div>
+                              <div className="form-group"><input type="text" placeholder="Relationship (e.g. Husband)" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} /></div>
+                              <div className="form-group"><input type="text" placeholder="Phone number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} /></div>
+                              <p className="text-muted" style={{ fontSize: '0.75rem', margin: '12px 0 8px' }}>Newborn — leave blank unless registering a baby at birth</p>
+                              <div className="form-group"><input type="text" placeholder="Mother's ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} /></div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                <input type="number" placeholder="Birth weight (g)" value={patientRegForm.birthWeightGrams} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthWeightGrams: e.target.value })} />
+                                <input type="number" placeholder="Birth length (cm)" value={patientRegForm.birthLengthCm} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthLengthCm: e.target.value })} />
+                                <input type="number" placeholder="Apgar (1 min)" value={patientRegForm.apgarScore1Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore1Min: e.target.value })} />
+                                <input type="number" placeholder="Apgar (5 min)" value={patientRegForm.apgarScore5Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore5Min: e.target.value })} />
+                              </div>
+                            </div>
+                          )}
+
                           <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Create Patient Record</button>
                         </form>
                       </div>

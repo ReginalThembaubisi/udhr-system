@@ -24,9 +24,14 @@ public class JwtUtil {
     }
 
     public String generateToken(String staffNumber, String role) {
+        return generateToken(staffNumber, role, false);
+    }
+
+    public String generateToken(String staffNumber, String role, boolean mustChangePassword) {
         return Jwts.builder()
                 .setSubject(staffNumber)
                 .claim("role", role)
+                .claim("mustChangePassword", mustChangePassword)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
@@ -47,6 +52,15 @@ public class JwtUtil {
 
     public String extractRole(String token) {
         return getClaims(token).get("role", String.class);
+    }
+
+    // Baked into the token at issue time so it can be enforced by the filter
+    // without a DB lookup on every request. A token issued before this claim
+    // existed (or one for a patient) has no such claim, which is safe: absent
+    // means "not required".
+    public boolean extractMustChangePassword(String token) {
+        Boolean value = getClaims(token).get("mustChangePassword", Boolean.class);
+        return value != null && value;
     }
 
     public boolean validateToken(String token) {

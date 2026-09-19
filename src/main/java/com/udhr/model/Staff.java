@@ -50,6 +50,13 @@ public class Staff {
     @Column(nullable = false)
     private Boolean active = true;
 
+    // New staff are created with a temporary password and must set their own
+    // before they can use the rest of the system. Left nullable (rather than
+    // NOT NULL) so this column can be added to a table that already has rows
+    // — those existing accounts get NULL, which is treated as "not required".
+    @Column(name = "must_change_password")
+    private Boolean mustChangePassword = true;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

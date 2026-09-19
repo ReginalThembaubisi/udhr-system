@@ -33,6 +33,7 @@ public class SecurityConfig {
                 // service in production (see Dockerfile) — it has to be reachable
                 // before login, otherwise no one can even load the page to log in.
                 .requestMatchers("/", "/index.html", "/assets/**", "/favicon.svg", "/icons.svg", "/vite.svg").permitAll()
+                .requestMatchers("/api/auth/change-password").authenticated()
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/patient/me/**").hasRole("PATIENT")
                 .requestMatchers("/api/symptom-checker/**").hasRole("PATIENT")

@@ -44,6 +44,9 @@ public class PatientService {
     @Autowired
     private VitalsRepository vitalsRepository;
 
+    @Autowired
+    private FacilityRepository facilityRepository;
+
     /**
      * The one lookup every staff-facing service should use going forward:
      * patients may be found by national ID number, MRN, or passport number,
@@ -98,6 +101,22 @@ public class PatientService {
         patient.setContactNumber(request.getContactNumber());
         patient.setEmail(request.getEmail());
         patient.setAddress(request.getAddress());
+
+        patient.setNextOfKinFirstName(request.getNextOfKinFirstName());
+        patient.setNextOfKinLastName(request.getNextOfKinLastName());
+        patient.setNextOfKinRelationship(request.getNextOfKinRelationship());
+        patient.setNextOfKinPhone(request.getNextOfKinPhone());
+
+        if (request.getMotherIdNumber() != null && !request.getMotherIdNumber().isBlank()) {
+            patient.setMotherPatient(findByIdentifier(request.getMotherIdNumber()));
+        }
+        if (request.getBirthFacilityId() != null) {
+            facilityRepository.findById(request.getBirthFacilityId()).ifPresent(patient::setBirthFacility);
+        }
+        patient.setBirthWeightGrams(request.getBirthWeightGrams());
+        patient.setBirthLengthCm(request.getBirthLengthCm());
+        patient.setApgarScore1Min(request.getApgarScore1Min());
+        patient.setApgarScore5Min(request.getApgarScore5Min());
 
         Patient savedPatient = patientRepository.save(patient);
 

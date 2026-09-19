@@ -2952,6 +2952,33 @@ function App() {
                           <label>Address</label>
                           <textarea value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} />
                         </div>
+
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ width: '100%', marginBottom: '10px', fontSize: '0.85rem' }}
+                          onClick={() => setShowRegExtras(!showRegExtras)}
+                        >
+                          {showRegExtras ? 'Hide' : 'Add'} Next of Kin / Newborn Details (optional)
+                        </button>
+                        {showRegExtras && (
+                          <div style={{ background: 'rgba(15,23,42,0.4)', padding: '12px', borderRadius: '8px', marginBottom: '10px' }}>
+                            <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>Next of Kin</p>
+                            <div className="form-group"><input type="text" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} /></div>
+                            <div className="form-group"><input type="text" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} /></div>
+                            <div className="form-group"><input type="text" placeholder="Relationship (e.g. Husband)" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} /></div>
+                            <div className="form-group"><input type="text" placeholder="Phone number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} /></div>
+                            <p className="text-muted" style={{ fontSize: '0.75rem', margin: '12px 0 8px' }}>Newborn — leave blank unless registering a baby at birth</p>
+                            <div className="form-group"><input type="text" placeholder="Mother's ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} /></div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                              <input type="number" placeholder="Birth weight (g)" value={patientRegForm.birthWeightGrams} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthWeightGrams: e.target.value })} />
+                              <input type="number" placeholder="Birth length (cm)" value={patientRegForm.birthLengthCm} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthLengthCm: e.target.value })} />
+                              <input type="number" placeholder="Apgar (1 min)" value={patientRegForm.apgarScore1Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore1Min: e.target.value })} />
+                              <input type="number" placeholder="Apgar (5 min)" value={patientRegForm.apgarScore5Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore5Min: e.target.value })} />
+                            </div>
+                          </div>
+                        )}
+
                         <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Create Patient Record</button>
                       </form>
                     )}
@@ -3070,12 +3097,39 @@ function App() {
                       </div>
                       <div className="form-group">
                         <label>Address</label>
-                        <textarea 
-                          value={patientRegForm.address} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, address: e.target.value})} 
+                        <textarea
+                          value={patientRegForm.address}
+                          onChange={(e) => setPatientRegForm({...patientRegForm, address: e.target.value})}
                           rows={2}
                         />
                       </div>
+
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ width: '100%', marginBottom: '10px', fontSize: '0.85rem' }}
+                        onClick={() => setShowRegExtras(!showRegExtras)}
+                      >
+                        {showRegExtras ? 'Hide' : 'Add'} Next of Kin / Newborn Details (optional)
+                      </button>
+                      {showRegExtras && (
+                        <div style={{ background: 'rgba(15,23,42,0.4)', padding: '12px', borderRadius: '8px', marginBottom: '10px' }}>
+                          <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>Next of Kin</p>
+                          <div className="form-group"><input type="text" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} /></div>
+                          <div className="form-group"><input type="text" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} /></div>
+                          <div className="form-group"><input type="text" placeholder="Relationship (e.g. Husband)" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} /></div>
+                          <div className="form-group"><input type="text" placeholder="Phone number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} /></div>
+                          <p className="text-muted" style={{ fontSize: '0.75rem', margin: '12px 0 8px' }}>Newborn — leave blank unless registering a baby at birth</p>
+                          <div className="form-group"><input type="text" placeholder="Mother's ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} /></div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                            <input type="number" placeholder="Birth weight (g)" value={patientRegForm.birthWeightGrams} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthWeightGrams: e.target.value })} />
+                            <input type="number" placeholder="Birth length (cm)" value={patientRegForm.birthLengthCm} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthLengthCm: e.target.value })} />
+                            <input type="number" placeholder="Apgar (1 min)" value={patientRegForm.apgarScore1Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore1Min: e.target.value })} />
+                            <input type="number" placeholder="Apgar (5 min)" value={patientRegForm.apgarScore5Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore5Min: e.target.value })} />
+                          </div>
+                        </div>
+                      )}
+
                       <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
                         Create Record
                       </button>

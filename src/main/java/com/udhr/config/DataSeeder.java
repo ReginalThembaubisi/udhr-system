@@ -84,6 +84,7 @@ public class DataSeeder implements CommandLineRunner {
             admin.setEmail("admin@udhr.gov.za");
             admin.setPassword(passwordEncoder.encode("Admin@123"));
             admin.setActive(true);
+            admin.setMustChangePassword(false); // documented demo login, not a real temp password
             staffRepository.save(admin);
 
             // Staff 2: DOC001
@@ -96,6 +97,7 @@ public class DataSeeder implements CommandLineRunner {
             doctor.setEmail("themba@udhr.gov.za");
             doctor.setPassword(passwordEncoder.encode("Doctor@123"));
             doctor.setActive(true);
+            doctor.setMustChangePassword(false); // documented demo login, not a real temp password
             staffRepository.save(doctor);
 
             // Staff 3: NUR001
@@ -108,6 +110,7 @@ public class DataSeeder implements CommandLineRunner {
             nurse.setEmail("zanele@udhr.gov.za");
             nurse.setPassword(passwordEncoder.encode("Nurse@123"));
             nurse.setActive(true);
+            nurse.setMustChangePassword(false); // documented demo login, not a real temp password
             staffRepository.save(nurse);
 
             // Staff 4: PHARM001
@@ -120,6 +123,7 @@ public class DataSeeder implements CommandLineRunner {
             pharmacist.setEmail("sipho@udhr.gov.za");
             pharmacist.setPassword(passwordEncoder.encode("Pharmacist@123"));
             pharmacist.setActive(true);
+            pharmacist.setMustChangePassword(false); // documented demo login, not a real temp password
             staffRepository.save(pharmacist);
 
             System.out.println("Facility and Staff seeded successfully.");

@@ -10,6 +10,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.Data;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -43,8 +44,27 @@ public class Visit {
     private String notes;
 
     // WAITING_VITALS -> VITALS_DONE -> WAITING_DOCTOR -> DIAGNOSED -> SENT_TO_PHARMACY / SELF_DISPENSED -> COMPLETE
+    // (or REFERRED / DISCHARGED as alternate terminal states)
     @Column(nullable = false)
     private String status = "WAITING_VITALS";
+
+    // "HOME", "DECEASED", "ABSCONDED", "TRANSFERRED" — only set once the
+    // visit is explicitly closed out via /api/visits/discharge.
+    @Column(name = "discharge_outcome")
+    private String dischargeOutcome;
+
+    @Column(name = "discharge_summary", columnDefinition = "TEXT")
+    private String dischargeSummary;
+
+    @Column(name = "follow_up_date")
+    private LocalDate followUpDate;
+
+    @ManyToOne
+    @JoinColumn(name = "discharged_by")
+    private Staff dischargedBy;
+
+    @Column(name = "discharged_at")
+    private LocalDateTime dischargedAt;
 
     @PrePersist
     protected void onCreate() {

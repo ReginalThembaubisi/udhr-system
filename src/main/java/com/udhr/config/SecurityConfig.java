@@ -61,6 +61,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/prescriptions/**").hasRole("DOCTOR")
                 .requestMatchers("/api/lab-results/report/**").hasRole("ADMIN")
                 .requestMatchers("/api/lab-results/**").hasAnyRole("DOCTOR", "NURSE")
+                // Discharge is the clinical decision that closes a visit out — same footing as
+                // referral creation, never PHARMACIST. The rest of /api/visits/** stays open
+                // to PHARMACIST as shared/read (e.g. seeing where a patient came from).
+                .requestMatchers("/api/visits/discharge").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/visits/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
                 .requestMatchers("/api/vitals/**").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/pharmacy/**").hasRole("PHARMACIST")

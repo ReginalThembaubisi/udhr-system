@@ -1,3 +1,91 @@
+/* Tailwind utilities only (no preflight/base reset) so it can't override this
+   file's own element defaults (body, input, button, etc.) below. Utilities
+   load in a named layer, and unlayered CSS always wins over layered CSS
+   regardless of source order, so any name clash with this file's own
+   utility-like classes (.flex, .grid, .gap-4, .badge, ...) resolves in favor
+   of the existing rule automatically. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* shadcn/ui component theme tokens — namespaced (shadcn-*) so they never
+   collide with this app's own --primary/--background/etc. variables used
+   throughout the existing plain-CSS UI above. Only components under
+   src/components/ui/* read these, via the --color-* mappings below. */
+:root {
+  --shadcn-radius: 0.6rem;
+  --shadcn-background: hsl(210 20% 98%);
+  --shadcn-foreground: hsl(222 47% 11%);
+  --shadcn-card: hsl(0 0% 100%);
+  --shadcn-card-foreground: hsl(222 47% 11%);
+  --shadcn-popover: hsl(0 0% 100%);
+  --shadcn-popover-foreground: hsl(222 47% 11%);
+  --shadcn-primary: hsl(221 83% 53%);
+  --shadcn-primary-foreground: hsl(210 40% 98%);
+  --shadcn-secondary: hsl(210 40% 96%);
+  --shadcn-secondary-foreground: hsl(222 47% 11%);
+  --shadcn-muted: hsl(210 40% 96%);
+  --shadcn-muted-foreground: hsl(215 16% 47%);
+  --shadcn-accent: hsl(210 40% 94%);
+  --shadcn-accent-foreground: hsl(222 47% 11%);
+  --shadcn-destructive: hsl(0 72% 51%);
+  --shadcn-destructive-foreground: hsl(210 40% 98%);
+  --shadcn-border: hsl(214 32% 91%);
+  --shadcn-input: hsl(214 32% 91%);
+  --shadcn-ring: hsl(221 83% 53%);
+}
+
+.dark {
+  --shadcn-background: hsl(222 47% 7%);
+  --shadcn-foreground: hsl(210 40% 98%);
+  --shadcn-card: hsl(222 41% 10%);
+  --shadcn-card-foreground: hsl(210 40% 98%);
+  --shadcn-popover: hsl(222 41% 10%);
+  --shadcn-popover-foreground: hsl(210 40% 98%);
+  --shadcn-primary: hsl(217 91% 60%);
+  --shadcn-primary-foreground: hsl(222 47% 11%);
+  --shadcn-secondary: hsl(217 33% 17%);
+  --shadcn-secondary-foreground: hsl(210 40% 98%);
+  --shadcn-muted: hsl(217 33% 17%);
+  --shadcn-muted-foreground: hsl(215 20% 65%);
+  --shadcn-accent: hsl(217 33% 17%);
+  --shadcn-accent-foreground: hsl(210 40% 98%);
+  --shadcn-destructive: hsl(0 63% 42%);
+  --shadcn-destructive-foreground: hsl(210 40% 98%);
+  --shadcn-border: hsl(217 33% 20%);
+  --shadcn-input: hsl(217 33% 20%);
+  --shadcn-ring: hsl(217 91% 60%);
+}
+
+@theme inline {
+  --radius-sm: calc(var(--shadcn-radius) - 4px);
+  --radius-md: calc(var(--shadcn-radius) - 2px);
+  --radius-lg: var(--shadcn-radius);
+  --radius-xl: calc(var(--shadcn-radius) + 4px);
+
+  --color-background: var(--shadcn-background);
+  --color-foreground: var(--shadcn-foreground);
+  --color-card: var(--shadcn-card);
+  --color-card-foreground: var(--shadcn-card-foreground);
+  --color-popover: var(--shadcn-popover);
+  --color-popover-foreground: var(--shadcn-popover-foreground);
+  --color-primary: var(--shadcn-primary);
+  --color-primary-foreground: var(--shadcn-primary-foreground);
+  --color-secondary: var(--shadcn-secondary);
+  --color-secondary-foreground: var(--shadcn-secondary-foreground);
+  --color-muted: var(--shadcn-muted);
+  --color-muted-foreground: var(--shadcn-muted-foreground);
+  --color-accent: var(--shadcn-accent);
+  --color-accent-foreground: var(--shadcn-accent-foreground);
+  --color-destructive: var(--shadcn-destructive);
+  --color-destructive-foreground: var(--shadcn-destructive-foreground);
+  --color-border: var(--shadcn-border);
+  --color-input: var(--shadcn-input);
+  --color-ring: var(--shadcn-ring);
+}
+
 :root {
   --primary: #4f46e5;
   --primary-hover: #4338ca;

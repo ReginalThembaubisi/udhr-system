@@ -18,6 +18,9 @@ public class PatientPortalService {
     private PatientRepository patientRepository;
 
     @Autowired
+    private PatientService patientService;
+
+    @Autowired
     private JwtUtil jwtUtil;
 
     @Autowired
@@ -45,8 +48,7 @@ public class PatientPortalService {
     private VitalsRepository vitalsRepository;
 
     public PatientLoginResponse login(PatientLoginRequest request) {
-        Patient patient = patientRepository.findByIdNumber(request.getIdNumber())
-                .orElseThrow(() -> new RuntimeException("Patient not found with ID number: " + request.getIdNumber()));
+        Patient patient = patientService.findByIdentifier(request.getIdNumber());
 
         LocalDate dob;
         try {

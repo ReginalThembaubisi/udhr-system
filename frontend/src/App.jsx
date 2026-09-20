@@ -3,7 +3,7 @@ import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
   Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode,
-  Menu, Users, CornerUpRight
+  Menu, Users, CornerUpRight, Package
 } from 'lucide-react';
 import './App.css';
 
@@ -2674,6 +2674,240 @@ function App() {
     );
   }
 
+  // 4. Pharmacist dashboard — light clinical redesign, same sidebar shell as
+  // Clinical (Dispense/Stock nav). Reuses all existing state and handlers.
+  if (token && isPharmacist && !mustChangePassword) {
+    const pharmNavItems = [
+      { key: 'dispense', label: 'Dispense', icon: <Pill size={17} /> },
+      { key: 'stock', label: 'Stock', icon: <Package size={17} /> },
+    ];
+
+    const selectPharmNavTab = (key) => {
+      setPharmacistTab(key);
+      setIsMobileNavOpen(false);
+      if (key === 'stock') fetchStockItems();
+    };
+
+    const renderDispensePanel = () => (
+      <>
+        <h1 className="udhr-page-title">Dispense</h1>
+        <p className="udhr-page-subtitle">Find a patient to see pending prescriptions.</p>
+
+        <form onSubmit={handleSearchPharmacyPatient} className="udhr-search-bar">
+          <input
+            type="text"
+            className="udhr-input"
+            value={pharmacySearchId}
+            onChange={(e) => setPharmacySearchId(e.target.value)}
+            placeholder="Enter patient ID number or MRN"
+            required
+          />
+          <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
+        </form>
+
+        {pharmacyRecord ? (
+          <>
+            <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
+              <div className="udhr-record-body">
+                <p className="udhr-row-title" style={{ fontSize: '15px' }}>{pharmacyRecord.patient.firstName} {pharmacyRecord.patient.lastName}</p>
+                <p className="udhr-row-subtitle">{pharmacyRecord.patient.idNumber ? `ID: ${pharmacyRecord.patient.idNumber} · ` : ''}MRN: {pharmacyRecord.patient.mrn}</p>
+                {pharmacyRecord.currentVisit ? (
+                  <p className="udhr-row-subtitle" style={{ marginTop: '8px' }}>
+                    Coming from: {pharmacyRecord.currentVisit.staff ? `${pharmacyRecord.currentVisit.staff.firstName} ${pharmacyRecord.currentVisit.staff.lastName} (${pharmacyRecord.currentVisit.staff.role})` : 'Unknown staff member'} — {pharmacyRecord.currentVisit.reason}
+                    <br />Visit status: <span className="udhr-tag info" style={{ marginLeft: '4px' }}>{pharmacyRecord.currentVisit.status}</span>
+                  </p>
+                ) : (
+                  <p className="udhr-row-subtitle" style={{ marginTop: '8px' }}>No visit on file for this patient yet.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
+              <div className="udhr-record-body">
+                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Prescriptions waiting to be dispensed</h3>
+                {pharmacyRecord.pendingPrescriptions.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '30px 20px' }}>
+                    <CheckCircle size={36} color="#86efac" style={{ margin: '0 auto 10px' }} />
+                    <p className="udhr-empty-note">Nothing waiting for this patient at the pharmacy right now.</p>
+                  </div>
+                ) : (
+                  pharmacyRecord.pendingPrescriptions.map(p => (
+                    <div key={p.id} className="udhr-list-row">
+                      <div>
+                        <p className="udhr-row-title">{p.medication}</p>
+                        <p className="udhr-row-subtitle">{p.dosage} · {p.frequency}</p>
+                        <p className="udhr-row-subtitle">Prescribed by {p.doctor ? `${p.doctor.firstName} ${p.doctor.lastName}` : 'doctor'} on {new Date(p.createdAt).toLocaleDateString()}</p>
+                        {p.notes && <p className="udhr-row-subtitle" style={{ fontStyle: 'italic' }}>{p.notes}</p>}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDispense(p.id)}
+                        style={{ padding: '8px 14px', border: 'none', borderRadius: '8px', background: 'var(--udhr-success)', color: '#fff', fontSize: '12.5px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+                      >
+                        Mark dispensed
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="udhr-record-card">
+              <div className="udhr-record-body">
+                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Log dispense event</h3>
+                <form onSubmit={handleLogDispense} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <input type="number" className="udhr-input" placeholder="Prescription ID" value={dispenseLogForm.prescriptionId} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, prescriptionId: e.target.value })} required />
+                  <input type="text" className="udhr-input" placeholder="Quantity dispensed (e.g. 30 tablets)" value={dispenseLogForm.quantityDispensed} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, quantityDispensed: e.target.value })} required />
+                  <input type="number" className="udhr-input" placeholder="Days supply" value={dispenseLogForm.daysSupply} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, daysSupply: e.target.value })} />
+                  <input type="text" className="udhr-input" placeholder="Pharmacy notes" value={dispenseLogForm.pharmacyNotes} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, pharmacyNotes: e.target.value })} />
+                  <button type="submit" className="udhr-btn-neutral" style={{ gridColumn: '1 / -1' }}>Log dispense</button>
+                </form>
+
+                {dispenseHistory.length > 0 && (
+                  <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: '1px dashed var(--udhr-border)' }}>
+                    <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Dispense history</p>
+                    {dispenseHistory.map(d => (
+                      <div key={d.id} className="udhr-list-row">
+                        <p className="udhr-row-title" style={{ fontSize: '13px' }}>{d.prescription.medication} — {d.quantityDispensed}{d.daysSupply ? ` (${d.daysSupply} days)` : ''}</p>
+                        <p className="udhr-row-subtitle">by {d.dispensedBy.firstName} {d.dispensedBy.lastName} on {new Date(d.dispensedAt).toLocaleDateString()}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="udhr-empty-state">
+            <Pill size={48} color="#cbd5e1" style={{ margin: '0 auto 16px' }} />
+            <h3>No patient loaded</h3>
+            <p className="udhr-empty-note">Look a patient up by their ID number to see what's waiting to be dispensed.</p>
+          </div>
+        )}
+      </>
+    );
+
+    const renderStockPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Stock</h1>
+        <p className="udhr-page-subtitle">Inventory levels across the pharmacy.</p>
+
+        <div className="udhr-record-card" style={{ marginBottom: '20px', maxWidth: '640px' }}>
+          <div className="udhr-record-body">
+            <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Add stock item</h3>
+            <form onSubmit={handleAddStockItem} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '10px', alignItems: 'flex-end' }}>
+              <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                <label className="udhr-label">Medication name</label>
+                <input type="text" className="udhr-input" value={newStockItemForm.medicationName} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, medicationName: e.target.value })} required />
+              </div>
+              <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                <label className="udhr-label">Unit</label>
+                <input type="text" className="udhr-input" value={newStockItemForm.unit} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, unit: e.target.value })} />
+              </div>
+              <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                <label className="udhr-label">Quantity</label>
+                <input type="number" className="udhr-input" value={newStockItemForm.quantityOnHand} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, quantityOnHand: parseInt(e.target.value, 10) || 0 })} />
+              </div>
+              <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                <label className="udhr-label">Reorder level</label>
+                <input type="number" className="udhr-input" value={newStockItemForm.reorderLevel} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, reorderLevel: parseInt(e.target.value, 10) || 0 })} />
+              </div>
+              <button type="submit" className="udhr-btn-neutral" style={{ gridColumn: '1 / -1' }}>Add item</button>
+            </form>
+          </div>
+        </div>
+
+        <div className="udhr-record-card">
+          <div className="udhr-record-body">
+            {stockItems.length === 0 ? (
+              <p className="udhr-empty-note">No stock items tracked yet. Add one above.</p>
+            ) : (
+              stockItems.map(item => (
+                <div key={item.id} className="udhr-list-row">
+                  <div>
+                    <p className="udhr-row-title">
+                      {item.medicationName}{' '}
+                      {item.quantityOnHand <= item.reorderLevel && (
+                        <span className="udhr-tag danger" style={{ marginLeft: '6px' }}>LOW STOCK</span>
+                      )}
+                    </p>
+                    <p className="udhr-row-subtitle">{item.quantityOnHand} {item.unit} on hand — reorder below {item.reorderLevel}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <input
+                      type="number"
+                      className="udhr-input"
+                      placeholder="±qty"
+                      value={stockAdjustAmount[item.id] || ''}
+                      onChange={(e) => setStockAdjustAmount(prev => ({ ...prev, [item.id]: e.target.value }))}
+                      style={{ width: '90px' }}
+                    />
+                    <button type="button" className="udhr-btn-neutral" onClick={() => handleAdjustStock(item.id)}>Adjust</button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </>
+    );
+
+    return (
+      <div className="udhr-shell">
+        {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
+        <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
+          <div className="udhr-sidebar-header">
+            <div className="udhr-page-logo">
+              <div className="udhr-page-logo-chip"><Activity size={16} color="#fff" /></div>
+              UDHR
+            </div>
+            <button type="button" className="udhr-sidebar-close" onClick={() => setIsMobileNavOpen(false)}><XCircle size={18} /></button>
+          </div>
+          <nav className="udhr-sidebar-nav">
+            {pharmNavItems.map(item => (
+              <button key={item.key} type="button" className={`udhr-nav-item ${pharmacistTab === item.key ? 'active' : ''}`} onClick={() => selectPharmNavTab(item.key)}>
+                {item.icon} {item.label}
+              </button>
+            ))}
+          </nav>
+          <div className="udhr-sidebar-footer">
+            <div className="udhr-user-row">
+              <div className="udhr-user-avatar">{userName ? userName.charAt(0) : <User size={14} />}</div>
+              <div style={{ minWidth: 0 }}>
+                <p className="udhr-user-name">{userName}</p>
+                <p className="udhr-user-role">{userRole}</p>
+              </div>
+            </div>
+            <button type="button" className="udhr-logout-link" onClick={handleLogout}><LogOut size={15} /> Log out</button>
+          </div>
+        </aside>
+
+        <main className="udhr-shell-main">
+          <button type="button" className="udhr-mobile-menu-btn" onClick={() => setIsMobileNavOpen(true)}>
+            <Menu size={16} /> Menu
+          </button>
+
+          {errorMessage && (
+            <div className="udhr-alert-banner error">
+              <AlertCircle size={16} />
+              <span style={{ flex: 1 }}>{errorMessage}</span>
+              <button type="button" onClick={() => setErrorMessage('')}>×</button>
+            </div>
+          )}
+          {successMessage && (
+            <div className="udhr-alert-banner success">
+              <CheckCircle size={16} />
+              <span style={{ flex: 1 }}>{successMessage}</span>
+              <button type="button" onClick={() => setSuccessMessage('')}>×</button>
+            </div>
+          )}
+
+          {pharmacistTab === 'dispense' ? renderDispensePanel() : renderStockPanel()}
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-container">
       {/* Header */}
@@ -2778,220 +3012,7 @@ function App() {
         {/* 3. Healthcare Staff View */}
         {token && userRole !== 'PATIENT' && !mustChangePassword && (
           <div>
-            {isPharmacist ? (
-              <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'left' }}>
-                {/* Pharmacist Tab Switcher */}
-                <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '480px' }}>
-                  <button
-                    className="btn"
-                    style={{ flex: 1, background: pharmacistTab === 'dispense' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                    onClick={() => setPharmacistTab('dispense')}
-                  >
-                    Dispense to Patient
-                  </button>
-                  <button
-                    className="btn"
-                    style={{ flex: 1, background: pharmacistTab === 'stock' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                    onClick={() => { setPharmacistTab('stock'); fetchStockItems(); }}
-                  >
-                    Stock & Inventory
-                  </button>
-                </div>
-
-                {pharmacistTab === 'dispense' ? (
-                <>
-                {/* Pharmacy Lookup Card */}
-                <div className="glass-card" style={{ marginBottom: '20px' }}>
-                  <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Search size={18} /> Look Up Patient
-                  </h3>
-                  <form onSubmit={handleSearchPharmacyPatient} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
-                    <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                      <label htmlFor="pharmacySearchId">ID Number or MRN</label>
-                      <input
-                        type="text"
-                        id="pharmacySearchId"
-                        value={pharmacySearchId}
-                        onChange={(e) => setPharmacySearchId(e.target.value)}
-                        placeholder="Enter patient ID number or MRN"
-                        required
-                      />
-                    </div>
-                    <button type="submit" className="btn btn-primary" disabled={loading}>
-                      <Search size={16} /> {loading ? 'Searching...' : 'Find Patient'}
-                    </button>
-                  </form>
-                </div>
-
-                {pharmacyRecord ? (
-                  <>
-                    {/* Where the patient came from */}
-                    <div className="glass-card" style={{ marginBottom: '20px' }}>
-                      <h2 style={{ color: '#fff' }}>
-                        {pharmacyRecord.patient.firstName} {pharmacyRecord.patient.lastName}
-                      </h2>
-                      <p className="text-muted" style={{ marginTop: '4px' }}>
-                        {pharmacyRecord.patient.idNumber ? `ID Number: ${pharmacyRecord.patient.idNumber} | ` : ''}MRN: {pharmacyRecord.patient.mrn}
-                      </p>
-                      {pharmacyRecord.currentVisit ? (
-                        <p className="text-muted" style={{ marginTop: '8px', color: '#c7d2fe', fontSize: '0.85rem' }}>
-                          📋 <strong>Coming from:</strong> {pharmacyRecord.currentVisit.staff ? `${pharmacyRecord.currentVisit.staff.firstName} ${pharmacyRecord.currentVisit.staff.lastName} (${pharmacyRecord.currentVisit.staff.role})` : 'Unknown staff member'} — <em>{pharmacyRecord.currentVisit.reason}</em>
-                          <br />Visit status: <span className="badge badge-green" style={{ marginLeft: '4px' }}>{pharmacyRecord.currentVisit.status}</span>
-                        </p>
-                      ) : (
-                        <p className="text-muted" style={{ marginTop: '8px', fontSize: '0.85rem' }}>No visit on file for this patient yet.</p>
-                      )}
-                    </div>
-
-                    {/* Pending prescriptions to dispense */}
-                    <div className="glass-card" style={{ marginBottom: '20px' }}>
-                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Pill /> Prescriptions Waiting to Be Dispensed
-                      </h3>
-                      {pharmacyRecord.pendingPrescriptions.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                          <CheckCircle size={40} style={{ color: 'var(--success)', margin: '0 auto 12px', opacity: 0.6 }} />
-                          <p className="text-muted">Nothing waiting for this patient at the pharmacy right now.</p>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          {pharmacyRecord.pendingPrescriptions.map(p => (
-                            <div key={p.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                              <div>
-                                <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>{p.medication}</p>
-                                <p className="text-muted" style={{ fontSize: '0.8rem' }}>Dosage: {p.dosage} | Frequency: {p.frequency}</p>
-                                <p className="text-muted" style={{ fontSize: '0.75rem' }}>
-                                  Prescribed by {p.doctor ? `${p.doctor.firstName} ${p.doctor.lastName}` : 'doctor'} on {new Date(p.createdAt).toLocaleDateString()}
-                                </p>
-                                {p.notes && <p className="text-muted" style={{ fontSize: '0.75rem', fontStyle: 'italic' }}>Notes: {p.notes}</p>}
-                              </div>
-                              <button
-                                className="btn btn-primary"
-                                onClick={() => handleDispense(p.id)}
-                                style={{ padding: '8px 16px', fontSize: '0.85rem' }}
-                              >
-                                Mark Dispensed
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Restored feature: log a detailed dispense event (quantity, days supply, stock deduction) */}
-                    <div className="glass-card" style={{ marginBottom: '20px' }}>
-                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Clipboard size={18} /> Log Dispense Event
-                      </h3>
-                      <form onSubmit={handleLogDispense} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Prescription ID</label>
-                          <input type="number" value={dispenseLogForm.prescriptionId} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, prescriptionId: e.target.value })} required />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Quantity Dispensed</label>
-                          <input type="text" placeholder="e.g. 30 tablets" value={dispenseLogForm.quantityDispensed} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, quantityDispensed: e.target.value })} required />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Days Supply</label>
-                          <input type="number" value={dispenseLogForm.daysSupply} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, daysSupply: e.target.value })} />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Pharmacy Notes</label>
-                          <input type="text" value={dispenseLogForm.pharmacyNotes} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, pharmacyNotes: e.target.value })} />
-                        </div>
-                        <button type="submit" className="btn btn-primary" style={{ gridColumn: '1 / -1' }}>Log Dispense</button>
-                      </form>
-
-                      {dispenseHistory.length > 0 && (
-                        <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          <h4 style={{ color: '#a5b4fc', fontSize: '0.9rem' }}>Dispense History for This Patient</h4>
-                          {dispenseHistory.map(d => (
-                            <div key={d.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '8px', borderRadius: '8px', fontSize: '0.8rem' }}>
-                              <span style={{ color: '#fff' }}>{d.prescription.medication}</span> — {d.quantityDispensed}
-                              {d.daysSupply ? ` (${d.daysSupply} days)` : ''} by {d.dispensedBy.firstName} {d.dispensedBy.lastName} on {new Date(d.dispensedAt).toLocaleDateString()}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <div className="glass-card" style={{ padding: '60px 20px', textAlign: 'center' }}>
-                    <Pill size={56} className="text-muted" style={{ margin: '0 auto 16px', opacity: 0.3 }} />
-                    <h3 style={{ color: '#fff', marginBottom: '8px' }}>No Patient Loaded</h3>
-                    <p className="text-muted">Look a patient up by their ID number to see what's waiting to be dispensed.</p>
-                  </div>
-                )}
-                </>
-                ) : (
-                  /* Restored feature: Stock & Inventory */
-                  <div>
-                    <div className="glass-card" style={{ marginBottom: '20px' }}>
-                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <PlusCircle size={18} /> Add Stock Item
-                      </h3>
-                      <form onSubmit={handleAddStockItem} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '10px', alignItems: 'flex-end' }}>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Medication Name</label>
-                          <input type="text" value={newStockItemForm.medicationName} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, medicationName: e.target.value })} required />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Unit</label>
-                          <input type="text" value={newStockItemForm.unit} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, unit: e.target.value })} />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Quantity</label>
-                          <input type="number" value={newStockItemForm.quantityOnHand} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, quantityOnHand: parseInt(e.target.value, 10) || 0 })} />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label>Reorder Level</label>
-                          <input type="number" value={newStockItemForm.reorderLevel} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, reorderLevel: parseInt(e.target.value, 10) || 0 })} />
-                        </div>
-                        <button type="submit" className="btn btn-primary" style={{ gridColumn: '1 / -1' }}>Add Item</button>
-                      </form>
-                    </div>
-
-                    <div className="glass-card">
-                      <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px' }}>Facility Stock Levels</h3>
-                      {stockItems.length === 0 ? (
-                        <p className="text-muted" style={{ fontSize: '0.85rem' }}>No stock items tracked yet. Add one above.</p>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                          {stockItems.map(item => (
-                            <div key={item.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                              <div>
-                                <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
-                                  {item.medicationName}{' '}
-                                  {item.quantityOnHand <= item.reorderLevel && (
-                                    <span className="badge badge-red" style={{ marginLeft: '6px', fontSize: '0.7rem' }}>LOW STOCK</span>
-                                  )}
-                                </p>
-                                <p className="text-muted" style={{ fontSize: '0.8rem' }}>
-                                  {item.quantityOnHand} {item.unit} on hand — reorder below {item.reorderLevel}
-                                </p>
-                              </div>
-                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                <input
-                                  type="number"
-                                  placeholder="+/- qty"
-                                  value={stockAdjustAmount[item.id] || ''}
-                                  onChange={(e) => setStockAdjustAmount(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                  style={{ width: '90px' }}
-                                />
-                                <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '0.8rem' }} onClick={() => handleAdjustStock(item.id)}>
-                                  Adjust
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : isAdmin ? (
+            {isAdmin ? (
               <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'left' }}>
                 {/* Admin Tab Switcher — staff & facility management only, no patient data */}
                 <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '560px' }}>

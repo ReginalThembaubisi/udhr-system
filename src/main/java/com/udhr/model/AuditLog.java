@@ -21,8 +21,10 @@ public class AuditLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // Nullable: a patient viewing their own record (PatientPortalService) logs
+    // with no staff actor at all, not just an unresolved one.
     @ManyToOne
-    @JoinColumn(name = "staff_id", nullable = false)
+    @JoinColumn(name = "staff_id", nullable = true)
     private Staff staff;
 
     @ManyToOne

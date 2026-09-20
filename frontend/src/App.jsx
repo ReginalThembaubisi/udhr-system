@@ -35,7 +35,8 @@ function App() {
   const [triageHistory, setTriageHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [myLabResults, setMyLabResults] = useState([]);
-  const [patientPortalTab, setPatientPortalTab] = useState('overview'); // 'overview' | 'symptoms' | 'medications' | 'food' | 'labs'
+  const [patientReferral, setPatientReferral] = useState(null);
+  const [patientPortalTab, setPatientPortalTab] = useState('overview'); // 'overview' | 'symptoms' | 'medications' | 'food' | 'labs' | 'referral'
 
   // Health Assistant (chatbot) state — floating bubble widget, not a tab
   const [chatMessages, setChatMessages] = useState([
@@ -123,6 +124,9 @@ function App() {
   const [newAnnouncementForm, setNewAnnouncementForm] = useState({
     title: '', message: '', photoUrl: ''
   });
+
+  // Admin: read-only referral oversight (incoming/outgoing between facilities)
+  const [referralReport, setReferralReport] = useState(null);
 
   // Login screen: active announcements fetched without auth, rotated as a carousel
   const [publicAnnouncements, setPublicAnnouncements] = useState([]);
@@ -343,6 +347,18 @@ function App() {
     }
   };
 
+  const fetchReferralReport = async () => {
+    try {
+      const response = await fetch('/api/referrals/report', { headers: getAuthHeaders() });
+      if (response.ok) {
+        const data = await response.json();
+        setReferralReport(data);
+      }
+    } catch (err) {
+      console.error('Error fetching referral report', err);
+    }
+  };
+
   const handleCreateAnnouncement = async (e) => {
     e.preventDefault();
     setErrorMessage('');
@@ -462,6 +478,13 @@ function App() {
       if (myLabResultsRes.ok) {
         const myLabResultsData = await myLabResultsRes.json();
         setMyLabResults(myLabResultsData);
+      }
+
+      // 10. Fetch my active referral letter, if any
+      const referralRes = await fetch('/api/patient/me/referral', { headers: getAuthHeaders() });
+      if (referralRes.ok) {
+        const referralData = await referralRes.json();
+        setPatientReferral(referralData);
       }
     } catch (err) {
       console.error("Error fetching patient portal data", err);
@@ -1602,6 +1625,7 @@ function App() {
               ['medications', 'Medications'],
               ['food', 'Food Checker'],
               ['labs', 'Lab Results'],
+              ['referral', 'Referral Letter'],
             ].map(([key, label]) => (
               <button
                 key={key}
@@ -1618,6 +1642,19 @@ function App() {
           {patientPortalTab === 'overview' && (
             <>
               <div className="udhr-stat-grid">
+                <div className="udhr-stat-card">
+                  <p className="udhr-stat-label">Next dose</p>
+                  <p className="udhr-stat-value">
+                    {(() => {
+                      const pending = (reminderData?.adherenceLogs || [])
+                        .filter(l => l.status === 'PENDING')
+                        .sort((a, b) => new Date(a.scheduledTime) - new Date(b.scheduledTime));
+                      if (pending.length === 0) return '—';
+                      const next = pending[0];
+                      return `${new Date(next.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${next.reminder.prescription.medication}`;
+                    })()}
+                  </p>
+                </div>
                 <div className="udhr-stat-card">
                   <p className="udhr-stat-label">Weekly adherence</p>
                   <p className="udhr-stat-value">
@@ -2000,6 +2037,40 @@ function App() {
                     </p>
                   </div>
                 ))
+              )}
+            </>
+          )}
+
+          {/* ===== Referral Letter ===== */}
+          {patientPortalTab === 'referral' && (
+            <>
+              {patientReferral ? (
+                <div className="udhr-card" style={{ maxWidth: '480px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                    <div>
+                      <p style={{ margin: '0 0 2px', fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Referral Letter</p>
+                      <p style={{ margin: 0, fontSize: '14px', fontWeight: 700 }}>Present this at the front desk</p>
+                    </div>
+                    <span className={`udhr-tag ${patientReferral.urgency === 'EMERGENCY' ? 'danger' : patientReferral.urgency === 'URGENT' ? 'warning' : 'info'}`}>
+                      {patientReferral.urgency.charAt(0) + patientReferral.urgency.slice(1).toLowerCase()}
+                    </span>
+                  </div>
+                  <div style={{ border: '1px dashed var(--udhr-border)', borderRadius: '10px', padding: '16px', textAlign: 'center', marginBottom: '16px' }}>
+                    <p style={{ margin: '0 0 4px', fontSize: '11px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Referral Code</p>
+                    <p style={{ margin: 0, fontSize: '24px', fontWeight: 800, letterSpacing: '0.02em' }}>REF-{patientReferral.id}</p>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13.5px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span className="udhr-row-subtitle">Referred to</span><strong style={{ textAlign: 'right' }}>{patientReferral.toFacility?.name}</strong></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span className="udhr-row-subtitle">Reason</span><strong style={{ textAlign: 'right' }}>{patientReferral.reason}</strong></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span className="udhr-row-subtitle">Issued by</span><strong style={{ textAlign: 'right' }}>Dr. {patientReferral.referredBy?.firstName} {patientReferral.referredBy?.lastName}</strong></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span className="udhr-row-subtitle">Issued</span><strong style={{ textAlign: 'right' }}>{new Date(patientReferral.referredAt).toLocaleDateString()}</strong></div>
+                  </div>
+                  <p className="udhr-empty-note" style={{ marginTop: '14px', marginBottom: 0, textAlign: 'left' }}>
+                    Valid immediately — no approval wait. Show this code at {patientReferral.toFacility?.name}'s front desk.
+                  </p>
+                </div>
+              ) : (
+                <p className="udhr-empty-note">No active referral letter. Your doctor will issue one here if you're referred to another facility.</p>
               )}
             </>
           )}
@@ -3174,6 +3245,7 @@ function App() {
       { key: 'frontdesk', label: 'Front Desk', icon: <Clipboard size={17} /> },
       { key: 'staff', label: 'Staff', icon: <Users size={17} /> },
       { key: 'facilities', label: 'Facilities', icon: <Building2 size={17} /> },
+      { key: 'referrals', label: 'Referrals', icon: <CornerUpRight size={17} /> },
       { key: 'announcements', label: 'Announcements', icon: <Megaphone size={17} /> },
     ];
 
@@ -3183,6 +3255,7 @@ function App() {
       if (key === 'frontdesk') fetchRecentCheckIns();
       if (key === 'staff') fetchStaffList();
       if (key === 'facilities') fetchFacilityList();
+      if (key === 'referrals') fetchReferralReport();
       if (key === 'announcements') fetchAnnouncements();
     };
 
@@ -3454,6 +3527,92 @@ function App() {
       </>
     );
 
+    const renderReferralsPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Referrals</h1>
+        <p className="udhr-page-subtitle">
+          Incoming and outgoing referrals for {referralReport?.facilityName || 'your facility'}.
+        </p>
+
+        {!referralReport ? (
+          <p className="udhr-empty-note">Loading...</p>
+        ) : (
+          <>
+            <div className="udhr-stat-grid">
+              <div className="udhr-stat-card">
+                <p className="udhr-stat-label">Outgoing</p>
+                <p className="udhr-stat-value">{referralReport.totalOutgoing}</p>
+              </div>
+              <div className="udhr-stat-card">
+                <p className="udhr-stat-label">Incoming</p>
+                <p className="udhr-stat-value">{referralReport.totalIncoming}</p>
+              </div>
+              <div className="udhr-stat-card">
+                <p className="udhr-stat-label">Pending incoming</p>
+                <p className="udhr-stat-value" style={{ color: referralReport.pendingIncoming > 0 ? 'var(--udhr-warning)' : undefined }}>
+                  {referralReport.pendingIncoming}
+                </p>
+              </div>
+              <div className="udhr-stat-card">
+                <p className="udhr-stat-label">Emergency referrals</p>
+                <p className="udhr-stat-value" style={{ color: referralReport.emergencyReferrals > 0 ? 'var(--udhr-danger)' : undefined }}>
+                  {referralReport.emergencyReferrals}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px,1fr))', gap: '20px', marginBottom: '20px' }}>
+              <div>
+                <h2 className="udhr-section-title">Top destinations</h2>
+                {referralReport.topDestinations.length === 0 ? (
+                  <p className="udhr-empty-note">No outgoing referrals yet.</p>
+                ) : (
+                  referralReport.topDestinations.map((t, i) => (
+                    <div key={i} className="udhr-row-card">
+                      <p className="udhr-row-title">{t.facilityName}</p>
+                      <span className="udhr-tag info">{t.referralCount}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div>
+                <h2 className="udhr-section-title">Top sources</h2>
+                {referralReport.topSources.length === 0 ? (
+                  <p className="udhr-empty-note">No incoming referrals yet.</p>
+                ) : (
+                  referralReport.topSources.map((t, i) => (
+                    <div key={i} className="udhr-row-card">
+                      <p className="udhr-row-title">{t.facilityName}</p>
+                      <span className="udhr-tag info">{t.referralCount}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <h2 className="udhr-section-title">Recent activity</h2>
+            {referralReport.recentActivity.length === 0 ? (
+              <p className="udhr-empty-note">No referral activity yet.</p>
+            ) : (
+              referralReport.recentActivity.map((r) => (
+                <div key={r.id} className="udhr-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '4px' }}>
+                    <p className="udhr-row-title">{r.patient.firstName} {r.patient.lastName}</p>
+                    <span className={`udhr-tag ${r.urgency === 'EMERGENCY' ? 'danger' : r.urgency === 'URGENT' ? 'warning' : 'info'}`}>{r.urgency}</span>
+                  </div>
+                  <p className="udhr-row-subtitle">{r.fromFacility.name} → {r.toFacility.name} · {r.reason}</p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
+                    <span className="udhr-tag neutral">{r.status}</span>
+                    <span className="udhr-row-subtitle">{new Date(r.referredAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </>
+        )}
+      </>
+    );
+
     const renderAnnouncementsPanel = () => (
       <>
         <h1 className="udhr-page-title">Public Announcements</h1>
@@ -3565,6 +3724,7 @@ function App() {
           {adminTab === 'frontdesk' && renderFrontDeskPanel()}
           {adminTab === 'staff' && renderStaffPanel()}
           {adminTab === 'facilities' && renderFacilitiesPanel()}
+          {adminTab === 'referrals' && renderReferralsPanel()}
           {adminTab === 'announcements' && renderAnnouncementsPanel()}
         </main>
       </div>

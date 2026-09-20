@@ -130,6 +130,17 @@ public class ReferralService {
         return referralRepository.findByPatientIdOrderByReferredAtDesc(patientId);
     }
 
+    // The patient's most recent still-relevant referral — the "letter" to
+    // present at the destination facility's front desk.
+    public Referral getActiveReferralForPatient(String idNumber) {
+        Patient patient = patientRepository.findByIdNumber(idNumber)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        return referralRepository.findByPatientIdOrderByReferredAtDesc(patient.getId()).stream()
+                .filter(r -> r.getStatus() == Referral.Status.PENDING || r.getStatus() == Referral.Status.ACCEPTED)
+                .findFirst()
+                .orElse(null);
+    }
+
     public ReferralReportResponse getReport(String staffNumber, String startDateStr, String endDateStr) {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));

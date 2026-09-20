@@ -2,7 +2,9 @@ package com.udhr.service;
 
 import com.udhr.dto.ChatbotResponse;
 import com.udhr.dto.HealthGuidanceResponse;
+import com.udhr.dto.IngredientCheckResult;
 import com.udhr.model.DietaryGuideline;
+import com.udhr.model.HealthTip;
 import com.udhr.model.Patient;
 import com.udhr.model.Prescription;
 import com.udhr.model.Symptom;
@@ -16,6 +18,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -35,6 +39,15 @@ public class ChatbotService {
 
     @Autowired
     private PrescriptionRepository prescriptionRepository;
+
+    @Autowired
+    private FoodIngredientService foodIngredientService;
+
+    // Matches "can I eat X", "is it safe to eat X", "should I eat X" — the
+    // captured group is looked up against the same ingredient/allergy database
+    // the Food Checker feature uses, not a hardcoded answer.
+    private static final Pattern FOOD_SAFETY_PATTERN = Pattern.compile(
+            "(?:can i (?:eat|have)|is it safe to eat|is safe to eat|should i eat) (.+)");
 
     // Phrases that warrant an immediate emergency response, independent of the
     // seeded symptom list (which only covers Kaggle disease-symptom wording).
@@ -110,6 +123,14 @@ public class ChatbotService {
             return new ChatbotResponse(reply, check.getUrgencyLevel(), symptomNames);
         }
 
+        Matcher foodMatcher = FOOD_SAFETY_PATTERN.matcher(lower);
+        if (foodMatcher.find()) {
+            String food = foodMatcher.group(1).replaceAll("[?.!]+$", "").trim();
+            if (!food.isEmpty()) {
+                return new ChatbotResponse(buildFoodSafetyReply(idNumber, food), null, null);
+            }
+        }
+
         if (containsAny(lower, "hi", "hello", "hey")) {
             return new ChatbotResponse(
                     "Hi! I'm your health assistant. Describe any symptoms you're feeling (e.g. \"I have a headache and fever\") and I'll guide you on next steps, or ask me about your medications, allergies, or diet.",
@@ -142,17 +163,37 @@ public class ChatbotService {
         return false;
     }
 
+    private String buildFoodSafetyReply(String idNumber, String food) {
+        List<IngredientCheckResult> results = foodIngredientService.checkIngredients(idNumber, food);
+        if (results.isEmpty()) {
+            return "I couldn't check \"" + food + "\" — try naming a specific ingredient, e.g. \"can I eat sugar?\"";
+        }
+        return results.get(0).getReason();
+    }
+
     private String buildDietReply(String idNumber) {
         HealthGuidanceResponse guidance = healthGuidanceService.getPersonalGuidance(idNumber);
         List<DietaryGuideline> guidelines = guidance.getDietaryGuidelines();
-        if (guidelines == null || guidelines.isEmpty()) {
+        List<HealthTip> tips = guidance.getHealthTips();
+        if ((guidelines == null || guidelines.isEmpty()) && (tips == null || tips.isEmpty())) {
             return "You don't have any specific dietary guidelines on file yet — this is usually based on chronic conditions your doctor has recorded. Ask your doctor for personalized dietary advice.";
         }
         StringBuilder sb = new StringBuilder("Based on your conditions (" + String.join(", ", guidance.getConditions()) + "), here's what's recommended:\n");
-        for (DietaryGuideline g : guidelines) {
-            sb.append(g.getFoodType().equals("EAT") ? "\n✓ Eat: " : "\n✕ Avoid: ").append(g.getFoodItem());
-            if (g.getDescription() != null && !g.getDescription().isBlank()) {
-                sb.append(" — ").append(g.getDescription());
+        if (guidelines != null) {
+            for (DietaryGuideline g : guidelines) {
+                sb.append(g.getFoodType().equals("EAT") ? "\n✓ Eat: " : "\n✕ Avoid: ").append(g.getFoodItem());
+                if (g.getDescription() != null && !g.getDescription().isBlank()) {
+                    sb.append(" — ").append(g.getDescription());
+                }
+            }
+        }
+        if (tips != null && !tips.isEmpty()) {
+            sb.append("\n\nLifestyle tips:");
+            for (HealthTip tip : tips) {
+                sb.append("\n• ").append(tip.getTitle());
+                if (tip.getDescription() != null && !tip.getDescription().isBlank()) {
+                    sb.append(" — ").append(tip.getDescription());
+                }
             }
         }
         return sb.toString();

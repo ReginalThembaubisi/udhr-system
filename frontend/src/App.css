@@ -628,6 +628,71 @@
   overflow: hidden;
 }
 
+.udhr-chat-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: var(--udhr-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+  cursor: pointer;
+  z-index: 200;
+  transition: transform 0.15s ease;
+}
+
+.udhr-chat-fab:hover {
+  transform: scale(1.06);
+}
+
+.udhr-chat-widget {
+  position: fixed;
+  bottom: 96px;
+  right: 24px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  max-height: min(480px, calc(100vh - 140px));
+  display: flex;
+  flex-direction: column;
+  background: var(--udhr-surface);
+  border: 1px solid var(--udhr-border);
+  border-radius: var(--udhr-radius-lg);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22);
+  overflow: hidden;
+  z-index: 200;
+}
+
+.udhr-chat-widget-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--udhr-border);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--udhr-text);
+}
+
+.udhr-chat-widget-close {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--udhr-text-muted);
+  cursor: pointer;
+  display: flex;
+}
+
+.udhr-chat-widget .udhr-chat-messages {
+  flex: 1;
+  max-height: none;
+}
+
 .udhr-chat-messages {
   display: flex;
   flex-direction: column;

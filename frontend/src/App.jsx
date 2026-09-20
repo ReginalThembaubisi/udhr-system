@@ -3,7 +3,7 @@ import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
   Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode,
-  Menu, Users, CornerUpRight, Package
+  Menu, Users, CornerUpRight, Package, Building2
 } from 'lucide-react';
 import './App.css';
 
@@ -2908,6 +2908,353 @@ function App() {
     );
   }
 
+  // 5. Admin dashboard — light clinical redesign, same sidebar shell
+  // (Front Desk/Staff/Facilities nav). Reuses all existing state and
+  // handlers. The mockup's "Announcements" nav item is skipped — there's
+  // no announcements feature (model, endpoints, or state) anywhere in this
+  // app to redesign; adding one would be new functionality, not a
+  // presentation change.
+  if (token && isAdmin && !mustChangePassword) {
+    const adminNavItems = [
+      { key: 'frontdesk', label: 'Front Desk', icon: <Clipboard size={17} /> },
+      { key: 'staff', label: 'Staff', icon: <Users size={17} /> },
+      { key: 'facilities', label: 'Facilities', icon: <Building2 size={17} /> },
+    ];
+
+    const selectAdminNavTab = (key) => {
+      setAdminTab(key);
+      setIsMobileNavOpen(false);
+      if (key === 'frontdesk') fetchRecentCheckIns();
+      if (key === 'staff') fetchStaffList();
+      if (key === 'facilities') fetchFacilityList();
+    };
+
+    const renderFrontDeskPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Front Desk</h1>
+        <p className="udhr-page-subtitle">Register new patients and check existing ones in on arrival.</p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px', marginBottom: '20px' }}>
+          <div className="udhr-record-card">
+            <div className="udhr-record-body">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Register new patient</h3>
+              <form onSubmit={handleRegisterPatient}>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">ID Number</label>
+                  <input type="text" className="udhr-input" value={patientRegForm.idNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, idNumber: e.target.value })} placeholder="SA ID number (optional)" />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Passport Number</label>
+                  <input type="text" className="udhr-input" value={patientRegForm.passportNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, passportNumber: e.target.value })} placeholder="Passport number (optional)" />
+                </div>
+                <p className="udhr-empty-note" style={{ marginBottom: '12px' }}>
+                  An MRN is auto-assigned to every patient regardless — ID number and passport number are optional.
+                </p>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">First Name</label>
+                  <input type="text" className="udhr-input" value={patientRegForm.firstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, firstName: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Last Name</label>
+                  <input type="text" className="udhr-input" value={patientRegForm.lastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, lastName: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Date of Birth</label>
+                  <input type="date" className="udhr-input" value={patientRegForm.dateOfBirth} onChange={(e) => setPatientRegForm({ ...patientRegForm, dateOfBirth: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Gender</label>
+                  <select className="udhr-input" value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })}>
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Contact Number</label>
+                  <input type="text" className="udhr-input" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value })} />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Email Address</label>
+                  <input type="email" className="udhr-input" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@gmail.com" />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Address</label>
+                  <textarea className="udhr-textarea" value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} />
+                </div>
+                <button
+                  type="button"
+                  className="udhr-btn-neutral"
+                  style={{ width: '100%', marginBottom: '10px' }}
+                  onClick={() => setShowRegExtras(!showRegExtras)}
+                >
+                  {showRegExtras ? 'Hide' : 'Add'} Next of Kin / Newborn Details (optional)
+                </button>
+                {showRegExtras && (
+                  <div style={{ background: '#f8fafc', border: '1px solid var(--udhr-border)', padding: '12px', borderRadius: '8px', marginBottom: '10px' }}>
+                    <p className="udhr-empty-note" style={{ marginBottom: '8px' }}>Next of Kin</p>
+                    <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} /></div>
+                    <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} /></div>
+                    <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Relationship (e.g. Husband)" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} /></div>
+                    <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Phone number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} /></div>
+                    <p className="udhr-empty-note" style={{ margin: '12px 0 8px' }}>Newborn — leave blank unless registering a baby at birth</p>
+                    <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Mother's ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} /></div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <input type="number" className="udhr-input" placeholder="Birth weight (g)" value={patientRegForm.birthWeightGrams} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthWeightGrams: e.target.value })} />
+                      <input type="number" className="udhr-input" placeholder="Birth length (cm)" value={patientRegForm.birthLengthCm} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthLengthCm: e.target.value })} />
+                      <input type="number" className="udhr-input" placeholder="Apgar (1 min)" value={patientRegForm.apgarScore1Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore1Min: e.target.value })} />
+                      <input type="number" className="udhr-input" placeholder="Apgar (5 min)" value={patientRegForm.apgarScore5Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore5Min: e.target.value })} />
+                    </div>
+                  </div>
+                )}
+                <button type="submit" className="udhr-btn-primary">Create patient record</button>
+              </form>
+            </div>
+          </div>
+
+          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+            <div className="udhr-record-body">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px' }}>Check in patient</h3>
+              <p className="udhr-empty-note" style={{ marginBottom: '14px' }}>
+                Logs that the patient has arrived so the nurse can find them straight away by ID number or MRN — no queue ticket needed.
+              </p>
+              <form onSubmit={handleCheckIn}>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">ID Number or MRN</label>
+                  <input
+                    type="text"
+                    className="udhr-input"
+                    value={checkinSearchId}
+                    onChange={(e) => setCheckinSearchId(e.target.value)}
+                    placeholder="Enter patient ID number or MRN"
+                    required
+                  />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Reason for visit (optional)</label>
+                  <input
+                    type="text"
+                    className="udhr-input"
+                    value={checkinReason}
+                    onChange={(e) => setCheckinReason(e.target.value)}
+                    placeholder="e.g. Follow-up, flu symptoms..."
+                  />
+                </div>
+                <button type="submit" className="udhr-btn-primary">Check in</button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Recent check-ins</p>
+        <div className="udhr-record-card">
+          <div className="udhr-record-body">
+            {recentCheckIns.length === 0 ? (
+              <p className="udhr-empty-note">No check-ins logged yet today.</p>
+            ) : (
+              recentCheckIns.map(v => (
+                <div key={v.id} className="udhr-list-row">
+                  <div>
+                    <p className="udhr-row-title">{v.patient.firstName} {v.patient.lastName} <span className="udhr-row-subtitle">({v.patient.idNumber || v.patient.mrn})</span></p>
+                    <p className="udhr-row-subtitle">{v.reason}</p>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span className={`udhr-tag ${v.status === 'COMPLETE' ? 'info' : 'warning'}`}>{v.status.replaceAll('_', ' ')}</span>
+                    <p className="udhr-row-subtitle" style={{ marginTop: '2px' }}>{new Date(v.visitDate).toLocaleString()}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </>
+    );
+
+    const renderStaffPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Staff</h1>
+        <p className="udhr-page-subtitle">Everyone with access to this facility.</p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px' }}>
+          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+            <div className="udhr-record-body">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Register staff member</h3>
+              <form onSubmit={handleRegisterStaff}>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Staff Number</label>
+                  <input type="text" className="udhr-input" value={newStaffForm.staffNumber} onChange={(e) => setNewStaffForm({ ...newStaffForm, staffNumber: e.target.value })} placeholder="e.g. NUR002" required />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                  <input type="text" className="udhr-input" placeholder="First name" value={newStaffForm.firstName} onChange={(e) => setNewStaffForm({ ...newStaffForm, firstName: e.target.value })} required />
+                  <input type="text" className="udhr-input" placeholder="Last name" value={newStaffForm.lastName} onChange={(e) => setNewStaffForm({ ...newStaffForm, lastName: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Role</label>
+                  <select className="udhr-input" value={newStaffForm.role} onChange={(e) => setNewStaffForm({ ...newStaffForm, role: e.target.value })} required>
+                    <option value="DOCTOR">Doctor</option>
+                    <option value="NURSE">Nurse</option>
+                    <option value="PHARMACIST">Pharmacist</option>
+                    <option value="ADMIN">Admin</option>
+                  </select>
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Facility</label>
+                  <select className="udhr-input" value={newStaffForm.facilityId} onChange={(e) => setNewStaffForm({ ...newStaffForm, facilityId: e.target.value })} required>
+                    <option value="">Select a facility...</option>
+                    {facilityList.map(f => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Email</label>
+                  <input type="email" className="udhr-input" value={newStaffForm.email} onChange={(e) => setNewStaffForm({ ...newStaffForm, email: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Temporary Password</label>
+                  <input type="password" className="udhr-input" value={newStaffForm.password} onChange={(e) => setNewStaffForm({ ...newStaffForm, password: e.target.value })} required />
+                </div>
+                <button type="submit" className="udhr-btn-primary">Create staff account</button>
+              </form>
+            </div>
+          </div>
+
+          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+            <div className="udhr-record-body">
+              {staffList.length === 0 ? (
+                <p className="udhr-empty-note">{loading ? 'Loading...' : 'No staff members yet.'}</p>
+              ) : (
+                staffList.map(s => (
+                  <div key={s.id} className="udhr-list-row">
+                    <div>
+                      <p className="udhr-row-title">{s.firstName} {s.lastName} <span className="udhr-row-subtitle">({s.role})</span></p>
+                      <p className="udhr-row-subtitle">{s.staffNumber} · {s.email}</p>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className={`udhr-tag ${s.active ? 'info' : 'danger'}`}>{s.active ? 'Active' : 'Inactive'}</span>
+                      {s.active && (
+                        <button type="button" className="udhr-btn-neutral" onClick={() => handleDeactivateStaff(s.id)}>Deactivate</button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+
+    const renderFacilitiesPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Facilities</h1>
+        <p className="udhr-page-subtitle">Clinics and hospitals in the network.</p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px' }}>
+          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+            <div className="udhr-record-body">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Add facility</h3>
+              <form onSubmit={handleAddFacility}>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Name</label>
+                  <input type="text" className="udhr-input" value={newFacilityForm.name} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, name: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Type</label>
+                  <select className="udhr-input" value={newFacilityForm.type} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, type: e.target.value })}>
+                    <option value="CLINIC">Clinic</option>
+                    <option value="HOSPITAL">Hospital</option>
+                  </select>
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Province</label>
+                  <input type="text" className="udhr-input" value={newFacilityForm.province} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, province: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Address</label>
+                  <textarea className="udhr-textarea" value={newFacilityForm.address} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, address: e.target.value })} rows={2} />
+                </div>
+                <button type="submit" className="udhr-btn-primary">Add facility</button>
+              </form>
+            </div>
+          </div>
+
+          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+            <div className="udhr-record-body">
+              {facilityList.length === 0 ? (
+                <p className="udhr-empty-note">{loading ? 'Loading...' : 'No facilities yet.'}</p>
+              ) : (
+                facilityList.map(f => (
+                  <div key={f.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <p className="udhr-row-title">{f.name} <span className="udhr-row-subtitle">({f.type})</span></p>
+                    <p className="udhr-row-subtitle">{f.province} — {f.address}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+
+    return (
+      <div className="udhr-shell">
+        {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
+        <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
+          <div className="udhr-sidebar-header">
+            <div className="udhr-page-logo">
+              <div className="udhr-page-logo-chip"><Activity size={16} color="#fff" /></div>
+              UDHR
+            </div>
+            <button type="button" className="udhr-sidebar-close" onClick={() => setIsMobileNavOpen(false)}><XCircle size={18} /></button>
+          </div>
+          <nav className="udhr-sidebar-nav">
+            {adminNavItems.map(item => (
+              <button key={item.key} type="button" className={`udhr-nav-item ${adminTab === item.key ? 'active' : ''}`} onClick={() => selectAdminNavTab(item.key)}>
+                {item.icon} {item.label}
+              </button>
+            ))}
+          </nav>
+          <div className="udhr-sidebar-footer">
+            <div className="udhr-user-row">
+              <div className="udhr-user-avatar">{userName ? userName.charAt(0) : <User size={14} />}</div>
+              <div style={{ minWidth: 0 }}>
+                <p className="udhr-user-name">{userName}</p>
+                <p className="udhr-user-role">{userRole}</p>
+              </div>
+            </div>
+            <button type="button" className="udhr-logout-link" onClick={handleLogout}><LogOut size={15} /> Log out</button>
+          </div>
+        </aside>
+
+        <main className="udhr-shell-main">
+          <button type="button" className="udhr-mobile-menu-btn" onClick={() => setIsMobileNavOpen(true)}>
+            <Menu size={16} /> Menu
+          </button>
+
+          {errorMessage && (
+            <div className="udhr-alert-banner error">
+              <AlertCircle size={16} />
+              <span style={{ flex: 1 }}>{errorMessage}</span>
+              <button type="button" onClick={() => setErrorMessage('')}>×</button>
+            </div>
+          )}
+          {successMessage && (
+            <div className="udhr-alert-banner success">
+              <CheckCircle size={16} />
+              <span style={{ flex: 1 }}>{successMessage}</span>
+              <button type="button" onClick={() => setSuccessMessage('')}>×</button>
+            </div>
+          )}
+
+          {adminTab === 'frontdesk' && renderFrontDeskPanel()}
+          {adminTab === 'staff' && renderStaffPanel()}
+          {adminTab === 'facilities' && renderFacilitiesPanel()}
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-container">
       {/* Header */}
@@ -3009,303 +3356,6 @@ function App() {
           </div>
         )}
 
-        {/* 3. Healthcare Staff View */}
-        {token && userRole !== 'PATIENT' && !mustChangePassword && (
-          <div>
-            {isAdmin ? (
-              <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'left' }}>
-                {/* Admin Tab Switcher — staff & facility management only, no patient data */}
-                <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '560px' }}>
-                  <button
-                    className="btn"
-                    style={{ flex: 1, background: adminTab === 'frontdesk' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                    onClick={() => { setAdminTab('frontdesk'); fetchRecentCheckIns(); }}
-                  >
-                    Front Desk
-                  </button>
-                  <button
-                    className="btn"
-                    style={{ flex: 1, background: adminTab === 'staff' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                    onClick={() => { setAdminTab('staff'); fetchStaffList(); }}
-                  >
-                    Manage Staff
-                  </button>
-                  <button
-                    className="btn"
-                    style={{ flex: 1, background: adminTab === 'facilities' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                    onClick={() => { setAdminTab('facilities'); fetchFacilityList(); }}
-                  >
-                    Manage Facilities
-                  </button>
-                </div>
-
-                {adminTab === 'frontdesk' ? (
-                  <>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-                      {/* Register New Patient */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <PlusCircle size={18} /> Register New Patient
-                        </h3>
-                        <form onSubmit={handleRegisterPatient}>
-                          <div className="form-group">
-                            <label>ID Number</label>
-                            <input type="text" value={patientRegForm.idNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, idNumber: e.target.value })} placeholder="SA ID number (optional)" />
-                          </div>
-                          <div className="form-group">
-                            <label>Passport Number</label>
-                            <input type="text" value={patientRegForm.passportNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, passportNumber: e.target.value })} placeholder="Passport number (optional)" />
-                          </div>
-                          <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '12px' }}>
-                            An MRN is auto-assigned to every patient regardless — ID number and passport number are optional.
-                          </p>
-                          <div className="form-group">
-                            <label>First Name</label>
-                            <input type="text" value={patientRegForm.firstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, firstName: e.target.value })} required />
-                          </div>
-                          <div className="form-group">
-                            <label>Last Name</label>
-                            <input type="text" value={patientRegForm.lastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, lastName: e.target.value })} required />
-                          </div>
-                          <div className="form-group">
-                            <label>Date of Birth</label>
-                            <input type="date" value={patientRegForm.dateOfBirth} onChange={(e) => setPatientRegForm({ ...patientRegForm, dateOfBirth: e.target.value })} required />
-                          </div>
-                          <div className="form-group">
-                            <label>Gender</label>
-                            <select value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })}>
-                              <option value="MALE">Male</option>
-                              <option value="FEMALE">Female</option>
-                              <option value="OTHER">Other</option>
-                            </select>
-                          </div>
-                          <div className="form-group">
-                            <label>Contact Number</label>
-                            <input type="text" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value })} />
-                          </div>
-                          <div className="form-group">
-                            <label>Email Address</label>
-                            <input type="email" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@gmail.com" />
-                          </div>
-                          <div className="form-group">
-                            <label>Address</label>
-                            <textarea value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} />
-                          </div>
-
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            style={{ width: '100%', marginBottom: '10px', fontSize: '0.85rem' }}
-                            onClick={() => setShowRegExtras(!showRegExtras)}
-                          >
-                            {showRegExtras ? 'Hide' : 'Add'} Next of Kin / Newborn Details (optional)
-                          </button>
-                          {showRegExtras && (
-                            <div style={{ background: 'rgba(15,23,42,0.4)', padding: '12px', borderRadius: '8px', marginBottom: '10px' }}>
-                              <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>Next of Kin</p>
-                              <div className="form-group"><input type="text" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} /></div>
-                              <div className="form-group"><input type="text" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} /></div>
-                              <div className="form-group"><input type="text" placeholder="Relationship (e.g. Husband)" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} /></div>
-                              <div className="form-group"><input type="text" placeholder="Phone number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} /></div>
-                              <p className="text-muted" style={{ fontSize: '0.75rem', margin: '12px 0 8px' }}>Newborn — leave blank unless registering a baby at birth</p>
-                              <div className="form-group"><input type="text" placeholder="Mother's ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} /></div>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                <input type="number" placeholder="Birth weight (g)" value={patientRegForm.birthWeightGrams} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthWeightGrams: e.target.value })} />
-                                <input type="number" placeholder="Birth length (cm)" value={patientRegForm.birthLengthCm} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthLengthCm: e.target.value })} />
-                                <input type="number" placeholder="Apgar (1 min)" value={patientRegForm.apgarScore1Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore1Min: e.target.value })} />
-                                <input type="number" placeholder="Apgar (5 min)" value={patientRegForm.apgarScore5Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore5Min: e.target.value })} />
-                              </div>
-                            </div>
-                          )}
-
-                          <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Create Patient Record</button>
-                        </form>
-                      </div>
-
-                      {/* Check In Existing Patient */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <CheckCircle size={18} /> Check In Patient
-                        </h3>
-                        <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '16px' }}>
-                          Logs that the patient has arrived so the nurse can find them straight away by ID number or MRN — no queue ticket needed.
-                        </p>
-                        <form onSubmit={handleCheckIn}>
-                          <div className="form-group">
-                            <label>ID Number or MRN</label>
-                            <input
-                              type="text"
-                              value={checkinSearchId}
-                              onChange={(e) => setCheckinSearchId(e.target.value)}
-                              placeholder="Enter patient ID number or MRN"
-                              required
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label>Reason for Visit (optional)</label>
-                            <input
-                              type="text"
-                              value={checkinReason}
-                              onChange={(e) => setCheckinReason(e.target.value)}
-                              placeholder="e.g. Follow-up, flu symptoms..."
-                            />
-                          </div>
-                          <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Check In</button>
-                        </form>
-                      </div>
-                    </div>
-
-                    {/* Recent Check-Ins log */}
-                    <div className="glass-card">
-                      <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Recent Check-Ins</h3>
-                      {recentCheckIns.length === 0 ? (
-                        <p className="text-muted" style={{ fontSize: '0.85rem' }}>No check-ins logged yet today.</p>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
-                          {recentCheckIns.map(v => (
-                            <div key={v.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                              <div>
-                                <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{v.patient.firstName} {v.patient.lastName} <span className="text-muted" style={{ fontWeight: 400 }}>({v.patient.idNumber || v.patient.mrn})</span></p>
-                                <p className="text-muted" style={{ fontSize: '0.75rem' }}>{v.reason}</p>
-                              </div>
-                              <div style={{ textAlign: 'right' }}>
-                                <span className={`badge ${v.status === 'COMPLETE' ? 'badge-green' : 'badge-yellow'}`} style={{ fontSize: '0.65rem' }}>{v.status.replaceAll('_', ' ')}</span>
-                                <p className="text-muted" style={{ fontSize: '0.7rem', marginTop: '2px' }}>{new Date(v.visitDate).toLocaleString()}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : adminTab === 'staff' ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                    {/* Register Staff */}
-                    <div className="glass-card">
-                      <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Register Staff Member</h3>
-                      <form onSubmit={handleRegisterStaff}>
-                        <div className="form-group">
-                          <label>Staff Number</label>
-                          <input type="text" value={newStaffForm.staffNumber} onChange={(e) => setNewStaffForm({ ...newStaffForm, staffNumber: e.target.value })} placeholder="e.g. NUR002" required />
-                        </div>
-                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                          <div>
-                            <label>First Name</label>
-                            <input type="text" value={newStaffForm.firstName} onChange={(e) => setNewStaffForm({ ...newStaffForm, firstName: e.target.value })} required />
-                          </div>
-                          <div>
-                            <label>Last Name</label>
-                            <input type="text" value={newStaffForm.lastName} onChange={(e) => setNewStaffForm({ ...newStaffForm, lastName: e.target.value })} required />
-                          </div>
-                        </div>
-                        <div className="form-group">
-                          <label>Role</label>
-                          <select value={newStaffForm.role} onChange={(e) => setNewStaffForm({ ...newStaffForm, role: e.target.value })} required>
-                            <option value="DOCTOR">Doctor</option>
-                            <option value="NURSE">Nurse</option>
-                            <option value="PHARMACIST">Pharmacist</option>
-                            <option value="ADMIN">Admin</option>
-                          </select>
-                        </div>
-                        <div className="form-group">
-                          <label>Facility</label>
-                          <select value={newStaffForm.facilityId} onChange={(e) => setNewStaffForm({ ...newStaffForm, facilityId: e.target.value })} required>
-                            <option value="">Select a facility...</option>
-                            {facilityList.map(f => (
-                              <option key={f.id} value={f.id}>{f.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="form-group">
-                          <label>Email</label>
-                          <input type="email" value={newStaffForm.email} onChange={(e) => setNewStaffForm({ ...newStaffForm, email: e.target.value })} required />
-                        </div>
-                        <div className="form-group">
-                          <label>Temporary Password</label>
-                          <input type="password" value={newStaffForm.password} onChange={(e) => setNewStaffForm({ ...newStaffForm, password: e.target.value })} required />
-                        </div>
-                        <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Create Staff Account</button>
-                      </form>
-                    </div>
-
-                    {/* Staff List */}
-                    <div className="glass-card">
-                      <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>All Staff</h3>
-                      {staffList.length === 0 ? (
-                        <p className="text-muted" style={{ fontSize: '0.85rem' }}>{loading ? 'Loading...' : 'No staff members yet.'}</p>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '500px', overflowY: 'auto' }}>
-                          {staffList.map(s => (
-                            <div key={s.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div>
-                                <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{s.firstName} {s.lastName} <span className="text-muted" style={{ fontWeight: 400 }}>({s.role})</span></p>
-                                <p className="text-muted" style={{ fontSize: '0.75rem' }}>{s.staffNumber} | {s.email}</p>
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span className={`badge ${s.active ? 'badge-green' : 'badge-red'}`} style={{ fontSize: '0.65rem' }}>{s.active ? 'Active' : 'Inactive'}</span>
-                                {s.active && (
-                                  <button className="btn" onClick={() => handleDeactivateStaff(s.id)} style={{ padding: '4px 10px', fontSize: '0.75rem', background: 'rgba(239,68,68,0.15)', color: '#fca5a5' }}>
-                                    Deactivate
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                    {/* Add Facility */}
-                    <div className="glass-card">
-                      <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Add Facility</h3>
-                      <form onSubmit={handleAddFacility}>
-                        <div className="form-group">
-                          <label>Name</label>
-                          <input type="text" value={newFacilityForm.name} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, name: e.target.value })} required />
-                        </div>
-                        <div className="form-group">
-                          <label>Type</label>
-                          <select value={newFacilityForm.type} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, type: e.target.value })}>
-                            <option value="CLINIC">Clinic</option>
-                            <option value="HOSPITAL">Hospital</option>
-                          </select>
-                        </div>
-                        <div className="form-group">
-                          <label>Province</label>
-                          <input type="text" value={newFacilityForm.province} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, province: e.target.value })} required />
-                        </div>
-                        <div className="form-group">
-                          <label>Address</label>
-                          <textarea value={newFacilityForm.address} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, address: e.target.value })} rows={2} />
-                        </div>
-                        <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Add Facility</button>
-                      </form>
-                    </div>
-
-                    {/* Facility List */}
-                    <div className="glass-card">
-                      <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>All Facilities</h3>
-                      {facilityList.length === 0 ? (
-                        <p className="text-muted" style={{ fontSize: '0.85rem' }}>{loading ? 'Loading...' : 'No facilities yet.'}</p>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '500px', overflowY: 'auto' }}>
-                          {facilityList.map(f => (
-                            <div key={f.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
-                              <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{f.name} <span className="text-muted" style={{ fontWeight: 400 }}>({f.type})</span></p>
-                              <p className="text-muted" style={{ fontSize: '0.75rem' }}>{f.province} — {f.address}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </div>
-        )}
       </main>
 
       {/* Footer */}

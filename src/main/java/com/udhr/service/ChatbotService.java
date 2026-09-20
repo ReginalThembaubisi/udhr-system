@@ -137,6 +137,13 @@ public class ChatbotService {
                     null, null);
         }
 
+        // Check the more specific "which drugs should I avoid" (allergy-based FDA
+        // warnings) before the generic diet-avoid and current-medications intents,
+        // since both of those also match on "avoid" / "medication".
+        if (containsAny(lower, "medication", "medicine", "drug", "pill") && lower.contains("avoid")) {
+            return new ChatbotResponse(buildMedicationAvoidReply(idNumber), null, null);
+        }
+
         if (containsAny(lower, "diet", "eat", "food guideline", "avoid")) {
             return new ChatbotResponse(buildDietReply(idNumber), null, null);
         }
@@ -208,6 +215,30 @@ public class ChatbotService {
         for (Prescription p : active) {
             sb.append("\n- ").append(p.getMedication()).append(" (").append(p.getDosage()).append("), ")
                     .append(p.getFrequency()).append(", until ").append(p.getEndDate());
+        }
+        return sb.toString();
+    }
+
+    private String buildMedicationAvoidReply(String idNumber) {
+        HealthGuidanceResponse guidance = healthGuidanceService.getPersonalGuidance(idNumber);
+        Map<String, List<Map<String, Object>>> warnings = guidance.getMedicationWarnings();
+        if (warnings == null || warnings.isEmpty()) {
+            return "You don't have any recorded drug allergies, so there are no specific medications flagged to avoid. Always tell your doctor or pharmacist about any allergy before starting something new.";
+        }
+        StringBuilder sb = new StringBuilder("Based on your allergies, here's what to avoid:\n");
+        boolean foundAny = false;
+        for (Map.Entry<String, List<Map<String, Object>>> entry : warnings.entrySet()) {
+            List<Map<String, Object>> drugWarnings = entry.getValue();
+            if (drugWarnings == null) continue;
+            for (Map<String, Object> w : drugWarnings) {
+                foundAny = true;
+                sb.append("\n⚠️ Avoid ").append(w.get("genericName")).append(" (").append(w.get("brandName"))
+                        .append(") — allergic to ").append(entry.getKey());
+            }
+        }
+        if (!foundAny) {
+            return "You have a recorded allergy to " + String.join(", ", warnings.keySet())
+                    + ", but no specific medication warnings on file for it. Always tell your pharmacist about this allergy before taking anything new.";
         }
         return sb.toString();
     }

@@ -60,6 +60,9 @@ public class DataSeeder implements CommandLineRunner {
     private ReminderService reminderService;
 
     @Autowired
+    private AnnouncementRepository announcementRepository;
+
+    @Autowired
     private BCryptPasswordEncoder passwordEncoder;
 
     @Override
@@ -264,6 +267,29 @@ public class DataSeeder implements CommandLineRunner {
                 
                 System.out.println("Visits and Diagnoses with ICD-10 codes seeded successfully.");
             }
+        }
+
+        // 6. Seed Public Announcements (real, freely-usable Unsplash photos — no license required)
+        seedAnnouncements();
+    }
+
+    private void seedAnnouncements() {
+        if (announcementRepository.count() == 0) {
+            Announcement flu = new Announcement();
+            flu.setTitle("Free flu vaccinations this week");
+            flu.setMessage("Free flu vaccinations are available this week at all clinics and hospitals. Walk-ins welcome — no appointment needed. Protect yourself and your family this winter.");
+            flu.setPhotoUrl("https://images.unsplash.com/photo-1618015456598-fa8c4a2e8b40?auto=format&fit=crop&w=800&q=80");
+            flu.setActive(true);
+            announcementRepository.save(flu);
+
+            Announcement holiday = new Announcement();
+            holiday.setTitle("Clinic closed for public holiday");
+            holiday.setMessage("All facilities will be closed on 24 September for Heritage Day. Emergency services remain available. Normal hours resume the following day.");
+            holiday.setPhotoUrl("https://images.unsplash.com/photo-1587351021355-a479a299d2f9?auto=format&fit=crop&w=800&q=80");
+            holiday.setActive(true);
+            announcementRepository.save(holiday);
+
+            System.out.println("Public announcements seeded successfully.");
         }
     }
 

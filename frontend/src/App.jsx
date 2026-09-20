@@ -1451,9 +1451,6 @@ function App() {
                       required
                     />
                   </div>
-                  <p className="udhr-demo-note">
-                    💡 <strong>Demo Patient Login:</strong> ID <code>9001015000083</code>, DOB <code>1990-01-01</code> — pre-seeded patient (diabetic, hypertensive, penicillin allergic).
-                  </p>
                 </>
               ) : (
                 <>
@@ -1481,10 +1478,6 @@ function App() {
                       required
                     />
                   </div>
-                  <p className="udhr-demo-note">
-                    💡 <strong>Demo Staff Logins:</strong><br />
-                    Doctor <code>DOC001</code> / <code>Doctor@123</code> · Nurse <code>NUR001</code> / <code>Nurse@123</code> · Pharmacist <code>PHARM001</code> / <code>Pharmacist@123</code> · Admin <code>ADMIN001</code> / <code>Admin@123</code>
-                  </p>
                 </>
               )}
 

@@ -116,7 +116,7 @@ public class ChatbotService {
                     null, null);
         }
 
-        if (containsAny(lower, "diet", "eat", "food guideline")) {
+        if (containsAny(lower, "diet", "eat", "food guideline", "avoid")) {
             return new ChatbotResponse(buildDietReply(idNumber), null, null);
         }
 

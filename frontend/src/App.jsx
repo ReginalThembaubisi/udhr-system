@@ -3,7 +3,7 @@ import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
   Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode,
-  Menu, Users, CornerUpRight, Package, Building2
+  Menu, Users, CornerUpRight, Package, Building2, Megaphone
 } from 'lucide-react';
 import './App.css';
 
@@ -101,13 +101,23 @@ function App() {
   // Admin: staff & facility management (no patient data — admin isn't clinical staff)
   const [staffList, setStaffList] = useState([]);
   const [facilityList, setFacilityList] = useState([]);
-  const [adminTab, setAdminTab] = useState('frontdesk'); // 'frontdesk', 'staff', or 'facilities'
+  const [adminTab, setAdminTab] = useState('frontdesk'); // 'frontdesk', 'staff', 'facilities', or 'announcements'
   const [newStaffForm, setNewStaffForm] = useState({
     staffNumber: '', firstName: '', lastName: '', role: 'NURSE', facilityId: '', email: '', password: ''
   });
   const [newFacilityForm, setNewFacilityForm] = useState({
     name: '', type: 'CLINIC', province: '', address: ''
   });
+
+  // Admin: public announcements (rotate on the login screen)
+  const [announcements, setAnnouncements] = useState([]);
+  const [newAnnouncementForm, setNewAnnouncementForm] = useState({
+    title: '', message: '', photoUrl: ''
+  });
+
+  // Login screen: active announcements fetched without auth, rotated as a carousel
+  const [publicAnnouncements, setPublicAnnouncements] = useState([]);
+  const [announcementCarouselIndex, setAnnouncementCarouselIndex] = useState(0);
 
   // Admin front desk: register a new patient (reuses patientRegForm below) and check existing patients in
   const [checkinSearchId, setCheckinSearchId] = useState('');
@@ -270,9 +280,105 @@ function App() {
         fetchStaffList();
         fetchFacilityList();
         fetchRecentCheckIns();
+        fetchAnnouncements();
       }
     }
   }, [token, userRole]);
+
+  // Public announcements — no auth needed, shown on the login screen before
+  // anyone signs in.
+  useEffect(() => {
+    fetchPublicAnnouncements();
+  }, []);
+
+  // Rotate the login-screen announcement carousel every ~4.5s when there's
+  // more than one active announcement.
+  useEffect(() => {
+    if (publicAnnouncements.length <= 1) return;
+    const interval = setInterval(() => {
+      setAnnouncementCarouselIndex((i) => (i + 1) % publicAnnouncements.length);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, [publicAnnouncements.length]);
+
+  const fetchPublicAnnouncements = async () => {
+    try {
+      const response = await fetch('/api/announcements/public');
+      if (response.ok) {
+        const data = await response.json();
+        setPublicAnnouncements(data);
+      }
+    } catch (err) {
+      // Silent — this only affects a decorative panel on the login screen.
+    }
+  };
+
+  const fetchAnnouncements = async () => {
+    try {
+      const response = await fetch('/api/announcements', { headers: getAuthHeaders() });
+      if (response.ok) {
+        const data = await response.json();
+        setAnnouncements(data);
+      }
+    } catch (err) {
+      console.error('Error fetching announcements', err);
+    }
+  };
+
+  const handleCreateAnnouncement = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch('/api/announcements', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(newAnnouncementForm)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : 'Failed to create announcement');
+      setNewAnnouncementForm({ title: '', message: '', photoUrl: '' });
+      setSuccessMessage('Announcement created.');
+      fetchAnnouncements();
+      fetchPublicAnnouncements();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleAnnouncement = async (id, active) => {
+    setErrorMessage('');
+    try {
+      const response = await fetch(`/api/announcements/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ active })
+      });
+      if (!response.ok) throw new Error('Failed to update announcement');
+      fetchAnnouncements();
+      fetchPublicAnnouncements();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id) => {
+    setErrorMessage('');
+    try {
+      const response = await fetch(`/api/announcements/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      if (!response.ok) throw new Error('Failed to delete announcement');
+      fetchAnnouncements();
+      fetchPublicAnnouncements();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
 
   const fetchPatientPortalData = async () => {
     setLoading(true);
@@ -1245,6 +1351,40 @@ function App() {
               Universal Digital Health Record connects patients, clinics and pharmacies so care follows you — not your paperwork.
             </p>
           </div>
+
+          {publicAnnouncements.length > 0 && (() => {
+            const current = publicAnnouncements[announcementCarouselIndex % publicAnnouncements.length];
+            return (
+              <div className="udhr-announcement-card">
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  {current.photoUrl && (
+                    <div className="udhr-announcement-photo">
+                      <img src={current.photoUrl} alt="" />
+                    </div>
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <p className="udhr-announcement-label">Public Notice</p>
+                    <p className="udhr-announcement-title">{current.title}</p>
+                    <p className="udhr-announcement-message">{current.message}</p>
+                  </div>
+                </div>
+                {publicAnnouncements.length > 1 && (
+                  <div className="udhr-announcement-dots">
+                    {publicAnnouncements.map((_, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        className={`udhr-announcement-dot ${i === announcementCarouselIndex % publicAnnouncements.length ? 'active' : ''}`}
+                        onClick={() => setAnnouncementCarouselIndex(i)}
+                        aria-label={`Show announcement ${i + 1}`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <p className="udhr-login-copyright">© 2026 UDHR · National Health Network</p>
         </div>
 
@@ -2919,6 +3059,7 @@ function App() {
       { key: 'frontdesk', label: 'Front Desk', icon: <Clipboard size={17} /> },
       { key: 'staff', label: 'Staff', icon: <Users size={17} /> },
       { key: 'facilities', label: 'Facilities', icon: <Building2 size={17} /> },
+      { key: 'announcements', label: 'Announcements', icon: <Megaphone size={17} /> },
     ];
 
     const selectAdminNavTab = (key) => {
@@ -2927,6 +3068,7 @@ function App() {
       if (key === 'frontdesk') fetchRecentCheckIns();
       if (key === 'staff') fetchStaffList();
       if (key === 'facilities') fetchFacilityList();
+      if (key === 'announcements') fetchAnnouncements();
     };
 
     const renderFrontDeskPanel = () => (
@@ -3197,6 +3339,64 @@ function App() {
       </>
     );
 
+    const renderAnnouncementsPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Public Announcements</h1>
+        <p className="udhr-page-subtitle">
+          Published ones rotate as a slideshow on the sign-in screen — use them for vaccination drives, clinic closures, outbreak notices.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px' }}>
+          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+            <div className="udhr-record-body">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Add announcement</h3>
+              <form onSubmit={handleCreateAnnouncement}>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Title</label>
+                  <input type="text" className="udhr-input" value={newAnnouncementForm.title} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, title: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Message</label>
+                  <textarea className="udhr-textarea" rows={3} value={newAnnouncementForm.message} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, message: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Photo URL (optional)</label>
+                  <input type="text" className="udhr-input" placeholder="https://..." value={newAnnouncementForm.photoUrl} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, photoUrl: e.target.value })} />
+                </div>
+                <button type="submit" className="udhr-btn-primary">Publish announcement</button>
+              </form>
+            </div>
+          </div>
+
+          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+            <div className="udhr-record-body">
+              {announcements.length === 0 ? (
+                <p className="udhr-empty-note">{loading ? 'Loading...' : 'No announcements yet.'}</p>
+              ) : (
+                announcements.map(a => (
+                  <div key={a.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'flex-start', gap: '10px' }}>
+                      <div>
+                        <p className="udhr-row-title">{a.title}</p>
+                        <p className="udhr-row-subtitle">{a.message}</p>
+                      </div>
+                      <span className={`udhr-tag ${a.active ? 'info' : 'warning'}`} style={{ flexShrink: 0 }}>{a.active ? 'Published' : 'Unpublished'}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                      <button type="button" className="udhr-btn-neutral" onClick={() => handleToggleAnnouncement(a.id, !a.active)}>
+                        {a.active ? 'Unpublish' : 'Publish'}
+                      </button>
+                      <button type="button" className="udhr-btn-soft-danger" onClick={() => handleDeleteAnnouncement(a.id)}>Delete</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+
     return (
       <div className="udhr-shell">
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
@@ -3250,6 +3450,7 @@ function App() {
           {adminTab === 'frontdesk' && renderFrontDeskPanel()}
           {adminTab === 'staff' && renderStaffPanel()}
           {adminTab === 'facilities' && renderFacilitiesPanel()}
+          {adminTab === 'announcements' && renderAnnouncementsPanel()}
         </main>
       </div>
     );

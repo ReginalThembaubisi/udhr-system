@@ -3,6 +3,7 @@ package com.udhr.controller;
 import com.udhr.dto.PatientRecordResponse;
 import com.udhr.model.Patient;
 import com.udhr.service.PatientPortalService;
+import com.udhr.service.ReferralService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,9 @@ public class PatientPortalController {
 
     @Autowired
     private PatientPortalService patientPortalService;
+
+    @Autowired
+    private ReferralService referralService;
 
     private String getLoggedInPatientId() {
         return (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -39,6 +43,16 @@ public class PatientPortalController {
             String idNumber = getLoggedInPatientId();
             PatientRecordResponse record = patientPortalService.getPatientRecord(idNumber);
             return ResponseEntity.ok(record);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/referral")
+    public ResponseEntity<?> getReferral() {
+        try {
+            String idNumber = getLoggedInPatientId();
+            return ResponseEntity.ok(referralService.getActiveReferralForPatient(idNumber));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }

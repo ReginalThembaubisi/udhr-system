@@ -44,6 +44,7 @@ function App() {
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
   const [chatWidgetOpen, setChatWidgetOpen] = useState(false);
+  const [chatHintVisible, setChatHintVisible] = useState(false);
 
   // Feature 3: Food Checker State
   const [foodInputMethod, setFoodInputMethod] = useState('type'); // 'type', 'search', 'upload'
@@ -290,6 +291,15 @@ function App() {
         fetchRecentCheckIns();
         fetchAnnouncements();
       }
+    }
+  }, [token, userRole]);
+
+  // Nudge patients toward the chat bubble a couple seconds after they land
+  // on the portal — dismissed the moment they open the chat or close it.
+  useEffect(() => {
+    if (token && userRole === 'PATIENT') {
+      const timer = setTimeout(() => setChatHintVisible(true), 2000);
+      return () => clearTimeout(timer);
     }
   }, [token, userRole]);
 
@@ -2037,10 +2047,21 @@ function App() {
           </div>
         )}
 
+        {chatHintVisible && !chatWidgetOpen && (
+          <div className="udhr-chat-hint">
+            <button type="button" className="udhr-chat-hint-close" onClick={() => setChatHintVisible(false)} aria-label="Dismiss">
+              <XCircle size={14} />
+            </button>
+            <p style={{ margin: 0 }}>
+              👋 If you want to know about your medications, diet, or a symptom, you can ask me!
+            </p>
+          </div>
+        )}
+
         <button
           type="button"
           className="udhr-chat-fab"
-          onClick={() => setChatWidgetOpen((open) => !open)}
+          onClick={() => { setChatWidgetOpen((open) => !open); setChatHintVisible(false); }}
           aria-label={chatWidgetOpen ? 'Close health assistant' : 'Open health assistant'}
         >
           {chatWidgetOpen ? <XCircle size={26} /> : <MessageCircle size={26} />}

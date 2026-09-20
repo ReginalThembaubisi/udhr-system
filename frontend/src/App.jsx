@@ -2475,6 +2475,7 @@ function App() {
                       <div key={d.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                         <p className="udhr-row-title">
                           {d.diagnosis} {d.icd10Code && <span className="udhr-tag info" style={{ marginLeft: '6px' }}>ICD-10: {d.icd10Code}</span>}
+                          {d.facility?.name && <span className="udhr-tag neutral" style={{ marginLeft: '6px' }}>📍 {d.facility.name}</span>}
                         </p>
                         <p className="udhr-row-subtitle">Diagnosed: {new Date(d.diagnosedAt).toLocaleString()} · {d.notes}</p>
                       </div>
@@ -2490,7 +2491,10 @@ function App() {
                       searchedPatientRecord.prescriptions.map(p => (
                         <div key={p.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                            <p className="udhr-row-title">{p.medication}</p>
+                            <p className="udhr-row-title">
+                              {p.medication}
+                              {p.facility?.name && <span className="udhr-tag neutral" style={{ marginLeft: '6px' }}>📍 {p.facility.name}</span>}
+                            </p>
                             <span className="udhr-pill-status">{p.dispensed ? (p.dispenseMethod === 'SELF' ? 'Dispensed by doctor' : 'Dispensed by pharmacy') : 'Waiting at pharmacy'}</span>
                           </div>
                           <p className="udhr-row-subtitle">{p.dosage} · {p.frequency} · {p.durationDays} days</p>
@@ -2525,7 +2529,10 @@ function App() {
                     searchedPatientRecord.labResults.map(l => (
                       <div key={l.id} className="udhr-list-row">
                         <div>
-                          <p className="udhr-row-title">{l.testName}</p>
+                          <p className="udhr-row-title">
+                            {l.testName}
+                            {l.facility?.name && <span className="udhr-tag neutral" style={{ marginLeft: '6px' }}>📍 {l.facility.name}</span>}
+                          </p>
                           {l.notes && <p className="udhr-row-subtitle" style={{ fontStyle: 'italic' }}>{l.notes}</p>}
                         </div>
                         <p style={{ margin: 0, fontSize: '13px', fontWeight: 700 }}>

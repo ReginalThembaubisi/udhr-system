@@ -546,6 +546,11 @@
   color: var(--udhr-warning-text);
 }
 
+.udhr-tag.neutral {
+  background: #f1f5f9;
+  color: var(--udhr-text-secondary);
+}
+
 .udhr-btn-soft-success {
   padding: 8px 14px;
   border-radius: var(--udhr-radius-sm);

@@ -39,6 +39,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/announcements/public").permitAll()
                 .requestMatchers("/api/announcements/**").hasRole("ADMIN")
                 .requestMatchers("/api/patient/me/**").hasRole("PATIENT")
+                .requestMatchers("/api/patient/chatbot/**").hasRole("PATIENT")
                 .requestMatchers("/api/symptom-checker/**").hasRole("PATIENT")
                 .requestMatchers("/api/health-guidance/**").hasRole("PATIENT")
                 .requestMatchers("/api/food-checker/**").hasRole("PATIENT")

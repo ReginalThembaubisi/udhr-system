@@ -3,7 +3,7 @@ import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
   Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode,
-  Menu, Users, CornerUpRight, Package, Building2, Megaphone
+  Menu, Users, CornerUpRight, Package, Building2, Megaphone, MessageCircle, Send
 } from 'lucide-react';
 import './App.css';
 
@@ -35,7 +35,14 @@ function App() {
   const [triageHistory, setTriageHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [myLabResults, setMyLabResults] = useState([]);
-  const [patientPortalTab, setPatientPortalTab] = useState('overview'); // 'overview' | 'symptoms' | 'medications' | 'food' | 'labs'
+  const [patientPortalTab, setPatientPortalTab] = useState('overview'); // 'overview' | 'symptoms' | 'medications' | 'food' | 'labs' | 'assistant'
+
+  // Health Assistant (chatbot) state
+  const [chatMessages, setChatMessages] = useState([
+    { sender: 'bot', text: "Hi! I'm your health assistant. Describe how you're feeling, or ask me about your medications, allergies, or diet." }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatSending, setChatSending] = useState(false);
 
   // Feature 3: Food Checker State
   const [foodInputMethod, setFoodInputMethod] = useState('type'); // 'type', 'search', 'upload'
@@ -964,6 +971,37 @@ function App() {
     }
   };
 
+  const handleSendChatMessage = async (e) => {
+    e.preventDefault();
+    const text = chatInput.trim();
+    if (!text || chatSending) return;
+
+    setChatMessages((prev) => [...prev, { sender: 'user', text }]);
+    setChatInput('');
+    setChatSending(true);
+
+    try {
+      const response = await fetch('/api/patient/chatbot', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ message: text })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(typeof data === 'string' ? data : 'The health assistant could not respond right now.');
+      }
+      setChatMessages((prev) => [...prev, { sender: 'bot', text: data.reply, urgencyLevel: data.urgencyLevel }]);
+      if (data.urgencyLevel) {
+        // A symptom check was just performed under the hood — refresh history.
+        fetchPatientPortalData();
+      }
+    } catch (err) {
+      setChatMessages((prev) => [...prev, { sender: 'bot', text: err.message || 'Something went wrong. Please try again.' }]);
+    } finally {
+      setChatSending(false);
+    }
+  };
+
   const handleSymptomToggle = (id) => {
     if (selectedSymptoms.includes(id)) {
       setSelectedSymptoms(selectedSymptoms.filter(sId => sId !== id));
@@ -1549,6 +1587,7 @@ function App() {
           <div className="udhr-tab-bar" style={{ marginTop: '20px' }}>
             {[
               ['overview', 'Overview'],
+              ['assistant', 'Health Assistant'],
               ['symptoms', 'Symptom Checker'],
               ['medications', 'Medications'],
               ['food', 'Food Checker'],
@@ -1607,6 +1646,10 @@ function App() {
 
               <h2 className="udhr-section-title">Quick actions</h2>
               <div className="udhr-quick-grid">
+                <button type="button" className="udhr-quick-card" onClick={() => setPatientPortalTab('assistant')}>
+                  <MessageCircle size={20} color="#2563eb" />
+                  <span>Ask the health assistant</span>
+                </button>
                 <button type="button" className="udhr-quick-card" onClick={() => setPatientPortalTab('symptoms')}>
                   <Search size={20} color="#2563eb" />
                   <span>Check my symptoms</span>
@@ -1675,6 +1718,45 @@ function App() {
                   ))}
                 </>
               )}
+            </>
+          )}
+
+          {/* ===== Health Assistant (chatbot) ===== */}
+          {patientPortalTab === 'assistant' && (
+            <>
+              <p style={{ color: 'var(--udhr-text-muted)', fontSize: '13.5px', margin: '0 0 14px' }}>
+                Describe how you're feeling, or ask about your medications, allergies, or diet. <em>This is not a diagnosis — for emergencies, call emergency services.</em>
+              </p>
+              <div className="udhr-chat-window">
+                <div className="udhr-chat-messages">
+                  {chatMessages.map((msg, idx) => (
+                    <div key={idx} className={`udhr-chat-bubble ${msg.sender === 'user' ? 'user' : 'bot'} ${msg.urgencyLevel === 'RED' ? 'urgent' : ''}`}>
+                      {msg.text.split('\n').map((line, i) => (
+                        <p key={i} style={{ margin: i === 0 ? 0 : '6px 0 0' }}>{line}</p>
+                      ))}
+                    </div>
+                  ))}
+                  {chatSending && (
+                    <div className="udhr-chat-bubble bot">
+                      <p style={{ margin: 0 }}>Thinking…</p>
+                    </div>
+                  )}
+                </div>
+                <form className="udhr-chat-input-row" onSubmit={handleSendChatMessage}>
+                  <input
+                    type="text"
+                    className="udhr-note-input"
+                    style={{ flex: 1 }}
+                    placeholder="e.g. I have a headache and fever"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    disabled={chatSending}
+                  />
+                  <button type="submit" className="udhr-btn-primary" style={{ width: 'auto', padding: '10px 16px' }} disabled={chatSending || !chatInput.trim()}>
+                    <Send size={16} />
+                  </button>
+                </form>
+              </div>
             </>
           )}
 

@@ -1004,3 +1004,81 @@
 .udhr-alert-item.medium {
   border-left-color: var(--udhr-warning);
 }
+
+/* ===== UDHR Redesign: login-screen announcement carousel ===== */
+.udhr-announcement-card {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--udhr-radius-xl);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 380px;
+}
+
+.udhr-announcement-photo {
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: var(--udhr-radius-md);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.udhr-announcement-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.udhr-announcement-label {
+  margin: 0 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.udhr-announcement-title {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.udhr-announcement-message {
+  margin: 0;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.udhr-announcement-dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.udhr-announcement-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  padding: 0;
+}
+
+.udhr-announcement-dot.active {
+  background: #fff;
+}

@@ -35,6 +35,9 @@ public class SecurityConfig {
                 .requestMatchers("/", "/index.html", "/assets/**", "/favicon.svg", "/icons.svg", "/vite.svg").permitAll()
                 .requestMatchers("/api/auth/change-password").authenticated()
                 .requestMatchers("/api/auth/**").permitAll()
+                // The login screen fetches this before anyone has signed in.
+                .requestMatchers(HttpMethod.GET, "/api/announcements/public").permitAll()
+                .requestMatchers("/api/announcements/**").hasRole("ADMIN")
                 .requestMatchers("/api/patient/me/**").hasRole("PATIENT")
                 .requestMatchers("/api/symptom-checker/**").hasRole("PATIENT")
                 .requestMatchers("/api/health-guidance/**").hasRole("PATIENT")

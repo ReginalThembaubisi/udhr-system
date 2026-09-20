@@ -693,6 +693,40 @@
   max-height: none;
 }
 
+.udhr-chat-hint {
+  position: fixed;
+  bottom: 90px;
+  right: 24px;
+  max-width: 240px;
+  background: var(--udhr-surface);
+  border: 1px solid var(--udhr-border);
+  border-radius: var(--udhr-radius-lg);
+  border-bottom-right-radius: 4px;
+  padding: 12px 28px 12px 14px;
+  font-size: 13px;
+  color: var(--udhr-text);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+  z-index: 199;
+  animation: udhr-chat-hint-in 0.2s ease;
+}
+
+@keyframes udhr-chat-hint-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.udhr-chat-hint-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--udhr-text-muted);
+  cursor: pointer;
+  display: flex;
+}
+
 .udhr-chat-messages {
   display: flex;
   flex-direction: column;

@@ -35,14 +35,15 @@ function App() {
   const [triageHistory, setTriageHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [myLabResults, setMyLabResults] = useState([]);
-  const [patientPortalTab, setPatientPortalTab] = useState('overview'); // 'overview' | 'symptoms' | 'medications' | 'food' | 'labs' | 'assistant'
+  const [patientPortalTab, setPatientPortalTab] = useState('overview'); // 'overview' | 'symptoms' | 'medications' | 'food' | 'labs'
 
-  // Health Assistant (chatbot) state
+  // Health Assistant (chatbot) state — floating bubble widget, not a tab
   const [chatMessages, setChatMessages] = useState([
     { sender: 'bot', text: "Hi! I'm your health assistant. Describe how you're feeling, or ask me about your medications, allergies, or diet." }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
+  const [chatWidgetOpen, setChatWidgetOpen] = useState(false);
 
   // Feature 3: Food Checker State
   const [foodInputMethod, setFoodInputMethod] = useState('type'); // 'type', 'search', 'upload'
@@ -1587,7 +1588,6 @@ function App() {
           <div className="udhr-tab-bar" style={{ marginTop: '20px' }}>
             {[
               ['overview', 'Overview'],
-              ['assistant', 'Health Assistant'],
               ['symptoms', 'Symptom Checker'],
               ['medications', 'Medications'],
               ['food', 'Food Checker'],
@@ -1646,7 +1646,7 @@ function App() {
 
               <h2 className="udhr-section-title">Quick actions</h2>
               <div className="udhr-quick-grid">
-                <button type="button" className="udhr-quick-card" onClick={() => setPatientPortalTab('assistant')}>
+                <button type="button" className="udhr-quick-card" onClick={() => setChatWidgetOpen(true)}>
                   <MessageCircle size={20} color="#2563eb" />
                   <span>Ask the health assistant</span>
                 </button>
@@ -1718,45 +1718,6 @@ function App() {
                   ))}
                 </>
               )}
-            </>
-          )}
-
-          {/* ===== Health Assistant (chatbot) ===== */}
-          {patientPortalTab === 'assistant' && (
-            <>
-              <p style={{ color: 'var(--udhr-text-muted)', fontSize: '13.5px', margin: '0 0 14px' }}>
-                Describe how you're feeling, or ask about your medications, allergies, or diet. <em>This is not a diagnosis — for emergencies, call emergency services.</em>
-              </p>
-              <div className="udhr-chat-window">
-                <div className="udhr-chat-messages">
-                  {chatMessages.map((msg, idx) => (
-                    <div key={idx} className={`udhr-chat-bubble ${msg.sender === 'user' ? 'user' : 'bot'} ${msg.urgencyLevel === 'RED' ? 'urgent' : ''}`}>
-                      {msg.text.split('\n').map((line, i) => (
-                        <p key={i} style={{ margin: i === 0 ? 0 : '6px 0 0' }}>{line}</p>
-                      ))}
-                    </div>
-                  ))}
-                  {chatSending && (
-                    <div className="udhr-chat-bubble bot">
-                      <p style={{ margin: 0 }}>Thinking…</p>
-                    </div>
-                  )}
-                </div>
-                <form className="udhr-chat-input-row" onSubmit={handleSendChatMessage}>
-                  <input
-                    type="text"
-                    className="udhr-note-input"
-                    style={{ flex: 1 }}
-                    placeholder="e.g. I have a headache and fever"
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    disabled={chatSending}
-                  />
-                  <button type="submit" className="udhr-btn-primary" style={{ width: 'auto', padding: '10px 16px' }} disabled={chatSending || !chatInput.trim()}>
-                    <Send size={16} />
-                  </button>
-                </form>
-              </div>
             </>
           )}
 
@@ -2033,6 +1994,57 @@ function App() {
             </>
           )}
         </div>
+
+        {chatWidgetOpen && (
+          <div className="udhr-chat-widget">
+            <div className="udhr-chat-widget-header">
+              <span><MessageCircle size={16} style={{ verticalAlign: '-3px', marginRight: '6px' }} />Health Assistant</span>
+              <button type="button" className="udhr-chat-widget-close" onClick={() => setChatWidgetOpen(false)} aria-label="Close health assistant">
+                <XCircle size={18} />
+              </button>
+            </div>
+            <p style={{ color: 'var(--udhr-text-muted)', fontSize: '12px', margin: '10px 16px 0' }}>
+              Not a diagnosis — for emergencies, call emergency services.
+            </p>
+            <div className="udhr-chat-messages">
+              {chatMessages.map((msg, idx) => (
+                <div key={idx} className={`udhr-chat-bubble ${msg.sender === 'user' ? 'user' : 'bot'} ${msg.urgencyLevel === 'RED' ? 'urgent' : ''}`}>
+                  {msg.text.split('\n').map((line, i) => (
+                    <p key={i} style={{ margin: i === 0 ? 0 : '6px 0 0' }}>{line}</p>
+                  ))}
+                </div>
+              ))}
+              {chatSending && (
+                <div className="udhr-chat-bubble bot">
+                  <p style={{ margin: 0 }}>Thinking…</p>
+                </div>
+              )}
+            </div>
+            <form className="udhr-chat-input-row" onSubmit={handleSendChatMessage}>
+              <input
+                type="text"
+                className="udhr-note-input"
+                style={{ flex: 1 }}
+                placeholder="e.g. I have a headache and fever"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                disabled={chatSending}
+              />
+              <button type="submit" className="udhr-btn-primary" style={{ width: 'auto', padding: '10px 16px' }} disabled={chatSending || !chatInput.trim()}>
+                <Send size={16} />
+              </button>
+            </form>
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="udhr-chat-fab"
+          onClick={() => setChatWidgetOpen((open) => !open)}
+          aria-label={chatWidgetOpen ? 'Close health assistant' : 'Open health assistant'}
+        >
+          {chatWidgetOpen ? <XCircle size={26} /> : <MessageCircle size={26} />}
+        </button>
       </div>
     );
   }

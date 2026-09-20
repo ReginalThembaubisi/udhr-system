@@ -652,3 +652,350 @@
   background: var(--udhr-primary);
   height: 100%;
 }
+
+/* ===== UDHR Redesign: staff shell (sidebar + drawer), shared by the
+   Clinical, Pharmacist and Admin dashboards ===== */
+.udhr-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--udhr-bg);
+  color: var(--udhr-text);
+  font-family: 'Inter', sans-serif;
+}
+
+.udhr-shell-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 40;
+}
+
+.udhr-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--udhr-surface);
+  border-right: 1px solid var(--udhr-border);
+  display: flex;
+  flex-direction: column;
+}
+
+.udhr-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  border-bottom: 1px solid var(--udhr-border);
+}
+
+.udhr-sidebar-close {
+  display: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--udhr-text-muted);
+}
+
+.udhr-sidebar-nav {
+  flex: 1;
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.udhr-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  background: none;
+  color: var(--udhr-text-secondary);
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 10px 12px;
+  border-radius: var(--udhr-radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.udhr-nav-item.active {
+  background: var(--udhr-primary-tint);
+  color: var(--udhr-primary);
+}
+
+.udhr-nav-badge {
+  margin-left: auto;
+  background: var(--udhr-danger-tint);
+  color: var(--udhr-danger);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: var(--udhr-radius-pill);
+}
+
+.udhr-sidebar-footer {
+  padding: 14px;
+  border-top: 1px solid var(--udhr-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.udhr-user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+}
+
+.udhr-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--udhr-radius-pill);
+  background: var(--udhr-primary-tint);
+  color: var(--udhr-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.udhr-user-name {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.udhr-user-role {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--udhr-text-muted);
+}
+
+.udhr-shell-main {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 24px 48px;
+}
+
+.udhr-mobile-menu-btn {
+  display: none;
+  border: 1px solid var(--udhr-border);
+  background: var(--udhr-surface);
+  border-radius: var(--udhr-radius-sm);
+  padding: 8px 12px;
+  cursor: pointer;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--udhr-text-secondary);
+  margin-bottom: 16px;
+  font-family: inherit;
+}
+
+@media (max-width: 860px) {
+  .udhr-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: var(--udhr-shadow-drawer);
+  }
+  .udhr-sidebar.open {
+    transform: translateX(0);
+  }
+  .udhr-sidebar-close {
+    display: block;
+  }
+  .udhr-mobile-menu-btn {
+    display: inline-flex;
+  }
+}
+
+.udhr-page-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--udhr-text);
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  -webkit-text-fill-color: initial;
+}
+
+.udhr-page-subtitle {
+  color: var(--udhr-text-muted);
+  font-size: 13.5px;
+  margin: 0 0 18px;
+}
+
+.udhr-search-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  max-width: 420px;
+}
+
+.udhr-search-bar .udhr-input {
+  flex: 1;
+}
+
+.udhr-btn-compact {
+  padding: 10px 16px;
+  border: none;
+  border-radius: var(--udhr-radius-sm);
+  background: var(--udhr-primary);
+  color: #fff;
+  font-weight: 600;
+  font-size: 13.5px;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.udhr-btn-compact:hover:not(:disabled) {
+  background: var(--udhr-primary-hover);
+}
+
+.udhr-btn-compact:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.udhr-dashed-btn {
+  padding: 9px 16px;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--udhr-radius-sm);
+  background: var(--udhr-surface);
+  color: var(--udhr-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.udhr-record-card {
+  background: var(--udhr-surface);
+  border: 1px solid var(--udhr-border);
+  border-radius: var(--udhr-radius-xl);
+  overflow: hidden;
+}
+
+.udhr-record-header {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--udhr-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.udhr-record-subtabs {
+  display: flex;
+  gap: 4px;
+  padding: 10px 20px 0;
+  border-bottom: 1px solid var(--udhr-border);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.udhr-subtab {
+  border: none;
+  background: none;
+  color: var(--udhr-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 4px 10px;
+  margin-right: 16px;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+
+.udhr-subtab.active {
+  color: var(--udhr-primary);
+  border-bottom-color: var(--udhr-primary);
+}
+
+.udhr-record-body {
+  padding: 20px;
+}
+
+.udhr-list-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--udhr-border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.udhr-list-row:last-child {
+  border-bottom: none;
+}
+
+.udhr-pill-status {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--udhr-warning-text);
+  background: var(--udhr-warning-tint);
+  padding: 3px 10px;
+  border-radius: var(--udhr-radius-pill);
+  white-space: nowrap;
+}
+
+.udhr-queue-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--udhr-radius-pill);
+  flex-shrink: 0;
+}
+
+.udhr-empty-state {
+  background: var(--udhr-surface);
+  border: 1px solid var(--udhr-border);
+  border-radius: var(--udhr-radius-xl);
+  padding: 64px 20px;
+  text-align: center;
+}
+
+.udhr-empty-state h3 {
+  color: var(--udhr-text);
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.udhr-alert-item {
+  background: var(--udhr-surface);
+  border: 1px solid var(--udhr-border);
+  border-left: 3px solid var(--udhr-border);
+  border-radius: var(--udhr-radius-md);
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.udhr-alert-item.high {
+  border-left-color: var(--udhr-danger);
+}
+
+.udhr-alert-item.medium {
+  border-left-color: var(--udhr-warning);
+}

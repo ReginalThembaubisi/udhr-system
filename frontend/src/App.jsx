@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle, 
-  Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock, 
-  Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode
+import {
+  Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
+  Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
+  Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode,
+  Menu, Users, CornerUpRight
 } from 'lucide-react';
 import './App.css';
 
@@ -53,7 +54,9 @@ function App() {
   const [patientTimeline, setPatientTimeline] = useState(null);
   const [drugFoodConflicts, setDrugFoodConflicts] = useState([]);
   const [patientAlerts, setPatientAlerts] = useState([]);
-  const [activeTabStaff, setActiveTabStaff] = useState('patients'); // 'patients' or 'alerts'
+  const [activeTabStaff, setActiveTabStaff] = useState('patients'); // 'patients', 'vitals', 'alerts', 'queue', or 'referrals'
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [activeRecordTab, setActiveRecordTab] = useState('diagnoses'); // sub-tab within a loaded patient record (doctor view)
 
   // Staff Dashboard Data State
   const [searchId, setSearchId] = useState('9001015000083');
@@ -1819,6 +1822,858 @@ function App() {
     );
   }
 
+  // 3. Doctor + Nurse "Clinical" dashboard — light clinical redesign. Sidebar
+  // navigation (Patients/Vitals/Alerts/Queue/Referrals) replaces the old
+  // segmented tab bar + single long scroll. Reuses every existing state
+  // value and handler as-is (activeTabStaff now drives the sidebar instead
+  // of a tab strip); Pharmacist and Admin are unaffected and still render
+  // via the shared return below, in their own upcoming redesign passes.
+  if (token && (isDoctor || isNurse) && !mustChangePassword) {
+    const clinicalNavItems = isNurse
+      ? [
+          { key: 'patients', label: 'Patients', icon: <Users size={17} /> },
+          { key: 'vitals', label: 'Vitals', icon: <Activity size={17} /> },
+          { key: 'alerts', label: 'Alerts', icon: <ShieldAlert size={17} /> },
+          { key: 'queue', label: 'Queue', icon: <Clock size={17} /> },
+          { key: 'referrals', label: 'Referrals', icon: <CornerUpRight size={17} /> },
+        ]
+      : [
+          { key: 'patients', label: 'Patients', icon: <Users size={17} /> },
+          { key: 'alerts', label: 'Alerts', icon: <ShieldAlert size={17} /> },
+          { key: 'queue', label: 'Queue', icon: <Clock size={17} /> },
+          { key: 'referrals', label: 'Referrals', icon: <CornerUpRight size={17} /> },
+        ];
+
+    const selectNavTab = (key) => {
+      setActiveTabStaff(key);
+      setIsMobileNavOpen(false);
+      if (key === 'alerts') fetchClinicalAlerts();
+      if (key === 'queue') fetchQueue();
+      if (key === 'referrals') fetchReferrals();
+    };
+
+    const renderQueuePanel = () => (
+      <>
+        <h1 className="udhr-page-title">Today's Queue</h1>
+        <p className="udhr-page-subtitle">Patients waiting to be seen at your facility.</p>
+        <div className="udhr-record-card">
+          <div className="udhr-record-body">
+            {queueList.length === 0 ? (
+              <p className="udhr-empty-note">
+                No one in the queue yet. Locate a patient under "Patients" and use "Check In to Queue" there.
+              </p>
+            ) : (
+              queueList.map(entry => (
+                <div key={entry.id} className="udhr-list-row" style={{ flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span className="udhr-queue-dot" style={{ background: entry.urgency === 'RED' ? 'var(--udhr-danger)' : entry.urgency === 'YELLOW' ? 'var(--udhr-warning)' : 'var(--udhr-success)' }}></span>
+                    <div>
+                      <p className="udhr-row-title">#{entry.queueNumber} — {entry.patient.firstName} {entry.patient.lastName}</p>
+                      <p className="udhr-row-subtitle">{entry.department} · {entry.reason} · waiting since {new Date(entry.checkedInAt || entry.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--udhr-text-secondary)' }}>{entry.status.replaceAll('_', ' ')}</span>
+                    {entry.status === 'WAITING' && (
+                      <button type="button" className="udhr-btn-neutral" onClick={() => handleQueueAction(entry.id, 'call')}>Call</button>
+                    )}
+                    {entry.status === 'IN_CONSULTATION' && (
+                      <button type="button" className="udhr-btn-soft-success" onClick={() => handleQueueAction(entry.id, 'complete')}>Complete</button>
+                    )}
+                    {(entry.status === 'WAITING' || entry.status === 'IN_CONSULTATION') && (
+                      <button type="button" className="udhr-btn-neutral" onClick={() => handleQueueAction(entry.id, 'cancel')}>Cancel</button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </>
+    );
+
+    const renderReferralsPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Referrals</h1>
+        <p className="udhr-page-subtitle">Incoming and outgoing referrals between facilities.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px,1fr))', gap: '16px' }}>
+          <div>
+            <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Incoming</p>
+            {referralInbox.length === 0 ? (
+              <p className="udhr-empty-note">No incoming referrals for your facility.</p>
+            ) : (
+              referralInbox.map(r => (
+                <div key={r.id} className="udhr-card" style={{ marginBottom: '8px', padding: '12px 14px' }}>
+                  <p className="udhr-row-title">{r.patient.firstName} {r.patient.lastName}</p>
+                  <p className="udhr-row-subtitle">from {r.fromFacility.name} · <span className={`udhr-tag ${r.urgency === 'EMERGENCY' ? 'danger' : 'info'}`} style={{ marginLeft: '2px' }}>{r.urgency}</span></p>
+                  <p className="udhr-row-subtitle">{r.reason}</p>
+                  {r.status === 'PENDING' ? (
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                      <button type="button" className="udhr-btn-soft-success" onClick={() => handleRespondReferral(r.id, 'ACCEPTED')}>Accept</button>
+                      <button type="button" className="udhr-btn-neutral" onClick={() => handleRespondReferral(r.id, 'DECLINED')}>Decline</button>
+                    </div>
+                  ) : (
+                    <p className="udhr-row-subtitle" style={{ marginTop: '6px', fontWeight: 600 }}>{r.status}</p>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          <div>
+            <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Outgoing</p>
+            {referralOutgoing.length === 0 ? (
+              <p className="udhr-empty-note">
+                No outgoing referrals yet. Locate a patient under "Patients" and use "Refer to Another Facility" there.
+              </p>
+            ) : (
+              referralOutgoing.map(r => (
+                <div key={r.id} className="udhr-card" style={{ marginBottom: '8px', padding: '12px 14px' }}>
+                  <p className="udhr-row-title">{r.patient.firstName} {r.patient.lastName} → {r.toFacility.name}</p>
+                  <p className="udhr-row-subtitle">{r.reason}</p>
+                  <p className="udhr-row-subtitle" style={{ fontWeight: 600 }}>{r.status}</p>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </>
+    );
+
+    const renderRegistrationFields = () => (
+      <>
+        <div className="udhr-form-group">
+          <label className="udhr-label">ID Number</label>
+          <input type="text" className="udhr-input" value={patientRegForm.idNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, idNumber: e.target.value })} placeholder="SA ID number (optional)" />
+        </div>
+        <div className="udhr-form-group">
+          <label className="udhr-label">Passport Number</label>
+          <input type="text" className="udhr-input" value={patientRegForm.passportNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, passportNumber: e.target.value })} placeholder="Passport number (optional)" />
+        </div>
+        <p className="udhr-empty-note" style={{ marginBottom: '12px' }}>
+          An MRN is auto-assigned to every patient regardless — ID number and passport number are optional.
+        </p>
+        <div className="udhr-form-group">
+          <label className="udhr-label">First Name</label>
+          <input type="text" className="udhr-input" value={patientRegForm.firstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, firstName: e.target.value })} required />
+        </div>
+        <div className="udhr-form-group">
+          <label className="udhr-label">Last Name</label>
+          <input type="text" className="udhr-input" value={patientRegForm.lastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, lastName: e.target.value })} required />
+        </div>
+        <div className="udhr-form-group">
+          <label className="udhr-label">Date of Birth</label>
+          <input type="date" className="udhr-input" value={patientRegForm.dateOfBirth} onChange={(e) => setPatientRegForm({ ...patientRegForm, dateOfBirth: e.target.value })} required />
+        </div>
+        <div className="udhr-form-group">
+          <label className="udhr-label">Gender</label>
+          <select className="udhr-input" value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })}>
+            <option value="MALE">Male</option>
+            <option value="FEMALE">Female</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+        <div className="udhr-form-group">
+          <label className="udhr-label">Contact Number</label>
+          <input type="text" className="udhr-input" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value })} />
+        </div>
+        <div className="udhr-form-group">
+          <label className="udhr-label">Email Address</label>
+          <input type="email" className="udhr-input" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@gmail.com" />
+        </div>
+        <div className="udhr-form-group">
+          <label className="udhr-label">Address</label>
+          <textarea className="udhr-textarea" value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} />
+        </div>
+        <button
+          type="button"
+          className="udhr-btn-neutral"
+          style={{ width: '100%', marginBottom: '10px' }}
+          onClick={() => setShowRegExtras(!showRegExtras)}
+        >
+          {showRegExtras ? 'Hide' : 'Add'} Next of Kin / Newborn Details (optional)
+        </button>
+        {showRegExtras && (
+          <div style={{ background: '#f8fafc', border: '1px solid var(--udhr-border)', padding: '12px', borderRadius: '8px', marginBottom: '10px' }}>
+            <p className="udhr-empty-note" style={{ marginBottom: '8px' }}>Next of Kin</p>
+            <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} /></div>
+            <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} /></div>
+            <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Relationship (e.g. Husband)" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} /></div>
+            <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Phone number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} /></div>
+            <p className="udhr-empty-note" style={{ margin: '12px 0 8px' }}>Newborn — leave blank unless registering a baby at birth</p>
+            <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Mother's ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} /></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <input type="number" className="udhr-input" placeholder="Birth weight (g)" value={patientRegForm.birthWeightGrams} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthWeightGrams: e.target.value })} />
+              <input type="number" className="udhr-input" placeholder="Birth length (cm)" value={patientRegForm.birthLengthCm} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthLengthCm: e.target.value })} />
+              <input type="number" className="udhr-input" placeholder="Apgar (1 min)" value={patientRegForm.apgarScore1Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore1Min: e.target.value })} />
+              <input type="number" className="udhr-input" placeholder="Apgar (5 min)" value={patientRegForm.apgarScore5Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore5Min: e.target.value })} />
+            </div>
+          </div>
+        )}
+      </>
+    );
+
+    const renderNurseRegisterPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Patients</h1>
+        <p className="udhr-page-subtitle">Register a new patient at this facility.</p>
+        <div className="udhr-record-card" style={{ maxWidth: '480px' }}>
+          <div className="udhr-record-body">
+            <form onSubmit={handleRegisterPatient}>
+              {renderRegistrationFields()}
+              <button type="submit" className="udhr-btn-primary">Create Patient Record</button>
+            </form>
+          </div>
+        </div>
+      </>
+    );
+
+    const renderNurseVitalsPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Capture Vitals</h1>
+        <p className="udhr-page-subtitle">Look a patient up by ID or MRN, then record their vitals and any lab results.</p>
+        <form onSubmit={handleLookupForVitals} className="udhr-search-bar">
+          <input
+            type="text"
+            className="udhr-input"
+            value={vitalsSearchId}
+            onChange={(e) => setVitalsSearchId(e.target.value)}
+            placeholder="Enter patient ID number or MRN"
+            required
+          />
+          <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Find'}</button>
+        </form>
+
+        {vitalsPatient && (
+          <>
+            <div className="udhr-record-card" style={{ maxWidth: '480px', marginBottom: '16px' }}>
+              <div className="udhr-record-body">
+                <p className="udhr-row-title" style={{ fontSize: '14px', marginBottom: '2px' }}>{vitalsPatient.firstName} {vitalsPatient.lastName}</p>
+                <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>
+                  {vitalsPatient.idNumber ? `ID: ${vitalsPatient.idNumber} · ` : ''}MRN: {vitalsPatient.mrn} · {vitalsPatient.gender} · DOB {vitalsPatient.dateOfBirth}
+                </p>
+                <form onSubmit={handleRecordVitals}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                    <input type="text" className="udhr-input" placeholder="Blood pressure (e.g. 120/80)" value={vitalsForm.bloodPressure} onChange={(e) => setVitalsForm({ ...vitalsForm, bloodPressure: e.target.value })} />
+                    <input type="number" step="0.1" className="udhr-input" placeholder="Temp (°C)" value={vitalsForm.temperatureCelsius} onChange={(e) => setVitalsForm({ ...vitalsForm, temperatureCelsius: e.target.value })} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                    <input type="number" className="udhr-input" placeholder="Pulse (bpm)" value={vitalsForm.pulseBpm} onChange={(e) => setVitalsForm({ ...vitalsForm, pulseBpm: e.target.value })} />
+                    <input type="number" className="udhr-input" placeholder="Respiration rate" value={vitalsForm.respirationRate} onChange={(e) => setVitalsForm({ ...vitalsForm, respirationRate: e.target.value })} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                    <input type="number" className="udhr-input" placeholder="SpO2 (%)" value={vitalsForm.oxygenSaturation} onChange={(e) => setVitalsForm({ ...vitalsForm, oxygenSaturation: e.target.value })} />
+                    <input type="number" step="0.1" className="udhr-input" placeholder="Weight (kg)" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm({ ...vitalsForm, weightKg: e.target.value })} />
+                    <input type="number" step="0.1" className="udhr-input" placeholder="Height (cm)" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm({ ...vitalsForm, heightCm: e.target.value })} />
+                  </div>
+                  <div className="udhr-form-group">
+                    <textarea className="udhr-textarea" rows={2} placeholder="Anything the doctor should know before seeing the patient..." value={vitalsForm.notes} onChange={(e) => setVitalsForm({ ...vitalsForm, notes: e.target.value })} />
+                  </div>
+                  <button type="submit" className="udhr-btn-primary" disabled={loading}>{loading ? 'Saving...' : 'Save vitals & send to doctor'}</button>
+                </form>
+              </div>
+            </div>
+
+            <div className="udhr-record-card" style={{ maxWidth: '480px' }}>
+              <div className="udhr-record-body">
+                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 12px' }}>Add Lab Result</h3>
+                <form onSubmit={handleAddLabResult}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                    <input type="text" className="udhr-input" placeholder="Test name (e.g. HbA1c)" value={labResultForm.testName} onChange={(e) => setLabResultForm({ ...labResultForm, testName: e.target.value })} required />
+                    <input type="text" className="udhr-input" placeholder="Result" value={labResultForm.result} onChange={(e) => setLabResultForm({ ...labResultForm, result: e.target.value })} required />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                    <input type="text" className="udhr-input" placeholder="Unit (e.g. g/dL)" value={labResultForm.unit} onChange={(e) => setLabResultForm({ ...labResultForm, unit: e.target.value })} />
+                    <input type="text" className="udhr-input" placeholder="Normal range" value={labResultForm.normalRange} onChange={(e) => setLabResultForm({ ...labResultForm, normalRange: e.target.value })} />
+                  </div>
+                  <div className="udhr-form-group">
+                    <textarea className="udhr-textarea" rows={2} placeholder="Notes" value={labResultForm.notes} onChange={(e) => setLabResultForm({ ...labResultForm, notes: e.target.value })} />
+                  </div>
+                  <button type="submit" className="udhr-btn-neutral" style={{ width: '100%' }}>Save result</button>
+                </form>
+              </div>
+            </div>
+          </>
+        )}
+      </>
+    );
+
+    const recordSubTabs = [
+      ['diagnoses', 'Diagnoses'],
+      ['prescriptions', 'Prescriptions'],
+      ['labs', 'Labs'],
+      ['vitals', 'Vitals'],
+      ['conditions', 'Conditions'],
+      ['immunizations', 'Immunizations'],
+      ['timeline', 'Timeline'],
+      ['add', 'Add entry'],
+    ];
+
+    const renderDoctorPatientsPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Patients</h1>
+        <p className="udhr-page-subtitle">Look up a patient by ID or MRN to view and manage their record.</p>
+
+        <form onSubmit={handleSearchPatient} className="udhr-search-bar">
+          <input
+            type="text"
+            className="udhr-input"
+            value={searchId}
+            onChange={(e) => setSearchId(e.target.value)}
+            placeholder="Enter patient ID number or MRN"
+            required
+          />
+          <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
+        </form>
+
+        {searchedPatientRecord ? (
+          <>
+            <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
+              <div className="udhr-record-header">
+                <div>
+                  <p className="udhr-row-title" style={{ fontSize: '16px' }}>{searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}</p>
+                  <p className="udhr-row-subtitle">
+                    {searchedPatientRecord.patient.idNumber ? `ID: ${searchedPatientRecord.patient.idNumber} · ` : ''}MRN: {searchedPatientRecord.patient.mrn} · {searchedPatientRecord.patient.gender} · Born {searchedPatientRecord.patient.dateOfBirth}
+                  </p>
+                  <p className="udhr-row-subtitle">
+                    Contact: {searchedPatientRecord.patient.contactNumber || 'N/A'} · Email: {searchedPatientRecord.patient.email || 'N/A'}
+                  </p>
+                  {(() => {
+                    const lastVisit = searchedPatientRecord.visits && searchedPatientRecord.visits.length > 0
+                      ? searchedPatientRecord.visits.reduce((latest, current) => new Date(current.visitDate) > new Date(latest.visitDate) ? current : latest)
+                      : null;
+                    return (
+                      <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>
+                        Last visit: {lastVisit ? `${new Date(lastVisit.visitDate).toLocaleDateString()} — ${lastVisit.reason}${lastVisit.notes ? ` (${lastVisit.notes})` : ''}` : 'No recorded visits'}
+                      </p>
+                    );
+                  })()}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {searchedPatientRecord.allergies.map(a => (
+                      <span key={a.id} className="udhr-tag danger">{a.allergen} allergy</span>
+                    ))}
+                    {searchedPatientRecord.chronicConditions.map(c => (
+                      <span key={c.id} className="udhr-tag info">{c.conditionName}</span>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px' }}>
+                    {searchedPatientRecord.currentVisit ? searchedPatientRecord.currentVisit.status.replaceAll('_', ' ') : 'No open visit'}
+                  </span>
+                  <button type="button" className="udhr-btn-neutral" onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}>
+                    <RefreshCw size={14} style={{ marginRight: '4px' }} /> Analyze response (CDS)
+                  </button>
+                </div>
+              </div>
+
+              <div className="udhr-record-body" style={{ paddingBottom: 0 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                  <form onSubmit={handleQueueCheckIn}>
+                    <p className="udhr-label" style={{ marginBottom: '8px' }}>Check in to today's queue</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <select className="udhr-input" value={queueCheckInForm.department} onChange={(e) => setQueueCheckInForm({ ...queueCheckInForm, department: e.target.value })}>
+                        <option value="GP">GP</option>
+                        <option value="DENTAL">Dental</option>
+                        <option value="MATERNITY">Maternity</option>
+                        <option value="PEDIATRICS">Pediatrics</option>
+                        <option value="CASUALTY">Casualty</option>
+                        <option value="CHRONIC_CLUB">Chronic Club</option>
+                      </select>
+                      <select className="udhr-input" value={queueCheckInForm.urgency} onChange={(e) => setQueueCheckInForm({ ...queueCheckInForm, urgency: e.target.value })}>
+                        <option value="GREEN">Green (routine)</option>
+                        <option value="YELLOW">Yellow (priority)</option>
+                        <option value="RED">Red (urgent)</option>
+                      </select>
+                      <input type="text" className="udhr-input" placeholder="Reason for visit" value={queueCheckInForm.reason} onChange={(e) => setQueueCheckInForm({ ...queueCheckInForm, reason: e.target.value })} required />
+                      <button type="submit" className="udhr-btn-neutral" disabled={loading}>Check in</button>
+                    </div>
+                  </form>
+                  <form onSubmit={handleCreateReferral}>
+                    <p className="udhr-label" style={{ marginBottom: '8px' }}>Refer to another facility</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <select className="udhr-input" value={referralForm.toFacilityId} onChange={(e) => setReferralForm({ ...referralForm, toFacilityId: e.target.value })} required>
+                        <option value="">Select destination facility...</option>
+                        {facilitiesForReferral.map(f => (
+                          <option key={f.id} value={f.id}>{f.name}</option>
+                        ))}
+                      </select>
+                      <select className="udhr-input" value={referralForm.urgency} onChange={(e) => setReferralForm({ ...referralForm, urgency: e.target.value })}>
+                        <option value="ROUTINE">Routine</option>
+                        <option value="URGENT">Urgent</option>
+                        <option value="EMERGENCY">Emergency</option>
+                      </select>
+                      <input type="text" className="udhr-input" placeholder="Reason for referral" value={referralForm.reason} onChange={(e) => setReferralForm({ ...referralForm, reason: e.target.value })} required />
+                      <textarea className="udhr-textarea" placeholder="Clinical summary" value={referralForm.clinicalSummary} onChange={(e) => setReferralForm({ ...referralForm, clinicalSummary: e.target.value })} rows={2} />
+                      <button type="submit" className="udhr-btn-neutral" disabled={loading}>Send referral</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+
+              <div className="udhr-record-subtabs">
+                {recordSubTabs.map(([key, label]) => (
+                  <button key={key} type="button" className={`udhr-subtab ${activeRecordTab === key ? 'active' : ''}`} onClick={() => setActiveRecordTab(key)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="udhr-record-body">
+                {activeRecordTab === 'diagnoses' && (
+                  searchedPatientRecord.diagnoses.length === 0 ? (
+                    <p className="udhr-empty-note">No diagnoses recorded.</p>
+                  ) : (
+                    searchedPatientRecord.diagnoses.map(d => (
+                      <div key={d.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                        <p className="udhr-row-title">
+                          {d.diagnosis} {d.icd10Code && <span className="udhr-tag info" style={{ marginLeft: '6px' }}>ICD-10: {d.icd10Code}</span>}
+                        </p>
+                        <p className="udhr-row-subtitle">Diagnosed: {new Date(d.diagnosedAt).toLocaleString()} · {d.notes}</p>
+                      </div>
+                    ))
+                  )
+                )}
+
+                {activeRecordTab === 'prescriptions' && (
+                  <>
+                    {searchedPatientRecord.prescriptions.length === 0 ? (
+                      <p className="udhr-empty-note">No prescriptions active.</p>
+                    ) : (
+                      searchedPatientRecord.prescriptions.map(p => (
+                        <div key={p.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                            <p className="udhr-row-title">{p.medication}</p>
+                            <span className="udhr-pill-status">{p.dispensed ? (p.dispenseMethod === 'SELF' ? 'Dispensed by doctor' : 'Dispensed by pharmacy') : 'Waiting at pharmacy'}</span>
+                          </div>
+                          <p className="udhr-row-subtitle">{p.dosage} · {p.frequency} · {p.durationDays} days</p>
+                          {p.notes && <p className="udhr-row-subtitle">{p.notes}</p>}
+                        </div>
+                      ))
+                    )}
+                    {patientAdherence && patientAdherence.stats.totalDoses > 0 && (
+                      <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px dashed var(--udhr-border)' }}>
+                        <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Adherence history</h4>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                          <span style={{ fontSize: '13px' }}>Compliance score</span>
+                          <span style={{ fontSize: '15px', fontWeight: 700, color: patientAdherence.stats.adherenceScore >= 80 ? 'var(--udhr-success)' : 'var(--udhr-warning)' }}>{patientAdherence.stats.adherenceScore}%</span>
+                        </div>
+                        {patientAdherence.adherenceLogs.map((log) => (
+                          <div key={log.id} className="udhr-list-row">
+                            <div>
+                              <p className="udhr-row-title">{log.reminder.prescription.medication}</p>
+                              <p className="udhr-row-subtitle">{new Date(log.scheduledTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</p>
+                              {log.notes && <p className="udhr-row-subtitle" style={{ fontStyle: 'italic' }}>"{log.notes}"</p>}
+                            </div>
+                            <span className={`udhr-tag ${log.status === 'TAKEN' ? 'info' : 'danger'}`}>{log.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {activeRecordTab === 'labs' && (
+                  searchedPatientRecord.labResults && searchedPatientRecord.labResults.length > 0 ? (
+                    searchedPatientRecord.labResults.map(l => (
+                      <div key={l.id} className="udhr-list-row">
+                        <div>
+                          <p className="udhr-row-title">{l.testName}</p>
+                          {l.notes && <p className="udhr-row-subtitle" style={{ fontStyle: 'italic' }}>{l.notes}</p>}
+                        </div>
+                        <p style={{ margin: 0, fontSize: '13px', fontWeight: 700 }}>
+                          {l.result} {l.unit || ''} <span className="udhr-row-subtitle" style={{ fontWeight: 400 }}>{l.normalRange ? `(normal: ${l.normalRange})` : ''}</span>
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="udhr-empty-note">No lab results on file for this patient.</p>
+                  )
+                )}
+
+                {activeRecordTab === 'vitals' && (
+                  searchedPatientRecord.vitals && searchedPatientRecord.vitals.length > 0 ? (
+                    (() => {
+                      const v = searchedPatientRecord.vitals[0];
+                      return (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '14px' }}>
+                          <div><p className="udhr-stat-label">Blood Pressure</p><p className="udhr-stat-value">{v.bloodPressure || 'N/A'}</p></div>
+                          <div><p className="udhr-stat-label">Temperature</p><p className="udhr-stat-value">{v.temperatureCelsius != null ? `${v.temperatureCelsius}°C` : 'N/A'}</p></div>
+                          <div><p className="udhr-stat-label">Pulse</p><p className="udhr-stat-value">{v.pulseBpm != null ? `${v.pulseBpm} bpm` : 'N/A'}</p></div>
+                          <div><p className="udhr-stat-label">Respiration</p><p className="udhr-stat-value">{v.respirationRate != null ? `${v.respirationRate}/min` : 'N/A'}</p></div>
+                          <div><p className="udhr-stat-label">O2 Saturation</p><p className="udhr-stat-value">{v.oxygenSaturation != null ? `${v.oxygenSaturation}%` : 'N/A'}</p></div>
+                          <div><p className="udhr-stat-label">Weight / Height</p><p className="udhr-stat-value">{v.weightKg != null ? `${v.weightKg}kg` : 'N/A'} / {v.heightCm != null ? `${v.heightCm}cm` : 'N/A'}</p></div>
+                          {v.notes && (
+                            <div style={{ gridColumn: '1 / -1' }}>
+                              <p className="udhr-stat-label">Nurse's notes</p>
+                              <p style={{ margin: 0, fontSize: '13.5px' }}>{v.notes}</p>
+                            </div>
+                          )}
+                          <div style={{ gridColumn: '1 / -1' }}>
+                            <p className="udhr-row-subtitle">Recorded by {v.recordedBy ? `${v.recordedBy.firstName} ${v.recordedBy.lastName}` : 'nurse'} on {new Date(v.recordedAt).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <p className="udhr-empty-note">No vitals recorded yet for this patient. Check with the nurse before consulting.</p>
+                  )
+                )}
+
+                {activeRecordTab === 'conditions' && (
+                  <>
+                    <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 8px' }}>Active chronic conditions</h4>
+                    {searchedPatientRecord.chronicConditions.length === 0 ? (
+                      <p className="udhr-empty-note" style={{ marginBottom: '16px' }}>No registered chronic conditions.</p>
+                    ) : (
+                      searchedPatientRecord.chronicConditions.map(c => (
+                        <div key={c.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                          <p className="udhr-row-title">{c.conditionName}</p>
+                          <p className="udhr-row-subtitle">Diagnosed: {c.diagnosedDate} · {c.notes}</p>
+                        </div>
+                      ))
+                    )}
+                    <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '16px 0 8px' }}>Allergies</h4>
+                    {searchedPatientRecord.allergies.length === 0 ? (
+                      <p className="udhr-empty-note">No registered drug or food allergies.</p>
+                    ) : (
+                      searchedPatientRecord.allergies.map(a => (
+                        <div key={a.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                          <p className="udhr-row-title">{a.allergen}</p>
+                          <p className="udhr-row-subtitle">Severity: {a.severity} · {a.notes}</p>
+                        </div>
+                      ))
+                    )}
+                  </>
+                )}
+
+                {activeRecordTab === 'immunizations' && (
+                  <>
+                    {patientImmunizations.length === 0 && (
+                      <button type="button" className="udhr-dashed-btn" style={{ marginBottom: '14px' }} onClick={() => handleGenerateImmunizationSchedule(searchedPatientRecord.patient.id)}>
+                        Generate EPI schedule
+                      </button>
+                    )}
+                    {patientImmunizations.length === 0 ? (
+                      <p className="udhr-empty-note">No immunization records yet.</p>
+                    ) : (
+                      patientImmunizations.map(imm => (
+                        <div key={imm.id} className="udhr-list-row">
+                          <div>
+                            <p className="udhr-row-title">{imm.vaccineName} {imm.doseNumber ? `(dose ${imm.doseNumber})` : ''}</p>
+                            <p className="udhr-row-subtitle">Scheduled: {imm.scheduledDate} {imm.administeredDate ? `— Given: ${imm.administeredDate}` : ''}</p>
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            <span className={`udhr-tag ${imm.status === 'GIVEN' ? 'info' : imm.status === 'MISSED' ? 'danger' : 'info'}`}>{imm.status}</span>
+                            {imm.status === 'DUE' && (
+                              <>
+                                <button type="button" className="udhr-btn-soft-success" onClick={() => handleImmunizationAction(imm.id, 'administer')}>Administer</button>
+                                <button type="button" className="udhr-btn-neutral" onClick={() => handleImmunizationAction(imm.id, 'miss')}>Mark missed</button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </>
+                )}
+
+                {activeRecordTab === 'timeline' && (
+                  patientTimeline ? (
+                    <>
+                      {patientTimeline.activeAlerts && patientTimeline.activeAlerts.length > 0 && (
+                        <div style={{ marginBottom: '16px' }}>
+                          {patientTimeline.activeAlerts.map(alert => (
+                            <div key={alert.id} className="udhr-result-card danger">
+                              <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--udhr-danger-text-2)' }}>Clinical alert: {alert.alertType}</p>
+                              <p style={{ margin: '2px 0 0', fontSize: '13px' }}>{alert.message}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {patientTimeline.foodConflicts && patientTimeline.foodConflicts.length > 0 && (
+                        <div className="udhr-result-card warning">
+                          <p style={{ margin: 0, fontSize: '13px', fontWeight: 600 }}>Drug-food interactions detected</p>
+                          {patientTimeline.foodConflicts.map((c, i) => (
+                            <p key={i} style={{ margin: '4px 0 0', fontSize: '12.5px' }}>{c.medication} conflicts with scanned ingredient {c.ingredient} ({c.message})</p>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '12px' }}>
+                        <div>
+                          <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 8px' }}>Medication doses (14 days)</h4>
+                          {patientTimeline.adherenceLogs.length === 0 ? (
+                            <p className="udhr-empty-note">No doses logged.</p>
+                          ) : (
+                            patientTimeline.adherenceLogs.map(log => (
+                              <div key={log.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '8px 0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '12.5px' }}>
+                                  <span>{log.reminder.prescription.medication}</span>
+                                  <span className={`udhr-tag ${log.status === 'TAKEN' ? 'info' : log.status === 'MISSED' ? 'danger' : 'info'}`}>{log.status}</span>
+                                </div>
+                                {log.notes && <p style={{ fontSize: '12px', fontStyle: 'italic', margin: '4px 0 0' }}>"{log.notes}"</p>}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                        <div>
+                          <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 8px' }}>Symptom checks (14 days)</h4>
+                          {patientTimeline.symptomChecks.length === 0 ? (
+                            <p className="udhr-empty-note">No symptom checks logged.</p>
+                          ) : (
+                            patientTimeline.symptomChecks.map(check => (
+                              <div key={check.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '8px 0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '12.5px' }}>
+                                  <span className="udhr-row-subtitle">{new Date(check.checkedAt).toLocaleDateString()}</span>
+                                  <span className={`udhr-tag ${check.urgencyLevel === 'RED' ? 'danger' : 'info'}`}>{check.urgencyLevel}</span>
+                                </div>
+                                <p style={{ margin: '4px 0 0', fontSize: '12.5px' }}>{check.recommendation.split('[')[0]}</p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="udhr-empty-note">Click "Analyze response (CDS)" above to generate this view.</p>
+                  )
+                )}
+
+                {activeRecordTab === 'add' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
+                    <form onSubmit={handleAddDiagnosis}>
+                      <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Add clinical diagnosis</h4>
+                      <div className="udhr-form-group">
+                        <input type="text" className="udhr-input" placeholder="Condition or diagnosis (e.g. Influenza)" value={addDiagnosisForm.conditionName} onChange={(e) => setAddDiagnosisForm({ ...addDiagnosisForm, conditionName: e.target.value })} required />
+                      </div>
+                      <div className="udhr-form-group">
+                        <textarea className="udhr-textarea" rows={3} placeholder="Clinical notes" value={addDiagnosisForm.notes} onChange={(e) => setAddDiagnosisForm({ ...addDiagnosisForm, notes: e.target.value })} />
+                      </div>
+                      <button type="submit" className="udhr-btn-neutral">Save diagnosis</button>
+                    </form>
+
+                    <form onSubmit={handleAddPrescription}>
+                      <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Issue prescription</h4>
+                      <div className="udhr-form-group">
+                        <input type="text" className="udhr-input" placeholder="Medication (e.g. Amoxicillin 250mg)" value={addPrescriptionForm.medicationName} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value })} required />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                        <input type="text" className="udhr-input" placeholder="Dosage" value={addPrescriptionForm.dosage} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, dosage: e.target.value })} required />
+                        <select className="udhr-input" value={addPrescriptionForm.frequency} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, frequency: e.target.value })} required>
+                          <option value="Once daily">Once daily</option>
+                          <option value="Twice daily">Twice daily</option>
+                          <option value="Three times daily">Three times daily</option>
+                          <option value="With meals">With meals</option>
+                        </select>
+                      </div>
+                      <div className="udhr-form-group">
+                        <input type="number" className="udhr-input" placeholder="Duration (days)" value={addPrescriptionForm.durationDays} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, durationDays: parseInt(e.target.value) || 7 })} required />
+                      </div>
+                      <div className="udhr-form-group">
+                        <select className="udhr-input" value={addPrescriptionForm.dispenseMethod} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, dispenseMethod: e.target.value })} required>
+                          <option value="PHARMACY">Send to pharmacy</option>
+                          <option value="SELF">Give to patient myself</option>
+                        </select>
+                      </div>
+                      <button type="submit" className="udhr-btn-neutral">{addPrescriptionForm.dispenseMethod === 'SELF' ? 'Issue & dispense now' : 'Send to pharmacy'}</button>
+                    </form>
+
+                    <form onSubmit={handleAddAlert}>
+                      <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Add clinical alert</h4>
+                      <div className="udhr-form-group">
+                        <select className="udhr-input" value={addAlertForm.severity} onChange={(e) => setAddAlertForm({ ...addAlertForm, severity: e.target.value })} required>
+                          <option value="LOW">Low</option>
+                          <option value="MEDIUM">Medium</option>
+                          <option value="HIGH">High</option>
+                          <option value="CRITICAL">Critical</option>
+                        </select>
+                      </div>
+                      <div className="udhr-form-group">
+                        <textarea className="udhr-textarea" rows={4} placeholder="Alert message / instruction" value={addAlertForm.message} onChange={(e) => setAddAlertForm({ ...addAlertForm, message: e.target.value })} required />
+                      </div>
+                      <button type="submit" className="udhr-btn-neutral">Save clinical alert</button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="udhr-empty-state">
+            <Clipboard size={48} color="#cbd5e1" style={{ margin: '0 auto 16px' }} />
+            <h3>No patient file loaded</h3>
+            <p className="udhr-empty-note">Use the lookup above to locate a patient by their ID number or MRN.</p>
+          </div>
+        )}
+
+        <div style={{ marginTop: '20px', maxWidth: '480px' }}>
+          <h3 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Register a new patient</h3>
+          <div className="udhr-record-card">
+            <div className="udhr-record-body">
+              <form onSubmit={handleRegisterPatient}>
+                {renderRegistrationFields()}
+                <button type="submit" className="udhr-btn-primary">Create patient record</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+
+    const renderAlertsPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Clinical Alerts</h1>
+        <p className="udhr-page-subtitle">
+          Automatically fired when a patient shows high medication adherence with poor clinical response, or high-risk drug-food interactions.
+        </p>
+
+        {clinicalAlerts.length === 0 ? (
+          <div className="udhr-empty-state">
+            <CheckCircle size={48} color="#86efac" style={{ margin: '0 auto 16px' }} />
+            <h3>No active clinical alerts</h3>
+            <p className="udhr-empty-note">All monitored patients are responding well to treatment and have no dietary conflicts.</p>
+          </div>
+        ) : (
+          clinicalAlerts.map((item) => {
+            const alert = item.alert;
+            return (
+              <div key={alert.id} className={`udhr-alert-item ${alert.severity === 'CRITICAL' || alert.severity === 'HIGH' ? 'high' : 'medium'}`} style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid var(--udhr-border-subtle)', paddingBottom: '12px', marginBottom: '12px' }}>
+                  <div>
+                    <span className={`udhr-tag ${alert.severity === 'CRITICAL' ? 'danger' : 'info'}`}>{alert.severity} SEVERITY</span>
+                    <p className="udhr-row-title" style={{ fontSize: '14px', marginTop: '6px' }}>
+                      Patient: {item.patient.firstName} {item.patient.lastName} ({item.patient.idNumber || item.patient.mrn})
+                    </p>
+                    <p className="udhr-row-subtitle">Fired: {new Date(alert.createdAt).toLocaleString()} · Type: {alert.alertType}</p>
+                  </div>
+                  <button type="button" className="udhr-btn-soft-success" onClick={() => handleResolveAlert(alert.id)}>Resolve alert</button>
+                </div>
+
+                <p style={{ fontSize: '13.5px', lineHeight: 1.6, margin: '0 0 14px', fontStyle: 'italic', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px' }}>
+                  {alert.message}
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '12px' }}>
+                  <div>
+                    <h4 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', margin: '0 0 8px' }}>Adherence & prescriptions</h4>
+                    <p style={{ fontSize: '13px', margin: 0 }}>Compliance (last 14 days): <strong>{item.adherenceScore}%</strong></p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                      {item.activePrescriptions.map(p => (
+                        <span key={p.id} className="udhr-tag info">{p.medication} ({p.dosage})</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', margin: '0 0 8px' }}>Recent symptom checks</h4>
+                    {item.recentSymptomChecks.length === 0 ? (
+                      <p className="udhr-empty-note">No checks logged.</p>
+                    ) : (
+                      item.recentSymptomChecks.map(check => (
+                        <p key={check.id} style={{ fontSize: '12.5px', margin: '0 0 4px' }}>
+                          {new Date(check.checkedAt).toLocaleDateString()}: urgency <strong>{check.urgencyLevel}</strong>
+                        </p>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {alert.alertType === 'NON_RESPONSE' && (
+                  <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '14px', border: '1px solid var(--udhr-border)' }}>
+                    <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Clinical decision support recommendations</h4>
+                    {item.labRecommendations && item.labRecommendations.length > 0 && (
+                      <div style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px dashed var(--udhr-border)' }}>
+                        <p style={{ fontSize: '12.5px', fontWeight: 600, margin: '0 0 4px' }}>Suggested laboratory diagnostics:</p>
+                        {item.labRecommendations.map(lr => (
+                          <div key={lr.id} style={{ marginTop: '4px' }}>
+                            <p style={{ fontSize: '12.5px', color: 'var(--udhr-primary)', margin: 0 }}>Order: <strong>{lr.testName}</strong> {lr.icdCode && `(ICD-10: ${lr.icdCode})`}</p>
+                            <p className="udhr-row-subtitle">{lr.reason}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {item.differentialDiagnoses && item.differentialDiagnoses.length > 0 && (
+                      <>
+                        <p style={{ fontSize: '12.5px', fontWeight: 600, margin: '0 0 6px' }}>Suggested ICD-10 differential diagnoses:</p>
+                        {item.differentialDiagnoses.map(dd => (
+                          <div key={dd.id} style={{ background: '#fff', padding: '10px', borderRadius: '8px', marginBottom: '6px', border: '1px solid var(--udhr-border)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '12.5px', fontWeight: 600 }}>{dd.conditionName} (ICD-10: {dd.icdCode})</span>
+                              <span className={`udhr-tag ${dd.likelihood === 'HIGH' ? 'danger' : 'info'}`}>{dd.likelihood}</span>
+                            </div>
+                            <p className="udhr-row-subtitle">{dd.reasoning}</p>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </>
+    );
+
+    return (
+      <div className="udhr-shell">
+        {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
+        <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
+          <div className="udhr-sidebar-header">
+            <div className="udhr-page-logo">
+              <div className="udhr-page-logo-chip"><Activity size={16} color="#fff" /></div>
+              UDHR
+            </div>
+            <button type="button" className="udhr-sidebar-close" onClick={() => setIsMobileNavOpen(false)}><XCircle size={18} /></button>
+          </div>
+          <nav className="udhr-sidebar-nav">
+            {clinicalNavItems.map(item => (
+              <button key={item.key} type="button" className={`udhr-nav-item ${activeTabStaff === item.key ? 'active' : ''}`} onClick={() => selectNavTab(item.key)}>
+                {item.icon} {item.label}
+                {item.key === 'alerts' && clinicalAlerts.length > 0 && <span className="udhr-nav-badge">{clinicalAlerts.length}</span>}
+              </button>
+            ))}
+          </nav>
+          <div className="udhr-sidebar-footer">
+            <div className="udhr-user-row">
+              <div className="udhr-user-avatar">{userName ? userName.charAt(0) : <User size={14} />}</div>
+              <div style={{ minWidth: 0 }}>
+                <p className="udhr-user-name">{userName}</p>
+                <p className="udhr-user-role">{userRole}</p>
+              </div>
+            </div>
+            <button type="button" className="udhr-logout-link" onClick={handleLogout}><LogOut size={15} /> Log out</button>
+          </div>
+        </aside>
+
+        <main className="udhr-shell-main">
+          <button type="button" className="udhr-mobile-menu-btn" onClick={() => setIsMobileNavOpen(true)}>
+            <Menu size={16} /> Menu
+          </button>
+
+          {errorMessage && (
+            <div className="udhr-alert-banner error">
+              <AlertCircle size={16} />
+              <span style={{ flex: 1 }}>{errorMessage}</span>
+              <button type="button" onClick={() => setErrorMessage('')}>×</button>
+            </div>
+          )}
+          {successMessage && (
+            <div className="udhr-alert-banner success">
+              <CheckCircle size={16} />
+              <span style={{ flex: 1 }}>{successMessage}</span>
+              <button type="button" onClick={() => setSuccessMessage('')}>×</button>
+            </div>
+          )}
+
+          {activeTabStaff === 'patients' && (isNurse ? renderNurseRegisterPanel() : renderDoctorPatientsPanel())}
+          {activeTabStaff === 'vitals' && isNurse && renderNurseVitalsPanel()}
+          {activeTabStaff === 'alerts' && renderAlertsPanel()}
+          {activeTabStaff === 'queue' && renderQueuePanel()}
+          {activeTabStaff === 'referrals' && renderReferralsPanel()}
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="app-container">
       {/* Header */}
@@ -2427,1277 +3282,7 @@ function App() {
                   </div>
                 )}
               </div>
-            ) : (
-            <>
-            {/* Tab Switcher for Staff */}
-            <div style={{ display: 'flex', background: 'rgba(15, 23, 42, 0.6)', padding: '4px', borderRadius: '12px', marginBottom: '24px', maxWidth: '820px', margin: '0 auto', flexWrap: 'wrap' }}>
-              <button 
-                className="btn" 
-                style={{ flex: 1, background: activeTabStaff === 'patients' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                onClick={() => setActiveTabStaff('patients')}
-              >
-                {isNurse ? 'Record Vitals' : 'Locate & Manage Patients'}
-              </button>
-              <button 
-                className="btn" 
-                style={{ 
-                  flex: 1, 
-                  background: activeTabStaff === 'alerts' ? 'var(--primary)' : 'transparent', 
-                  color: '#fff', 
-                  borderRadius: '10px', 
-                  padding: '10px', 
-                  fontSize: '0.9rem',
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  gap: '6px'
-                }}
-                onClick={() => { setActiveTabStaff('alerts'); fetchClinicalAlerts(); }}
-              >
-                🚨 Clinical Alerts {clinicalAlerts && clinicalAlerts.length > 0 && (
-                  <span style={{ background: '#ef4444', color: '#fff', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
-                    {clinicalAlerts.length}
-                  </span>
-                )}
-              </button>
-              <button
-                className="btn"
-                style={{ flex: 1, background: activeTabStaff === 'queue' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                onClick={() => { setActiveTabStaff('queue'); fetchQueue(); }}
-              >
-                Reception Queue
-              </button>
-              <button
-                className="btn"
-                style={{ flex: 1, background: activeTabStaff === 'referrals' ? 'var(--primary)' : 'transparent', color: '#fff', borderRadius: '10px', padding: '10px', fontSize: '0.9rem' }}
-                onClick={() => { setActiveTabStaff('referrals'); fetchReferrals(); }}
-              >
-                Referrals
-              </button>
-            </div>
-
-            {activeTabStaff === 'queue' ? (
-              <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'left' }}>
-                <div className="glass-card">
-                  <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Clock size={18} /> Today's Facility Queue
-                  </h3>
-                  {queueList.length === 0 ? (
-                    <p className="text-muted" style={{ fontSize: '0.85rem' }}>
-                      No one in the queue yet. Locate a patient under "Locate & Manage Patients" and use "Check In to Queue" there.
-                    </p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {queueList.map(entry => (
-                        <div key={entry.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                          <div>
-                            <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
-                              #{entry.queueNumber} — {entry.patient.firstName} {entry.patient.lastName}{' '}
-                              <span className={`badge ${entry.urgency === 'RED' ? 'badge-red' : entry.urgency === 'YELLOW' ? 'badge-yellow' : 'badge-green'}`} style={{ marginLeft: '6px', fontSize: '0.7rem' }}>
-                                {entry.urgency}
-                              </span>
-                            </p>
-                            <p className="text-muted" style={{ fontSize: '0.8rem' }}>{entry.department} — {entry.reason}</p>
-                            <p className="text-muted" style={{ fontSize: '0.75rem' }}>Status: {entry.status.replaceAll('_', ' ')}</p>
-                          </div>
-                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                            {entry.status === 'WAITING' && (
-                              <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: '0.8rem' }} onClick={() => handleQueueAction(entry.id, 'call')}>Call</button>
-                            )}
-                            {entry.status === 'IN_CONSULTATION' && (
-                              <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '0.8rem' }} onClick={() => handleQueueAction(entry.id, 'complete')}>Complete</button>
-                            )}
-                            {(entry.status === 'WAITING' || entry.status === 'IN_CONSULTATION') && (
-                              <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '0.8rem' }} onClick={() => handleQueueAction(entry.id, 'cancel')}>Cancel</button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : activeTabStaff === 'referrals' ? (
-              <div style={{ maxWidth: '900px', margin: '0 auto', textAlign: 'left' }}>
-                <div className="glass-card" style={{ marginBottom: '20px' }}>
-                  <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px' }}>Incoming Referrals</h3>
-                  {referralInbox.length === 0 ? (
-                    <p className="text-muted" style={{ fontSize: '0.85rem' }}>No incoming referrals for your facility.</p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {referralInbox.map(r => (
-                        <div key={r.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                          <div>
-                            <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>
-                              {r.patient.firstName} {r.patient.lastName} from {r.fromFacility.name}{' '}
-                              <span className={`badge ${r.urgency === 'EMERGENCY' ? 'badge-red' : r.urgency === 'URGENT' ? 'badge-yellow' : 'badge-green'}`} style={{ marginLeft: '6px', fontSize: '0.7rem' }}>{r.urgency}</span>
-                            </p>
-                            <p className="text-muted" style={{ fontSize: '0.8rem' }}>{r.reason}</p>
-                            <p className="text-muted" style={{ fontSize: '0.75rem' }}>Status: {r.status}</p>
-                          </div>
-                          {r.status === 'PENDING' && (
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <button className="btn btn-primary" style={{ padding: '8px 12px', fontSize: '0.8rem' }} onClick={() => handleRespondReferral(r.id, 'ACCEPTED')}>Accept</button>
-                              <button className="btn btn-secondary" style={{ padding: '8px 12px', fontSize: '0.8rem' }} onClick={() => handleRespondReferral(r.id, 'DECLINED')}>Decline</button>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="glass-card">
-                  <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px' }}>Outgoing Referrals</h3>
-                  {referralOutgoing.length === 0 ? (
-                    <p className="text-muted" style={{ fontSize: '0.85rem' }}>
-                      No outgoing referrals yet. Locate a patient under "Locate & Manage Patients" and use "Refer to Another Facility" there.
-                    </p>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {referralOutgoing.map(r => (
-                        <div key={r.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
-                          <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.9rem' }}>{r.patient.firstName} {r.patient.lastName} → {r.toFacility.name}</p>
-                          <p className="text-muted" style={{ fontSize: '0.8rem' }}>{r.reason}</p>
-                          <p className="text-muted" style={{ fontSize: '0.75rem' }}>Status: {r.status}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : activeTabStaff === 'patients' ? (
-              isNurse ? (
-                <div style={{ maxWidth: '700px', margin: '0 auto' }}>
-                  {/* Nurse: Look up patient by ID */}
-                  <div className="glass-card" style={{ textAlign: 'left', marginBottom: '20px' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Search size={18} /> Find Patient by ID Number or MRN
-                    </h3>
-                    <form onSubmit={handleLookupForVitals} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
-                      <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
-                        <label htmlFor="vitalsSearchId">ID Number or MRN</label>
-                        <input
-                          type="text"
-                          id="vitalsSearchId"
-                          value={vitalsSearchId}
-                          onChange={(e) => setVitalsSearchId(e.target.value)}
-                          placeholder="Enter patient ID number or MRN"
-                          required
-                        />
-                      </div>
-                      <button type="submit" className="btn btn-primary" disabled={loading}>
-                        <Search size={16} /> {loading ? 'Searching...' : 'Find Patient'}
-                      </button>
-                    </form>
-                  </div>
-
-                  {vitalsPatient && (
-                    <>
-                    <div className="glass-card" style={{ textAlign: 'left' }}>
-                      <h2 style={{ color: '#fff', fontSize: '1.2rem' }}>
-                        {vitalsPatient.firstName} {vitalsPatient.lastName}
-                      </h2>
-                      <p className="text-muted" style={{ marginBottom: '20px' }}>
-                        {vitalsPatient.idNumber ? `ID Number: ${vitalsPatient.idNumber} | ` : ''}MRN: {vitalsPatient.mrn} | Gender: {vitalsPatient.gender} | DOB: {vitalsPatient.dateOfBirth}
-                      </p>
-
-                      <form onSubmit={handleRecordVitals}>
-                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                          <div>
-                            <label>Blood Pressure</label>
-                            <input
-                              type="text"
-                              value={vitalsForm.bloodPressure}
-                              onChange={(e) => setVitalsForm({ ...vitalsForm, bloodPressure: e.target.value })}
-                              placeholder="e.g. 120/80"
-                            />
-                          </div>
-                          <div>
-                            <label>Temperature (°C)</label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={vitalsForm.temperatureCelsius}
-                              onChange={(e) => setVitalsForm({ ...vitalsForm, temperatureCelsius: e.target.value })}
-                              placeholder="e.g. 36.8"
-                            />
-                          </div>
-                        </div>
-                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                          <div>
-                            <label>Pulse (bpm)</label>
-                            <input
-                              type="number"
-                              value={vitalsForm.pulseBpm}
-                              onChange={(e) => setVitalsForm({ ...vitalsForm, pulseBpm: e.target.value })}
-                              placeholder="e.g. 78"
-                            />
-                          </div>
-                          <div>
-                            <label>Respiration Rate</label>
-                            <input
-                              type="number"
-                              value={vitalsForm.respirationRate}
-                              onChange={(e) => setVitalsForm({ ...vitalsForm, respirationRate: e.target.value })}
-                              placeholder="e.g. 16"
-                            />
-                          </div>
-                        </div>
-                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
-                          <div>
-                            <label>O2 Saturation (%)</label>
-                            <input
-                              type="number"
-                              value={vitalsForm.oxygenSaturation}
-                              onChange={(e) => setVitalsForm({ ...vitalsForm, oxygenSaturation: e.target.value })}
-                              placeholder="e.g. 98"
-                            />
-                          </div>
-                          <div>
-                            <label>Weight (kg)</label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={vitalsForm.weightKg}
-                              onChange={(e) => setVitalsForm({ ...vitalsForm, weightKg: e.target.value })}
-                            />
-                          </div>
-                          <div>
-                            <label>Height (cm)</label>
-                            <input
-                              type="number"
-                              step="0.1"
-                              value={vitalsForm.heightCm}
-                              onChange={(e) => setVitalsForm({ ...vitalsForm, heightCm: e.target.value })}
-                            />
-                          </div>
-                        </div>
-                        <div className="form-group">
-                          <label>Notes</label>
-                          <textarea
-                            value={vitalsForm.notes}
-                            onChange={(e) => setVitalsForm({ ...vitalsForm, notes: e.target.value })}
-                            rows={2}
-                            placeholder="Anything the doctor should know before seeing the patient..."
-                          />
-                        </div>
-                        <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
-                          {loading ? 'Saving...' : 'Save Vitals & Send to Doctor'}
-                        </button>
-                      </form>
-                    </div>
-
-                    {/* Lab result — paste in a result that's come back for this patient */}
-                    <div className="glass-card" style={{ textAlign: 'left', marginTop: '20px' }}>
-                      <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <FileSpreadsheet size={18} /> Add Lab Result
-                      </h3>
-                      <form onSubmit={handleAddLabResult}>
-                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                          <div>
-                            <label>Test Name</label>
-                            <input
-                              type="text"
-                              value={labResultForm.testName}
-                              onChange={(e) => setLabResultForm({ ...labResultForm, testName: e.target.value })}
-                              placeholder="e.g. Full Blood Count"
-                              required
-                            />
-                          </div>
-                          <div>
-                            <label>Result</label>
-                            <input
-                              type="text"
-                              value={labResultForm.result}
-                              onChange={(e) => setLabResultForm({ ...labResultForm, result: e.target.value })}
-                              placeholder="e.g. 13.5"
-                              required
-                            />
-                          </div>
-                        </div>
-                        <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                          <div>
-                            <label>Unit</label>
-                            <input
-                              type="text"
-                              value={labResultForm.unit}
-                              onChange={(e) => setLabResultForm({ ...labResultForm, unit: e.target.value })}
-                              placeholder="e.g. g/dL"
-                            />
-                          </div>
-                          <div>
-                            <label>Normal Range</label>
-                            <input
-                              type="text"
-                              value={labResultForm.normalRange}
-                              onChange={(e) => setLabResultForm({ ...labResultForm, normalRange: e.target.value })}
-                              placeholder="e.g. 12-16"
-                            />
-                          </div>
-                        </div>
-                        <div className="form-group">
-                          <label>Notes</label>
-                          <textarea
-                            value={labResultForm.notes}
-                            onChange={(e) => setLabResultForm({ ...labResultForm, notes: e.target.value })}
-                            rows={2}
-                          />
-                        </div>
-                        <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
-                          Save Lab Result
-                        </button>
-                      </form>
-                    </div>
-                    </>
-                  )}
-
-                  {/* Register New Patient — collapsed by default, reuses the same form Doctor/Admin use */}
-                  <div className="glass-card" style={{ textAlign: 'left', marginTop: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: showNurseRegister ? '16px' : 0 }}>
-                      <h3 style={{ color: '#fff', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                        <PlusCircle size={18} /> Register New Patient
-                      </h3>
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => setShowNurseRegister(!showNurseRegister)}
-                        style={{ padding: '6px 14px', fontSize: '0.8rem' }}
-                      >
-                        {showNurseRegister ? 'Hide' : 'Show'}
-                      </button>
-                    </div>
-                    {showNurseRegister && (
-                      <form onSubmit={handleRegisterPatient}>
-                        <div className="form-group">
-                          <label>ID Number</label>
-                          <input type="text" value={patientRegForm.idNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, idNumber: e.target.value })} placeholder="SA ID number (optional)" />
-                        </div>
-                        <div className="form-group">
-                          <label>Passport Number</label>
-                          <input type="text" value={patientRegForm.passportNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, passportNumber: e.target.value })} placeholder="Passport number (optional)" />
-                        </div>
-                        <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '12px' }}>
-                          An MRN is auto-assigned to every patient regardless — ID number and passport number are optional.
-                        </p>
-                        <div className="form-group">
-                          <label>First Name</label>
-                          <input type="text" value={patientRegForm.firstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, firstName: e.target.value })} required />
-                        </div>
-                        <div className="form-group">
-                          <label>Last Name</label>
-                          <input type="text" value={patientRegForm.lastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, lastName: e.target.value })} required />
-                        </div>
-                        <div className="form-group">
-                          <label>Date of Birth</label>
-                          <input type="date" value={patientRegForm.dateOfBirth} onChange={(e) => setPatientRegForm({ ...patientRegForm, dateOfBirth: e.target.value })} required />
-                        </div>
-                        <div className="form-group">
-                          <label>Gender</label>
-                          <select value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })}>
-                            <option value="MALE">Male</option>
-                            <option value="FEMALE">Female</option>
-                            <option value="OTHER">Other</option>
-                          </select>
-                        </div>
-                        <div className="form-group">
-                          <label>Contact Number</label>
-                          <input type="text" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value })} />
-                        </div>
-                        <div className="form-group">
-                          <label>Email Address</label>
-                          <input type="email" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@gmail.com" />
-                        </div>
-                        <div className="form-group">
-                          <label>Address</label>
-                          <textarea value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} />
-                        </div>
-
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          style={{ width: '100%', marginBottom: '10px', fontSize: '0.85rem' }}
-                          onClick={() => setShowRegExtras(!showRegExtras)}
-                        >
-                          {showRegExtras ? 'Hide' : 'Add'} Next of Kin / Newborn Details (optional)
-                        </button>
-                        {showRegExtras && (
-                          <div style={{ background: 'rgba(15,23,42,0.4)', padding: '12px', borderRadius: '8px', marginBottom: '10px' }}>
-                            <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>Next of Kin</p>
-                            <div className="form-group"><input type="text" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} /></div>
-                            <div className="form-group"><input type="text" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} /></div>
-                            <div className="form-group"><input type="text" placeholder="Relationship (e.g. Husband)" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} /></div>
-                            <div className="form-group"><input type="text" placeholder="Phone number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} /></div>
-                            <p className="text-muted" style={{ fontSize: '0.75rem', margin: '12px 0 8px' }}>Newborn — leave blank unless registering a baby at birth</p>
-                            <div className="form-group"><input type="text" placeholder="Mother's ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} /></div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                              <input type="number" placeholder="Birth weight (g)" value={patientRegForm.birthWeightGrams} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthWeightGrams: e.target.value })} />
-                              <input type="number" placeholder="Birth length (cm)" value={patientRegForm.birthLengthCm} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthLengthCm: e.target.value })} />
-                              <input type="number" placeholder="Apgar (1 min)" value={patientRegForm.apgarScore1Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore1Min: e.target.value })} />
-                              <input type="number" placeholder="Apgar (5 min)" value={patientRegForm.apgarScore5Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore5Min: e.target.value })} />
-                            </div>
-                          </div>
-                        )}
-
-                        <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Create Patient Record</button>
-                      </form>
-                    )}
-                  </div>
-                </div>
-              ) : (
-              <div className="dashboard-grid">
-                
-                {/* Search Patient & Register Panel */}
-                <div className="dashboard-sidebar">
-                  
-                  {/* Search Card */}
-                  <div className="glass-card" style={{ textAlign: 'left' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Search size={18} /> Locate Patient File
-                    </h3>
-                    <form onSubmit={handleSearchPatient}>
-                      <div className="form-group" style={{ marginBottom: '12px' }}>
-                        <label htmlFor="searchId">ID Number or MRN</label>
-                        <input
-                          type="text"
-                          id="searchId"
-                          value={searchId}
-                          onChange={(e) => setSearchId(e.target.value)}
-                          placeholder="Enter patient ID number or MRN"
-                          required
-                        />
-                      </div>
-                      <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
-                        <Search size={16} /> {loading ? 'Searching...' : 'Search Record'}
-                      </button>
-                    </form>
-                  </div>
-
-                  {/* Quick Register Card */}
-                  <div className="glass-card" style={{ textAlign: 'left' }}>
-                    <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <PlusCircle size={18} /> Register Patient
-                    </h3>
-                    <form onSubmit={handleRegisterPatient}>
-                      <div className="form-group">
-                        <label>ID Number</label>
-                        <input
-                          type="text"
-                          value={patientRegForm.idNumber}
-                          onChange={(e) => setPatientRegForm({...patientRegForm, idNumber: e.target.value})}
-                          placeholder="SA ID number (optional)"
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Passport Number</label>
-                        <input
-                          type="text"
-                          value={patientRegForm.passportNumber}
-                          onChange={(e) => setPatientRegForm({...patientRegForm, passportNumber: e.target.value})}
-                          placeholder="Passport number (optional)"
-                        />
-                      </div>
-                      <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '12px' }}>
-                        An MRN is auto-assigned to every patient regardless — ID number and passport number are optional.
-                      </p>
-                      <div className="form-group">
-                        <label>First Name</label>
-                        <input
-                          type="text"
-                          value={patientRegForm.firstName}
-                          onChange={(e) => setPatientRegForm({...patientRegForm, firstName: e.target.value})}
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Last Name</label>
-                        <input 
-                          type="text" 
-                          value={patientRegForm.lastName} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, lastName: e.target.value})} 
-                          required 
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Date of Birth</label>
-                        <input 
-                          type="date" 
-                          value={patientRegForm.dateOfBirth} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, dateOfBirth: e.target.value})} 
-                          required 
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Gender</label>
-                        <select 
-                          value={patientRegForm.gender} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, gender: e.target.value})}
-                        >
-                          <option value="MALE">Male</option>
-                          <option value="FEMALE">Female</option>
-                          <option value="OTHER">Other</option>
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label>Contact Number</label>
-                        <input 
-                          type="text" 
-                          value={patientRegForm.contactNumber} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, contactNumber: e.target.value})} 
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Email Address</label>
-                        <input 
-                          type="email" 
-                          value={patientRegForm.email} 
-                          onChange={(e) => setPatientRegForm({...patientRegForm, email: e.target.value})} 
-                          placeholder="patient@gmail.com"
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label>Address</label>
-                        <textarea
-                          value={patientRegForm.address}
-                          onChange={(e) => setPatientRegForm({...patientRegForm, address: e.target.value})}
-                          rows={2}
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ width: '100%', marginBottom: '10px', fontSize: '0.85rem' }}
-                        onClick={() => setShowRegExtras(!showRegExtras)}
-                      >
-                        {showRegExtras ? 'Hide' : 'Add'} Next of Kin / Newborn Details (optional)
-                      </button>
-                      {showRegExtras && (
-                        <div style={{ background: 'rgba(15,23,42,0.4)', padding: '12px', borderRadius: '8px', marginBottom: '10px' }}>
-                          <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '8px' }}>Next of Kin</p>
-                          <div className="form-group"><input type="text" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} /></div>
-                          <div className="form-group"><input type="text" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} /></div>
-                          <div className="form-group"><input type="text" placeholder="Relationship (e.g. Husband)" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} /></div>
-                          <div className="form-group"><input type="text" placeholder="Phone number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} /></div>
-                          <p className="text-muted" style={{ fontSize: '0.75rem', margin: '12px 0 8px' }}>Newborn — leave blank unless registering a baby at birth</p>
-                          <div className="form-group"><input type="text" placeholder="Mother's ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} /></div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                            <input type="number" placeholder="Birth weight (g)" value={patientRegForm.birthWeightGrams} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthWeightGrams: e.target.value })} />
-                            <input type="number" placeholder="Birth length (cm)" value={patientRegForm.birthLengthCm} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthLengthCm: e.target.value })} />
-                            <input type="number" placeholder="Apgar (1 min)" value={patientRegForm.apgarScore1Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore1Min: e.target.value })} />
-                            <input type="number" placeholder="Apgar (5 min)" value={patientRegForm.apgarScore5Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore5Min: e.target.value })} />
-                          </div>
-                        </div>
-                      )}
-
-                      <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
-                        Create Record
-                      </button>
-                    </form>
-                  </div>
-                </div>
-
-                {/* Patient File display and clinical actions */}
-                <div className="dashboard-main">
-                  {searchedPatientRecord ? (
-                    <>
-                      {/* Demographics Card */}
-                      <div className="glass-card" style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
-                        <div>
-                          <h2 style={{ color: '#fff' }}>Patient File: {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}</h2>
-                          <p className="text-muted" style={{ marginTop: '4px' }}>
-                            {searchedPatientRecord.patient.idNumber ? `ID Number: ${searchedPatientRecord.patient.idNumber} | ` : ''}MRN: {searchedPatientRecord.patient.mrn} | Gender: {searchedPatientRecord.patient.gender} | DOB: {searchedPatientRecord.patient.dateOfBirth}
-                          </p>
-                          <p className="text-muted" style={{ marginTop: '4px' }}>
-                            Contact: {searchedPatientRecord.patient.contactNumber || 'N/A'} | Email: {searchedPatientRecord.patient.email || 'N/A'}
-                          </p>
-                          <p className="text-muted" style={{ marginTop: '4px' }}>
-                            Address: {searchedPatientRecord.patient.address || 'N/A'}
-                          </p>
-                          {(() => {
-                            const lastVisit = searchedPatientRecord.visits && searchedPatientRecord.visits.length > 0 
-                              ? searchedPatientRecord.visits.reduce((latest, current) => 
-                                  new Date(current.visitDate) > new Date(latest.visitDate) ? current : latest
-                                )
-                              : null;
-                            return lastVisit ? (
-                              <p className="text-muted" style={{ marginTop: '8px', color: '#c7d2fe', fontSize: '0.85rem' }}>
-                                📅 <strong>Last Visit:</strong> {new Date(lastVisit.visitDate).toLocaleDateString()} — <em>{lastVisit.reason} {lastVisit.notes ? `(${lastVisit.notes})` : ''}</em>
-                              </p>
-                            ) : (
-                              <p className="text-muted" style={{ marginTop: '8px', fontSize: '0.85rem' }}>
-                                📅 <strong>Last Visit:</strong> No recorded visits
-                              </p>
-                            );
-                          })()}
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
-                          <span className={`badge ${searchedPatientRecord.currentVisit && searchedPatientRecord.currentVisit.status === 'VITALS_DONE' ? 'badge-yellow' : 'badge-green'}`}>
-                            Visit Status: {searchedPatientRecord.currentVisit ? searchedPatientRecord.currentVisit.status.replaceAll('_', ' ') : 'No open visit'}
-                          </span>
-                          <button 
-                            className="btn btn-primary" 
-                            onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}
-                            style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}
-                          >
-                            <RefreshCw size={14} /> Analyze Response (CDS)
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Restored feature: check the loaded patient into today's reception queue, or refer them elsewhere */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '12px' }}>Reception & Referral</h3>
-                        <div className="grid grid-cols-2" style={{ gap: '20px' }}>
-                          <form onSubmit={handleQueueCheckIn}>
-                            <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '8px' }}>Check In to Today's Queue</p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              <select value={queueCheckInForm.department} onChange={(e) => setQueueCheckInForm({ ...queueCheckInForm, department: e.target.value })}>
-                                <option value="GP">GP</option>
-                                <option value="DENTAL">Dental</option>
-                                <option value="MATERNITY">Maternity</option>
-                                <option value="PEDIATRICS">Pediatrics</option>
-                                <option value="CASUALTY">Casualty</option>
-                                <option value="CHRONIC_CLUB">Chronic Club</option>
-                              </select>
-                              <select value={queueCheckInForm.urgency} onChange={(e) => setQueueCheckInForm({ ...queueCheckInForm, urgency: e.target.value })}>
-                                <option value="GREEN">Green (routine)</option>
-                                <option value="YELLOW">Yellow (priority)</option>
-                                <option value="RED">Red (urgent)</option>
-                              </select>
-                              <input type="text" placeholder="Reason for visit" value={queueCheckInForm.reason} onChange={(e) => setQueueCheckInForm({ ...queueCheckInForm, reason: e.target.value })} required />
-                              <button type="submit" className="btn btn-primary" disabled={loading}>Check In</button>
-                            </div>
-                          </form>
-                          <form onSubmit={handleCreateReferral}>
-                            <p className="text-muted" style={{ fontSize: '0.8rem', marginBottom: '8px' }}>Refer to Another Facility</p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              <select value={referralForm.toFacilityId} onChange={(e) => setReferralForm({ ...referralForm, toFacilityId: e.target.value })} required>
-                                <option value="">Select destination facility...</option>
-                                {facilitiesForReferral.map(f => (
-                                  <option key={f.id} value={f.id}>{f.name}</option>
-                                ))}
-                              </select>
-                              <select value={referralForm.urgency} onChange={(e) => setReferralForm({ ...referralForm, urgency: e.target.value })}>
-                                <option value="ROUTINE">Routine</option>
-                                <option value="URGENT">Urgent</option>
-                                <option value="EMERGENCY">Emergency</option>
-                              </select>
-                              <input type="text" placeholder="Reason for referral" value={referralForm.reason} onChange={(e) => setReferralForm({ ...referralForm, reason: e.target.value })} required />
-                              <textarea placeholder="Clinical summary" value={referralForm.clinicalSummary} onChange={(e) => setReferralForm({ ...referralForm, clinicalSummary: e.target.value })} rows={2} />
-                              <button type="submit" className="btn btn-primary" disabled={loading}>Send Referral</button>
-                            </div>
-                          </form>
-                        </div>
-                      </div>
-
-                      {/* Restored feature: EPI Immunization schedule for this patient */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span>Immunizations (EPI Schedule)</span>
-                          {patientImmunizations.length === 0 && (
-                            <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem' }} onClick={() => handleGenerateImmunizationSchedule(searchedPatientRecord.patient.id)}>
-                              Generate Schedule
-                            </button>
-                          )}
-                        </h3>
-                        {patientImmunizations.length === 0 ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No immunization records yet.</p>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {patientImmunizations.map(imm => (
-                              <div key={imm.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '10px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                                <div>
-                                  <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{imm.vaccineName} {imm.doseNumber ? `(dose ${imm.doseNumber})` : ''}</p>
-                                  <p className="text-muted" style={{ fontSize: '0.75rem' }}>
-                                    Scheduled: {imm.scheduledDate} {imm.administeredDate ? `— Given: ${imm.administeredDate}` : ''}
-                                  </p>
-                                </div>
-                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                  <span className={`badge ${imm.status === 'GIVEN' ? 'badge-green' : imm.status === 'MISSED' ? 'badge-red' : 'badge-yellow'}`} style={{ fontSize: '0.7rem' }}>{imm.status}</span>
-                                  {imm.status === 'DUE' && (
-                                    <>
-                                      <button className="btn btn-primary" style={{ padding: '6px 10px', fontSize: '0.75rem' }} onClick={() => handleImmunizationAction(imm.id, 'administer')}>Administer</button>
-                                      <button className="btn btn-secondary" style={{ padding: '6px 10px', fontSize: '0.75rem' }} onClick={() => handleImmunizationAction(imm.id, 'miss')}>Mark Missed</button>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Vitals — captured by the nurse, visible to the doctor with no extra lookup */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Activity size={18} /> Latest Vitals
-                        </h3>
-                        {searchedPatientRecord.vitals && searchedPatientRecord.vitals.length > 0 ? (
-                          (() => {
-                            const v = searchedPatientRecord.vitals[0];
-                            return (
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px' }}>
-                                <div><p className="text-muted" style={{ fontSize: '0.75rem' }}>Blood Pressure</p><p style={{ color: '#fff', fontWeight: 600 }}>{v.bloodPressure || 'N/A'}</p></div>
-                                <div><p className="text-muted" style={{ fontSize: '0.75rem' }}>Temperature</p><p style={{ color: '#fff', fontWeight: 600 }}>{v.temperatureCelsius != null ? `${v.temperatureCelsius}°C` : 'N/A'}</p></div>
-                                <div><p className="text-muted" style={{ fontSize: '0.75rem' }}>Pulse</p><p style={{ color: '#fff', fontWeight: 600 }}>{v.pulseBpm != null ? `${v.pulseBpm} bpm` : 'N/A'}</p></div>
-                                <div><p className="text-muted" style={{ fontSize: '0.75rem' }}>Respiration</p><p style={{ color: '#fff', fontWeight: 600 }}>{v.respirationRate != null ? `${v.respirationRate}/min` : 'N/A'}</p></div>
-                                <div><p className="text-muted" style={{ fontSize: '0.75rem' }}>O2 Saturation</p><p style={{ color: '#fff', fontWeight: 600 }}>{v.oxygenSaturation != null ? `${v.oxygenSaturation}%` : 'N/A'}</p></div>
-                                <div><p className="text-muted" style={{ fontSize: '0.75rem' }}>Weight / Height</p><p style={{ color: '#fff', fontWeight: 600 }}>{v.weightKg != null ? `${v.weightKg}kg` : 'N/A'} / {v.heightCm != null ? `${v.heightCm}cm` : 'N/A'}</p></div>
-                                {v.notes && (
-                                  <div style={{ gridColumn: '1 / -1' }}>
-                                    <p className="text-muted" style={{ fontSize: '0.75rem' }}>Nurse's Notes</p>
-                                    <p style={{ color: '#fff' }}>{v.notes}</p>
-                                  </div>
-                                )}
-                                <div style={{ gridColumn: '1 / -1' }}>
-                                  <p className="text-muted" style={{ fontSize: '0.7rem' }}>Recorded by {v.recordedBy ? `${v.recordedBy.firstName} ${v.recordedBy.lastName}` : 'nurse'} on {new Date(v.recordedAt).toLocaleString()}</p>
-                                </div>
-                              </div>
-                            );
-                          })()
-                        ) : (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No vitals recorded yet for this patient. Check with the nurse before consulting.</p>
-                        )}
-                      </div>
-
-                      {/* Lab Results — read-only here; the nurse pastes these in */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <FileSpreadsheet size={18} /> Lab Results
-                        </h3>
-                        {searchedPatientRecord.labResults && searchedPatientRecord.labResults.length > 0 ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {searchedPatientRecord.labResults.map(l => (
-                              <div key={l.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                                <div>
-                                  <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{l.testName}</p>
-                                  <p className="text-muted" style={{ fontSize: '0.75rem' }}>
-                                    Result: {l.result} {l.unit || ''} {l.normalRange ? `(Normal: ${l.normalRange})` : ''}
-                                  </p>
-                                  {l.notes && <p className="text-muted" style={{ fontSize: '0.7rem', fontStyle: 'italic' }}>{l.notes}</p>}
-                                </div>
-                                <p className="text-muted" style={{ fontSize: '0.7rem' }}>{new Date(l.testDate).toLocaleDateString()}</p>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No lab results on file for this patient.</p>
-                        )}
-                      </div>
-
-                      {/* Treatment Response Timeline (CDS View) */}
-                      {patientTimeline && (
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.25rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Clock className="text-secondary" style={{ color: '#0ea5e9' }} /> 📈 Treatment Response Timeline (Past 14 Days)
-                          </h3>
-
-                          {/* Display active alerts if any */}
-                          {patientTimeline.activeAlerts && patientTimeline.activeAlerts.length > 0 && (
-                            <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              {patientTimeline.activeAlerts.map(alert => (
-                                <div key={alert.id} style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px', padding: '12px' }}>
-                                  <p style={{ color: '#fca5a5', fontSize: '0.85rem', fontWeight: 600 }}>🚨 Clinical Alert: {alert.alertType}</p>
-                                  <p style={{ color: '#fff', fontSize: '0.8rem', marginTop: '2px' }}>{alert.message}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Display Food conflicts if any */}
-                          {patientTimeline.foodConflicts && patientTimeline.foodConflicts.length > 0 && (
-                            <div style={{ marginBottom: '16px', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: '8px', padding: '12px' }}>
-                              <p style={{ color: '#fde047', fontSize: '0.85rem', fontWeight: 600 }}>⚠️ Drug-Food Interactions Detected</p>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px' }}>
-                                {patientTimeline.foodConflicts.map((c, i) => (
-                                  <p key={i} style={{ fontSize: '0.75rem', color: '#fff' }}>
-                                    - <strong>{c.medication}</strong> conflicts with scanned ingredient <strong>{c.ingredient}</strong> ({c.message})
-                                  </p>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Timeline Table Grid */}
-                          <div className="grid grid-cols-2" style={{ gap: '16px' }}>
-                            <div>
-                              <h4 style={{ color: '#a5b4fc', fontSize: '0.9rem', marginBottom: '8px' }}>Medication Doses (Adherence logs)</h4>
-                              {patientTimeline.adherenceLogs.length === 0 ? (
-                                <p className="text-muted" style={{ fontSize: '0.8rem' }}>No doses logged in last 14 days.</p>
-                              ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto', background: 'rgba(15,23,42,0.3)', padding: '8px', borderRadius: '8px' }}>
-                                  {patientTimeline.adherenceLogs.map(log => (
-                                    <div key={log.id} style={{ display: 'flex', flexDirection: 'column', padding: '6px', borderBottom: '1px solid rgba(255,255,255,0.03)', gap: '2px' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', alignItems: 'center' }}>
-                                        <span style={{ color: '#fff' }}>{log.reminder.prescription.medication}</span>
-                                        <span style={{ color: 'var(--text-muted)' }}>{new Date(log.scheduledTime).toLocaleDateString([], { month: 'short', day: 'numeric' })} {log.reminder.reminderTime}</span>
-                                        <span className={`badge ${log.status === 'TAKEN' ? 'badge-green' : log.status === 'MISSED' ? 'badge-red' : 'badge-yellow'}`} style={{ padding: '2px 6px', fontSize: '0.65rem' }}>
-                                          {log.status}
-                                        </span>
-                                      </div>
-                                      {log.notes && (
-                                        <p style={{ fontSize: '0.7rem', color: '#fca5a5', fontStyle: 'italic', margin: '0' }}>
-                                          Feedback: "{log.notes}"
-                                        </p>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            <div>
-                              <h4 style={{ color: '#a5b4fc', fontSize: '0.9rem', marginBottom: '8px' }}>Symptom Check History</h4>
-                              {patientTimeline.symptomChecks.length === 0 ? (
-                                <p className="text-muted" style={{ fontSize: '0.8rem' }}>No symptom checks logged in last 14 days.</p>
-                              ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '200px', overflowY: 'auto', background: 'rgba(15,23,42,0.3)', padding: '8px', borderRadius: '8px' }}>
-                                  {patientTimeline.symptomChecks.map(check => (
-                                    <div key={check.id} style={{ display: 'flex', flexDirection: 'column', padding: '6px', borderBottom: '1px solid rgba(255,255,255,0.03)', fontSize: '0.75rem', gap: '4px' }}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: 'var(--text-muted)' }}>{new Date(check.checkedAt).toLocaleDateString()}</span>
-                                        <span style={{ color: check.urgencyLevel === 'RED' ? 'var(--danger)' : check.urgencyLevel === 'YELLOW' ? 'var(--warning)' : 'var(--success)' }}>
-                                          {check.urgencyLevel}
-                                        </span>
-                                      </div>
-                                      <p style={{ color: '#fff', margin: '0', fontSize: '0.75rem' }}>{check.recommendation.split('[')[0]}</p>
-                                      {check.details && check.details.length > 0 && (
-                                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '2px' }}>
-                                          {check.details.map((d, idx) => (
-                                            <span key={idx} style={{ background: 'rgba(255, 255, 255, 0.05)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.08)', padding: '1px 6px', borderRadius: '3px', fontSize: '0.65rem' }}>
-                                              🩺 {d.symptom.name}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Medical Record sections */}
-                      <div className="grid grid-cols-2">
-                        
-                        {/* Active Conditions and Allergies */}
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Clipboard /> Chronic Conditions & Allergies
-                          </h3>
-
-                          {/* Conditions list */}
-                          <h4 style={{ color: '#a5b4fc', fontSize: '0.9rem', marginBottom: '8px' }}>Active Chronic Conditions</h4>
-                          {searchedPatientRecord.chronicConditions.length === 0 ? (
-                            <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '16px' }}>No registered chronic conditions.</p>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-                              {searchedPatientRecord.chronicConditions.map(c => (
-                                <div key={c.id} style={{ background: 'rgba(79, 70, 229, 0.05)', border: '1px solid rgba(79, 70, 229, 0.1)', padding: '10px', borderRadius: '8px' }}>
-                                  <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{c.conditionName}</p>
-                                  <p className="text-muted" style={{ fontSize: '0.75rem' }}>Diagnosed: {c.diagnosedDate} | {c.notes}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Allergies list */}
-                          <h4 style={{ color: '#fca5a5', fontSize: '0.9rem', marginBottom: '8px' }}>Allergies</h4>
-                          {searchedPatientRecord.allergies.length === 0 ? (
-                            <p className="text-muted" style={{ fontSize: '0.85rem' }}>No registered drug or food allergies.</p>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              {searchedPatientRecord.allergies.map(a => (
-                                <div key={a.id} style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.1)', padding: '10px', borderRadius: '8px' }}>
-                                  <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{a.allergen}</p>
-                                  <p className="text-muted" style={{ fontSize: '0.75rem' }}>Severity: {a.severity} | {a.notes}</p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Prescriptions and Adherence */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                          {/* Active Prescriptions */}
-                          <div className="glass-card" style={{ textAlign: 'left' }}>
-                            <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <Pill /> Active Prescriptions
-                            </h3>
-                            {searchedPatientRecord.prescriptions.length === 0 ? (
-                              <p className="text-muted" style={{ fontSize: '0.85rem' }}>No prescriptions active.</p>
-                            ) : (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                {searchedPatientRecord.prescriptions.map(p => (
-                                  <div key={p.id} style={{ background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '8px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                      <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.85rem' }}>{p.medication}</p>
-                                      <span className={`badge ${p.dispensed ? 'badge-green' : 'badge-yellow'}`} style={{ fontSize: '0.65rem' }}>
-                                        {p.dispensed ? (p.dispenseMethod === 'SELF' ? 'Dispensed by doctor' : 'Dispensed by pharmacy') : 'Waiting at pharmacy'}
-                                      </span>
-                                    </div>
-                                    <p className="text-muted" style={{ fontSize: '0.75rem' }}>Dosage: {p.dosage} | Frequency: {p.frequency} | Duration: {p.durationDays} days</p>
-                                    <p className="text-muted" style={{ fontSize: '0.7rem', marginTop: '2px' }}>Notes: {p.notes}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Medication Adherence Logs (Doctor view) */}
-                          {patientAdherence && patientAdherence.stats.totalDoses > 0 && (
-                            <div className="glass-card" style={{ textAlign: 'left' }}>
-                              <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <AlertCircle style={{ color: '#f59e0b' }} /> Patient Adherence History
-                              </h3>
-                              
-                              <div style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '16px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <span style={{ fontSize: '0.85rem', color: '#fff' }}>Adherence Compliance Score</span>
-                                  <span style={{ fontSize: '1.1rem', fontWeight: 'bold', color: patientAdherence.stats.adherenceScore >= 80 ? 'var(--success)' : 'var(--warning)' }}>
-                                    {patientAdherence.stats.adherenceScore}%
-                                  </span>
-                                </div>
-                                <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
-                                  Taken {patientAdherence.stats.takenDoses} of {patientAdherence.stats.totalDoses} doses this week.
-                                </p>
-                              </div>
-
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
-                                {patientAdherence.adherenceLogs.map((log) => {
-                                  const timeString = new Date(log.scheduledTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-                                  return (
-                                    <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', borderRadius: '8px', background: 'rgba(15, 23, 42, 0.3)', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                      <div>
-                                        <p style={{ color: '#fff', fontWeight: 600, fontSize: '0.8rem' }}>{log.reminder.prescription.medication}</p>
-                                        <p className="text-muted" style={{ fontSize: '0.7rem' }}>Scheduled: {timeString}</p>
-                                        {log.notes && (
-                                          <p style={{ fontSize: '0.75rem', color: '#fca5a5', marginTop: '2px', fontStyle: 'italic' }}>
-                                            Patient Feedback: "{log.notes}"
-                                          </p>
-                                        )}
-                                      </div>
-                                      <span className={`badge ${log.status === 'TAKEN' ? 'badge-green' : log.status === 'MISSED' ? 'badge-red' : 'badge-yellow'}`}>
-                                        {log.status}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Diagnoses and Lab Results */}
-                      <div className="glass-card" style={{ textAlign: 'left' }}>
-                        <h3 style={{ color: '#fff', fontSize: '1.2rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <FileText /> Diagnostic Logs & Clinical Visits
-                        </h3>
-                        {searchedPatientRecord.diagnoses.length === 0 ? (
-                          <p className="text-muted" style={{ fontSize: '0.85rem' }}>No diagnoses recorded.</p>
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            {searchedPatientRecord.diagnoses.map(d => (
-                              <div key={d.id} style={{ background: 'rgba(15, 23, 42, 0.4)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                <p style={{ color: '#fff', fontSize: '0.9rem', fontWeight: 600 }}>
-                                  {d.diagnosis} {d.icd10Code && <span style={{ color: '#38bdf8', fontSize: '0.75rem', fontWeight: 'normal', background: 'rgba(56, 189, 248, 0.1)', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' }}>ICD-10: {d.icd10Code}</span>}
-                                </p>
-                                <p className="text-muted" style={{ fontSize: '0.8rem' }}>Diagnosed: {new Date(d.diagnosedAt).toLocaleString()} | Notes: {d.notes}</p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Clinical Actions Form Panels */}
-                      <div className="grid grid-cols-3" style={{ gap: '20px' }}>
-                        
-                        {/* Add Diagnosis Form */}
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Add Clinical Diagnosis</h3>
-                          <form onSubmit={handleAddDiagnosis}>
-                            <div className="form-group">
-                              <label>Condition / Disease Name</label>
-                              <input 
-                                type="text" 
-                                value={addDiagnosisForm.conditionName} 
-                                onChange={(e) => setAddDiagnosisForm({...addDiagnosisForm, conditionName: e.target.value})} 
-                                placeholder="e.g. Influenza, Gastritis"
-                                required 
-                              />
-                            </div>
-                            <div className="form-group">
-                              <label>Clinical Notes</label>
-                              <textarea 
-                                value={addDiagnosisForm.notes} 
-                                onChange={(e) => setAddDiagnosisForm({...addDiagnosisForm, notes: e.target.value})} 
-                                placeholder="Patient reports acute onset..."
-                                rows={3}
-                              />
-                            </div>
-                            <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
-                              Save Diagnosis
-                            </button>
-                          </form>
-                        </div>
-
-                        {/* Add Prescription Form */}
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Issue Prescription</h3>
-                          <form onSubmit={handleAddPrescription}>
-                            <div className="form-group">
-                              <label>Medication Name</label>
-                              <input 
-                                type="text" 
-                                value={addPrescriptionForm.medicationName} 
-                                onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, medicationName: e.target.value})} 
-                                placeholder="e.g. Paracetamol 500mg, Amoxicillin 250mg"
-                                required 
-                              />
-                            </div>
-                            <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                              <div>
-                                  <label>Dosage</label>
-                                  <input 
-                                    type="text" 
-                                    value={addPrescriptionForm.dosage} 
-                                    onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, dosage: e.target.value})} 
-                                    placeholder="e.g. 1 Tablet"
-                                    required 
-                                  />
-                              </div>
-                              <div>
-                                  <label>Frequency</label>
-                                  <select 
-                                    value={addPrescriptionForm.frequency} 
-                                    onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, frequency: e.target.value})}
-                                    required
-                                  >
-                                    <option value="Once daily">Once daily</option>
-                                    <option value="Twice daily">Twice daily</option>
-                                    <option value="Three times daily">Three times daily</option>
-                                    <option value="With meals">With meals</option>
-                                  </select>
-                              </div>
-                            </div>
-                            <div className="form-group">
-                              <label>Duration (Days)</label>
-                              <input 
-                                type="number" 
-                                value={addPrescriptionForm.durationDays} 
-                                onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, durationDays: parseInt(e.target.value) || 7})} 
-                                required 
-                              />
-                            </div>
-                            <div className="form-group">
-                              <label>Dispensing</label>
-                              <select
-                                value={addPrescriptionForm.dispenseMethod}
-                                onChange={(e) => setAddPrescriptionForm({...addPrescriptionForm, dispenseMethod: e.target.value})}
-                                required
-                              >
-                                <option value="PHARMACY">Send to Pharmacy</option>
-                                <option value="SELF">Give to Patient Myself</option>
-                              </select>
-                            </div>
-                            <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
-                              {addPrescriptionForm.dispenseMethod === 'SELF' ? 'Issue & Dispense Now' : 'Send to Pharmacy'}
-                            </button>
-                          </form>
-                        </div>
-
-                        {/* Add Clinical Alert Form */}
-                        <div className="glass-card" style={{ textAlign: 'left' }}>
-                          <h3 style={{ color: '#fff', fontSize: '1.1rem', marginBottom: '16px' }}>Add Clinical Alert / Warning</h3>
-                          <form onSubmit={handleAddAlert}>
-                            <div className="form-group">
-                              <label>Severity Level</label>
-                              <select 
-                                value={addAlertForm.severity} 
-                                onChange={(e) => setAddAlertForm({...addAlertForm, severity: e.target.value})}
-                                required
-                              >
-                                <option value="LOW">Low</option>
-                                <option value="MEDIUM">Medium</option>
-                                <option value="HIGH">High</option>
-                                <option value="CRITICAL">Critical</option>
-                              </select>
-                            </div>
-                            <div className="form-group">
-                              <label>Alert Message / Instruction</label>
-                              <textarea 
-                                value={addAlertForm.message} 
-                                onChange={(e) => setAddAlertForm({...addAlertForm, message: e.target.value})} 
-                                placeholder="Patient reports severe dizziness when taking Metformin..."
-                                rows={4}
-                                required
-                              />
-                            </div>
-                            <button type="submit" className="btn btn-secondary" style={{ width: '100%' }}>
-                              Save Clinical Alert
-                            </button>
-                          </form>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="glass-card" style={{ padding: '80px 20px', textAlign: 'center' }}>
-                      <Clipboard size={64} className="text-muted" style={{ margin: '0 auto 16px', opacity: 0.3 }} />
-                      <h3 style={{ color: '#fff', marginBottom: '8px' }}>No Patient File Loaded</h3>
-                      <p className="text-muted">Use the lookup tool on the left to locate a patient by their national ID number or register a new patient.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-              )
-            ) : (
-              /* Feature 5: Clinical Alerts Feed Layout */
-              <div style={{ maxWidth: '1200px', margin: '0 auto 40px', padding: '0 20px', textAlign: 'left' }}>
-                <div className="glass-card">
-                  <h2 style={{ fontSize: '1.5rem', color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <ShieldAlert style={{ color: '#ef4444' }} /> Active Clinical Alerts & Decision Support Feed
-                  </h2>
-                  <p className="text-muted" style={{ marginBottom: '24px', fontSize: '0.9rem' }}>
-                    These alerts are automatically fired by the UDHR engine when a patient shows high medication adherence ($ge 90\%$) with poor clinical response (symptoms persisting at Red/Yellow urgency), or high-risk drug-food interactions.
-                  </p>
-
-                  {clinicalAlerts.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                      <CheckCircle size={48} style={{ color: 'var(--success)', margin: '0 auto 12px', opacity: 0.6 }} />
-                      <h4 style={{ color: '#fff' }}>No Active Clinical Alerts</h4>
-                      <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '4px' }}>All monitored patients are responding well to treatment and have no dietary conflicts.</p>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                      {clinicalAlerts.map((item) => {
-                        const alert = item.alert;
-                        return (
-                          <div 
-                            key={alert.id} 
-                            style={{ 
-                              border: `1px solid ${alert.severity === 'CRITICAL' ? 'rgba(239, 68, 68, 0.3)' : alert.severity === 'HIGH' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.08)'}`,
-                              background: alert.severity === 'CRITICAL' ? 'rgba(239, 68, 68, 0.05)' : alert.severity === 'HIGH' ? 'rgba(245, 158, 11, 0.04)' : 'rgba(15, 23, 42, 0.4)',
-                              borderRadius: '16px',
-                              padding: '24px'
-                            }}
-                          >
-                            {/* Alert Header */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '16px', marginBottom: '16px' }}>
-                              <div>
-                                <span className={`badge ${alert.severity === 'CRITICAL' ? 'badge-red' : 'badge-yellow'}`} style={{ fontSize: '0.7rem', padding: '2px 8px', fontWeight: 'bold' }}>
-                                  {alert.severity} SEVERITY
-                                </span>
-                                <h3 style={{ color: '#fff', fontSize: '1.2rem', marginTop: '6px' }}>
-                                  Patient: {item.patient.firstName} {item.patient.lastName} ({item.patient.idNumber || item.patient.mrn})
-                                </h3>
-                                <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '4px' }}>
-                                  Fired: {new Date(alert.createdAt).toLocaleString()} | Alert Type: {alert.alertType}
-                                </p>
-                              </div>
-                              <button className="btn btn-success" onClick={() => handleResolveAlert(alert.id)}>
-                                Resolve Alert & Clear
-                              </button>
-                            </div>
-
-                            {/* Alert Details Body */}
-                            <p style={{ color: '#fff', fontSize: '0.95rem', lineHeight: 1.6, marginBottom: '16px', fontStyle: 'italic', background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px' }}>
-                              {alert.message}
-                            </p>
-
-                            {/* Compliance and Symptoms correlation details */}
-                            <div className="grid grid-cols-2" style={{ gap: '20px', marginBottom: '20px' }}>
-                              <div>
-                                <h4 style={{ color: '#a5b4fc', fontSize: '0.85rem', marginBottom: '8px' }}>Patient Adherence & Prescriptions</h4>
-                                <p style={{ color: '#fff', fontSize: '0.85rem' }}>
-                                  Compliance score (last 14 days): <strong>{item.adherenceScore}%</strong>
-                                </p>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
-                                  {item.activePrescriptions.map(p => (
-                                    <span key={p.id} style={{ background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', color: '#fff', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                      💊 {p.medication} ({p.dosage})
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-
-                              <div>
-                                <h4 style={{ color: '#a5b4fc', fontSize: '0.85rem', marginBottom: '8px' }}>Recent Symptom Checks</h4>
-                                {item.recentSymptomChecks.length === 0 ? (
-                                  <p className="text-muted" style={{ fontSize: '0.8rem' }}>No checks logged.</p>
-                                ) : (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {item.recentSymptomChecks.map(check => (
-                                      <div key={check.id} style={{ fontSize: '0.75rem', color: '#fff', background: 'rgba(0,0,0,0.1)', padding: '6px', borderRadius: '6px' }}>
-                                        <strong>{new Date(check.checkedAt).toLocaleDateString()}:</strong> Urgency <span style={{ color: check.urgencyLevel === 'RED' ? 'var(--danger)' : 'var(--warning)' }}>{check.urgencyLevel}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* CDSS Diagnostic Recommendations */}
-                            {alert.alertType === 'NON_RESPONSE' && (
-                              <div style={{ background: 'rgba(15,23,42,0.4)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                <h4 style={{ color: '#38bdf8', fontSize: '0.95rem', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <Heart size={16} /> Clinical Decision Support Recommendations
-                                </h4>
-
-                                {/* Lab Test suggestion */}
-                                {item.labRecommendations && item.labRecommendations.length > 0 && (
-                                  <div style={{ marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '12px' }}>
-                                    <h5 style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 600 }}>Suggested Laboratory Diagnostics:</h5>
-                                    {item.labRecommendations.map(lr => (
-                                      <div key={lr.id} style={{ marginTop: '6px' }}>
-                                        <p style={{ color: '#7dd3fc', fontSize: '0.85rem' }}>👉 Order: <strong>{lr.testName}</strong> {lr.icdCode && `(ICD-10: ${lr.icdCode})`}</p>
-                                        <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '2px' }}><strong>Reasoning:</strong> {lr.reason}</p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-
-                                {/* Differential Diagnoses suggestions */}
-                                {item.differentialDiagnoses && item.differentialDiagnoses.length > 0 && (
-                                  <div>
-                                    <h5 style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 600 }}>Suggested ICD-10 Differential Diagnoses:</h5>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
-                                      {item.differentialDiagnoses.map(dd => (
-                                        <div key={dd.id} style={{ background: 'rgba(0,0,0,0.15)', padding: '10px', borderRadius: '8px' }}>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ color: '#fff', fontSize: '0.8rem', fontWeight: 600 }}>{dd.conditionName} (ICD-10: {dd.icdCode})</span>
-                                            <span style={{ 
-                                              fontSize: '0.65rem', 
-                                              fontWeight: 'bold', 
-                                              color: dd.likelihood === 'HIGH' ? 'var(--danger)' : dd.likelihood === 'MODERATE' ? 'var(--warning)' : 'var(--success)',
-                                              background: 'rgba(255,255,255,0.03)',
-                                              padding: '2px 6px',
-                                              borderRadius: '4px'
-                                            }}>
-                                              LIKELIHOOD: {dd.likelihood}
-                                            </span>
-                                          </div>
-                                          <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}><strong>Evidence/Reasoning:</strong> {dd.reasoning}</p>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            </>
-            )}
+            ) : null}
           </div>
         )}
       </main>

@@ -1,5 +1,6 @@
 package com.udhr.controller;
 
+import com.udhr.dto.AdminPatientLookupResponse;
 import com.udhr.dto.CheckInRequest;
 import com.udhr.dto.CheckInSummaryResponse;
 import com.udhr.model.Visit;
@@ -62,6 +63,23 @@ public class CheckInController {
             return ResponseEntity.ok(visits);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
+    // Front desk look-up for a patient who isn't on today's list — non-clinical:
+    // demographics and visit history only.
+    @GetMapping("/lookup/{identifier}")
+    public ResponseEntity<?> lookupPatient(@PathVariable String identifier, HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            AdminPatientLookupResponse response = checkInService.lookupPatient(identifier);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
         }
     }
 }

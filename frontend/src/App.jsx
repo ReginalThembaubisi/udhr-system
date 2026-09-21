@@ -84,6 +84,9 @@ function App() {
     motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: ''
   });
   const [showRegExtras, setShowRegExtras] = useState(false);
+  // Admin's registration form only: reason for visit, so a brand-new patient
+  // can be checked in on the spot instead of a separate check-in step.
+  const [regReasonForVisit, setRegReasonForVisit] = useState('');
   const [addDiagnosisForm, setAddDiagnosisForm] = useState({
     patientId: '', conditionName: '', notes: ''
   });
@@ -149,6 +152,11 @@ function App() {
   const [checkinSearchId, setCheckinSearchId] = useState('');
   const [checkinReason, setCheckinReason] = useState('');
   const [recentCheckIns, setRecentCheckIns] = useState([]);
+
+  // Admin front desk: look up any patient (registered any time, not just
+  // today) by ID/MRN — demographics + visit history only, no clinical data.
+  const [adminLookupId, setAdminLookupId] = useState('');
+  const [adminLookupRecord, setAdminLookupRecord] = useState(null);
 
   // Restored feature: Reception queue (Doctor/Nurse check patients into today's facility queue)
   const [queueList, setQueueList] = useState([]);
@@ -646,13 +654,37 @@ function App() {
       if (!response.ok) {
         throw new Error(data.message || 'Registration failed');
       }
-      setSuccessMessage(`Patient '${data.firstName} ${data.lastName}' registered successfully! MRN: ${data.mrn}`);
+      let message = `Patient '${data.firstName} ${data.lastName}' registered successfully! MRN: ${data.mrn}`;
+
+      // Admin's registration form also offers a reason for visit — if one
+      // was given, check the patient straight in on the back of it instead
+      // of making admin retype the same ID/MRN into a second form.
+      if (regReasonForVisit.trim()) {
+        try {
+          const checkinResponse = await fetch('/api/checkin', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ idNumber: data.idNumber || data.mrn, reason: regReasonForVisit })
+          });
+          const checkinData = await checkinResponse.json();
+          if (!checkinResponse.ok) {
+            throw new Error(checkinData.message || 'Failed to check patient in');
+          }
+          message += ' They have also been checked in and queued for vitals.';
+          fetchRecentCheckIns();
+        } catch (checkinErr) {
+          message += ` (Registered, but check-in failed: ${checkinErr.message} — use "Check in patient" below.)`;
+        }
+      }
+
+      setSuccessMessage(message);
       setSearchId(data.idNumber || data.mrn);
       setPatientRegForm({
         idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: '', contactNumber: '', address: '', email: '',
         nextOfKinFirstName: '', nextOfKinLastName: '', nextOfKinRelationship: '', nextOfKinPhone: '',
         motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: ''
       });
+      setRegReasonForVisit('');
       setShowRegExtras(false);
       // Load the newly registered patient record
       setSearchedPatientRecord({
@@ -974,6 +1006,26 @@ function App() {
       fetchRecentCheckIns();
     } catch (err) {
       setErrorMessage(err.message);
+    }
+  };
+
+  // Admin looks up a patient who isn't on today's list — e.g. confirming
+  // they're already registered, or checking when they were last seen.
+  const handleAdminPatientLookup = async (e) => {
+    if (e) e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setAdminLookupRecord(null);
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/checkin/lookup/${adminLookupId}`, { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Patient not found');
+      setAdminLookupRecord(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -3402,6 +3454,7 @@ function App() {
   if (token && isAdmin && !mustChangePassword) {
     const adminNavItems = [
       { key: 'frontdesk', label: 'Front Desk', icon: <Clipboard size={17} /> },
+      { key: 'visitors', label: 'Visitors', icon: <Clock size={17} /> },
       { key: 'staff', label: 'Staff', icon: <Users size={17} /> },
       { key: 'facilities', label: 'Facilities', icon: <Building2 size={17} /> },
       { key: 'referrals', label: 'Referrals', icon: <CornerUpRight size={17} /> },
@@ -3411,7 +3464,7 @@ function App() {
     const selectAdminNavTab = (key) => {
       setAdminTab(key);
       setIsMobileNavOpen(false);
-      if (key === 'frontdesk') fetchRecentCheckIns();
+      if (key === 'visitors') fetchRecentCheckIns();
       if (key === 'staff') fetchStaffList();
       if (key === 'facilities') fetchFacilityList();
       if (key === 'referrals') fetchReferralReport();
@@ -3421,7 +3474,7 @@ function App() {
     const renderFrontDeskPanel = () => (
       <>
         <h1 className="udhr-page-title">Front Desk</h1>
-        <p className="udhr-page-subtitle">Register new patients and check existing ones in on arrival.</p>
+        <p className="udhr-page-subtitle">Register new patients and check existing ones in on arrival — see who's been in under Visitors.</p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px', marginBottom: '20px' }}>
           <div className="udhr-record-card">
@@ -3471,6 +3524,13 @@ function App() {
                 <div className="udhr-form-group">
                   <label className="udhr-label">Address</label>
                   <textarea className="udhr-textarea" value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Reason for visit (optional)</label>
+                  <input type="text" className="udhr-input" value={regReasonForVisit} onChange={(e) => setRegReasonForVisit(e.target.value)} placeholder="e.g. Follow-up, flu symptoms..." />
+                  <p className="udhr-empty-note" style={{ marginTop: '4px' }}>
+                    Fill this in to check the patient in and queue them for vitals right away — leave blank to just register them.
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -3533,6 +3593,66 @@ function App() {
                 <button type="submit" className="udhr-btn-primary">Check in</button>
               </form>
             </div>
+          </div>
+        </div>
+      </>
+    );
+
+    const renderVisitorsPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Visitors</h1>
+        <p className="udhr-page-subtitle">Who's come through the door today, plus look-up for anyone not on that list.</p>
+
+        <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
+          <div className="udhr-record-body">
+            <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px' }}>Look up a patient</h3>
+            <p className="udhr-empty-note" style={{ marginBottom: '14px' }}>
+              For anyone not on today's list — confirms they're registered and shows when they were last seen. Registration and contact details only, no clinical record.
+            </p>
+            <form onSubmit={handleAdminPatientLookup} className="udhr-search-bar">
+              <input
+                type="text"
+                className="udhr-input"
+                value={adminLookupId}
+                onChange={(e) => setAdminLookupId(e.target.value)}
+                placeholder="Enter patient ID number or MRN"
+                required
+              />
+              <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
+            </form>
+
+            {adminLookupRecord && (
+              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px dashed var(--udhr-border)' }}>
+                <p className="udhr-row-title" style={{ fontSize: '15px' }}>
+                  {adminLookupRecord.patient.firstName} {adminLookupRecord.patient.lastName}
+                  <span className={`udhr-tag ${adminLookupRecord.firstVisit ? 'info' : 'neutral'}`} style={{ marginLeft: '8px' }}>{adminLookupRecord.firstVisit ? 'NEW' : 'RETURNING'}</span>
+                </p>
+                <p className="udhr-row-subtitle">
+                  {adminLookupRecord.patient.idNumber ? `ID: ${adminLookupRecord.patient.idNumber} · ` : ''}MRN: {adminLookupRecord.patient.mrn} · {adminLookupRecord.patient.gender} · Born {adminLookupRecord.patient.dateOfBirth}
+                </p>
+                <p className="udhr-row-subtitle" style={{ marginBottom: '12px' }}>
+                  Contact: {adminLookupRecord.patient.contactNumber || 'N/A'} · Email: {adminLookupRecord.patient.email || 'N/A'}
+                </p>
+
+                <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 8px' }}>Visit history</p>
+                {adminLookupRecord.visits.length === 0 ? (
+                  <p className="udhr-empty-note">No visits on file yet.</p>
+                ) : (
+                  adminLookupRecord.visits.map(v => (
+                    <div key={v.id} className="udhr-list-row">
+                      <div>
+                        <p className="udhr-row-title">{v.reason}</p>
+                        <p className="udhr-row-subtitle">{v.facility?.name || 'Unknown facility'}</p>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span className={`udhr-tag ${v.status === 'COMPLETE' ? 'info' : 'warning'}`}>{v.status.replaceAll('_', ' ')}</span>
+                        <p className="udhr-row-subtitle" style={{ marginTop: '2px' }}>{new Date(v.visitDate).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -3893,6 +4013,7 @@ function App() {
           )}
 
           {adminTab === 'frontdesk' && renderFrontDeskPanel()}
+          {adminTab === 'visitors' && renderVisitorsPanel()}
           {adminTab === 'staff' && renderStaffPanel()}
           {adminTab === 'facilities' && renderFacilitiesPanel()}
           {adminTab === 'referrals' && renderReferralsPanel()}

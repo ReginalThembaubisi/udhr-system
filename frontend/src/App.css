@@ -209,6 +209,33 @@
   box-shadow: 0 0 0 3px var(--udhr-primary-tint);
 }
 
+.udhr-password-field {
+  position: relative;
+}
+
+.udhr-password-field .udhr-input {
+  padding-right: 40px;
+}
+
+.udhr-password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--udhr-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.udhr-password-toggle:hover {
+  color: var(--udhr-text-secondary);
+}
+
 .udhr-btn-primary {
   width: 100%;
   padding: 13px;

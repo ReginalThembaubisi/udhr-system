@@ -13,7 +13,11 @@ import com.udhr.repository.VisitRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class PharmacyService {
@@ -62,29 +66,32 @@ public class PharmacyService {
 
     /**
      * The pharmacist's automatic dispense list: every visit at this facility
-     * the doctor has finished with (status DIAGNOSED) that still has a
-     * pending pharmacy-bound prescription attached — no ID lookup needed,
-     * the doctor's hand-off is what puts a patient here.
+     * with a pending pharmacy-bound prescription attached — no ID lookup
+     * needed, issuing the prescription is what puts a patient here. Driven
+     * directly off the prescriptions themselves rather than the visit's
+     * status, since a doctor can send a prescription to pharmacy without
+     * ever having logged a separate "diagnosis" entry for the visit — that
+     * used to leave the visit's status short of DIAGNOSED and the patient
+     * invisible here despite having a real order waiting.
      */
     public List<PharmacyLookupResponse> getQueue(String staffNumber) {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
 
-        List<Visit> diagnosedVisits = visitRepository
-                .findByFacilityIdAndStatusOrderByVisitDateAsc(staff.getFacility().getId(), "DIAGNOSED");
+        List<Prescription> pendingAtFacility = prescriptionRepository
+                .findByFacilityIdAndDispenseMethodAndDispensedFalseOrderByCreatedAtDesc(staff.getFacility().getId(), "PHARMACY");
 
-        return diagnosedVisits.stream()
-                .map(visit -> {
-                    List<Prescription> pending = prescriptionRepository
-                            .findByPatientIdAndDispenseMethodAndDispensedFalseOrderByCreatedAtDesc(
-                                    visit.getPatient().getId(), "PHARMACY")
-                            .stream()
-                            .filter(p -> p.getVisit() != null && p.getVisit().getId().equals(visit.getId()))
-                            .collect(java.util.stream.Collectors.toList());
-                    return new PharmacyLookupResponse(visit.getPatient(), visit, pending);
+        Map<Long, List<Prescription>> byVisit = pendingAtFacility.stream()
+                .filter(p -> p.getVisit() != null)
+                .collect(Collectors.groupingBy(p -> p.getVisit().getId(), LinkedHashMap::new, Collectors.toList()));
+
+        return byVisit.values().stream()
+                .map(prescriptions -> {
+                    Visit visit = prescriptions.get(0).getVisit();
+                    return new PharmacyLookupResponse(visit.getPatient(), visit, prescriptions);
                 })
-                .filter(response -> !response.getPendingPrescriptions().isEmpty())
-                .collect(java.util.stream.Collectors.toList());
+                .sorted(Comparator.comparing(r -> r.getCurrentVisit().getVisitDate()))
+                .collect(Collectors.toList());
     }
 
     public Prescription dispense(Long prescriptionId, String staffNumber) {

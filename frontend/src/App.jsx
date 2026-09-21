@@ -774,7 +774,7 @@ function App() {
       setSuccessMessage(
         addPrescriptionForm.dispenseMethod === 'SELF'
           ? 'Prescription saved and marked as dispensed to the patient.'
-          : 'Prescription sent to the pharmacy for dispensing.'
+          : "Sent to the pharmacy. You stay on this patient's record in case you need to add another diagnosis or prescription — click \"← Back to queue\" above when you're done."
       );
       setAddPrescriptionForm(prev => ({ ...prev, medicationName: '', dosage: '', frequency: 'Once daily', durationDays: 7, notes: '', dispenseMethod: 'PHARMACY' }));
       handleSearchPatient(); // Refresh record
@@ -3059,21 +3059,30 @@ function App() {
                     <form onSubmit={handleAddPrescription}>
                       <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Issue prescription</h4>
                       <div className="udhr-form-group">
-                        <input type="text" className="udhr-input" placeholder="Medication (e.g. Amoxicillin 250mg)" value={addPrescriptionForm.medicationName} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value })} required />
+                        <label className="udhr-label">Medication</label>
+                        <input type="text" className="udhr-input" placeholder="e.g. Amoxicillin 250mg" value={addPrescriptionForm.medicationName} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value })} required />
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                        <input type="text" className="udhr-input" placeholder="Dosage" value={addPrescriptionForm.dosage} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, dosage: e.target.value })} required />
-                        <select className="udhr-input" value={addPrescriptionForm.frequency} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, frequency: e.target.value })} required>
-                          <option value="Once daily">Once daily</option>
-                          <option value="Twice daily">Twice daily</option>
-                          <option value="Three times daily">Three times daily</option>
-                          <option value="With meals">With meals</option>
-                        </select>
+                        <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                          <label className="udhr-label">Dosage</label>
+                          <input type="text" className="udhr-input" placeholder="e.g. 1 tablet" value={addPrescriptionForm.dosage} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, dosage: e.target.value })} required />
+                        </div>
+                        <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                          <label className="udhr-label">Frequency</label>
+                          <select className="udhr-input" value={addPrescriptionForm.frequency} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, frequency: e.target.value })} required>
+                            <option value="Once daily">Once daily</option>
+                            <option value="Twice daily">Twice daily</option>
+                            <option value="Three times daily">Three times daily</option>
+                            <option value="With meals">With meals</option>
+                          </select>
+                        </div>
                       </div>
                       <div className="udhr-form-group">
+                        <label className="udhr-label">Duration (days)</label>
                         <input type="number" className="udhr-input" placeholder="Duration (days)" value={addPrescriptionForm.durationDays} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, durationDays: parseInt(e.target.value) || 7 })} required />
                       </div>
                       <div className="udhr-form-group">
+                        <label className="udhr-label">Dispensing</label>
                         <select className="udhr-input" value={addPrescriptionForm.dispenseMethod} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, dispenseMethod: e.target.value })} required>
                           <option value="PHARMACY">Send to pharmacy</option>
                           <option value="SELF">Give to patient myself</option>

@@ -2530,7 +2530,21 @@ function App() {
 
         {!vitalsPatient && (
           <>
-            <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)', marginBottom: '20px' }}>
+            <p className="udhr-label" style={{ marginBottom: '8px' }}>Look up by ID/MRN (e.g. a walk-in who bypassed the front desk)</p>
+            <form onSubmit={handleLookupForVitals} className="udhr-search-bar" style={{ marginBottom: '20px' }}>
+              <input
+                type="text"
+                className="udhr-input"
+                value={vitalsSearchId}
+                onChange={(e) => setVitalsSearchId(e.target.value)}
+                placeholder="Enter patient ID number or MRN"
+                required
+              />
+              <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Find'}</button>
+            </form>
+
+            <p className="udhr-label" style={{ marginBottom: '8px' }}>Or pick from the queue</p>
+            <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)' }}>
               <div className="udhr-record-body">
                 {nurseVitalsQueue.length === 0 ? (
                   <p className="udhr-empty-note">No one waiting for vitals right now. Admin queues patients at check-in.</p>
@@ -2550,19 +2564,6 @@ function App() {
                 )}
               </div>
             </div>
-
-            <p className="udhr-label" style={{ marginBottom: '8px' }}>Or look up by ID/MRN (e.g. a walk-in who bypassed the front desk)</p>
-            <form onSubmit={handleLookupForVitals} className="udhr-search-bar">
-              <input
-                type="text"
-                className="udhr-input"
-                value={vitalsSearchId}
-                onChange={(e) => setVitalsSearchId(e.target.value)}
-                placeholder="Enter patient ID number or MRN"
-                required
-              />
-              <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Find'}</button>
-            </form>
           </>
         )}
 
@@ -2668,7 +2669,21 @@ function App() {
 
         {!searchedPatientRecord && (
           <>
-            <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
+            <p className="udhr-label" style={{ marginBottom: '8px' }}>Look up by ID/MRN (e.g. a follow-up not on today's queue)</p>
+            <form onSubmit={handleSearchPatient} className="udhr-search-bar" style={{ marginBottom: '20px' }}>
+              <input
+                type="text"
+                className="udhr-input"
+                value={searchId}
+                onChange={(e) => setSearchId(e.target.value)}
+                placeholder="Enter patient ID number or MRN"
+                required
+              />
+              <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
+            </form>
+
+            <p className="udhr-label" style={{ marginBottom: '8px' }}>Or pick from the queue</p>
+            <div className="udhr-record-card">
               <div className="udhr-record-body">
                 {doctorConsultQueue.length === 0 ? (
                   <p className="udhr-empty-note">No one waiting for consultation right now.</p>
@@ -2688,19 +2703,6 @@ function App() {
                 )}
               </div>
             </div>
-
-            <p className="udhr-label" style={{ marginBottom: '8px' }}>Or look up by ID/MRN (e.g. a follow-up not on today's queue)</p>
-            <form onSubmit={handleSearchPatient} className="udhr-search-bar">
-              <input
-                type="text"
-                className="udhr-input"
-                value={searchId}
-                onChange={(e) => setSearchId(e.target.value)}
-                placeholder="Enter patient ID number or MRN"
-                required
-              />
-              <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
-            </form>
           </>
         )}
 
@@ -3065,20 +3067,6 @@ function App() {
             </div>
           </>
         ) : null}
-
-        {!searchedPatientRecord && (
-          <div style={{ marginTop: '20px', maxWidth: 'clamp(320px, 60%, 720px)' }}>
-            <h3 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Register a new patient</h3>
-            <div className="udhr-record-card">
-              <div className="udhr-record-body">
-                <form onSubmit={handleRegisterPatient}>
-                  {renderRegistrationFields()}
-                  <button type="submit" className="udhr-btn-primary">Create patient record</button>
-                </form>
-              </div>
-            </div>
-          </div>
-        )}
       </>
     );
 
@@ -3260,7 +3248,21 @@ function App() {
 
         {!pharmacyRecord && (
           <>
-            <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
+            <p className="udhr-label" style={{ marginBottom: '8px' }}>Look up by ID/MRN (e.g. a self-pay walk-in)</p>
+            <form onSubmit={handleSearchPharmacyPatient} className="udhr-search-bar" style={{ marginBottom: '20px' }}>
+              <input
+                type="text"
+                className="udhr-input"
+                value={pharmacySearchId}
+                onChange={(e) => setPharmacySearchId(e.target.value)}
+                placeholder="Enter patient ID number or MRN"
+                required
+              />
+              <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
+            </form>
+
+            <p className="udhr-label" style={{ marginBottom: '8px' }}>Or pick from the queue</p>
+            <div className="udhr-record-card">
               <div className="udhr-record-body">
                 {pharmacyQueue.length === 0 ? (
                   <p className="udhr-empty-note">Nothing waiting to be dispensed right now.</p>
@@ -3280,19 +3282,6 @@ function App() {
                 )}
               </div>
             </div>
-
-            <p className="udhr-label" style={{ marginBottom: '8px' }}>Or look up by ID/MRN (e.g. a self-pay walk-in)</p>
-            <form onSubmit={handleSearchPharmacyPatient} className="udhr-search-bar">
-              <input
-                type="text"
-                className="udhr-input"
-                value={pharmacySearchId}
-                onChange={(e) => setPharmacySearchId(e.target.value)}
-                placeholder="Enter patient ID number or MRN"
-                required
-              />
-              <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
-            </form>
           </>
         )}
 

@@ -75,6 +75,8 @@ function App() {
   // Lets clicking the visit-status pill (e.g. "VITALS DONE") jump straight
   // to the Vitals sub-tab below instead of making the doctor hunt for it.
   const recordSubTabsRef = useRef(null);
+  // Where the "VITALS DONE" pill scrolls back to when clicked again.
+  const recordTopRef = useRef(null);
 
   // Staff Dashboard Data State
   const [searchId, setSearchId] = useState('9001015000083');
@@ -2745,7 +2747,9 @@ function App() {
 
         {searchedPatientRecord ? (
           <>
-            <button type="button" className="udhr-btn-neutral" onClick={handleBackToDoctorQueue} style={{ marginBottom: '16px' }}>← Back to queue</button>
+            <div ref={recordTopRef}>
+              <button type="button" className="udhr-btn-neutral" onClick={handleBackToDoctorQueue} style={{ marginBottom: '16px' }}>← Back to queue</button>
+            </div>
             <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
               <div className="udhr-record-header">
                 <div>
@@ -2780,13 +2784,18 @@ function App() {
                     <button
                       type="button"
                       onClick={() => {
-                        setActiveRecordTab('vitals');
-                        recordSubTabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        if (activeRecordTab === 'vitals') {
+                          setActiveRecordTab('add');
+                          recordTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        } else {
+                          setActiveRecordTab('vitals');
+                          recordSubTabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }
                       }}
-                      title="View vitals and the nurse's notes"
+                      title={activeRecordTab === 'vitals' ? 'Back to the top of this record' : "View vitals and the nurse's notes"}
                       style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px', border: 'none', cursor: 'pointer' }}
                     >
-                      {searchedPatientRecord.currentVisit.status.replaceAll('_', ' ')} →
+                      {activeRecordTab === 'vitals' ? '← Back' : `${searchedPatientRecord.currentVisit.status.replaceAll('_', ' ')} →`}
                     </button>
                   ) : (
                     <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px' }}>

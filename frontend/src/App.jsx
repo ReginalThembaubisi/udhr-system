@@ -325,6 +325,22 @@ function App() {
     }
   }, [token, userRole]);
 
+  // A success banner (e.g. "Logged in successfully!") clears itself after a
+  // few seconds instead of sitting there until someone dismisses it by hand.
+  useEffect(() => {
+    if (!successMessage) return;
+    const timer = setTimeout(() => setSuccessMessage(''), 4000);
+    return () => clearTimeout(timer);
+  }, [successMessage]);
+
+  // An error banner renders at the very top of the page, but the form that
+  // triggered it can be scrolled well below that — jump back up so it's
+  // actually seen instead of silently appearing off-screen.
+  useEffect(() => {
+    if (!errorMessage) return;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [errorMessage]);
+
   // Nudge patients toward the chat bubble a couple seconds after they land
   // on the portal — dismissed the moment they open the chat or close it.
   useEffect(() => {

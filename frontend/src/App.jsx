@@ -311,6 +311,8 @@ function App() {
       } else if (userRole === 'NURSE') {
         fetchClinicalAlerts();
         fetchNurseVitalsQueue();
+        // Vitals is the nurse's main job — land there instead of Register.
+        setActiveTabStaff('vitals');
       } else if (userRole === 'DOCTOR') {
         fetchClinicalAlerts();
         fetchDoctorConsultQueue();
@@ -2315,8 +2317,8 @@ function App() {
   if (token && (isDoctor || isNurse) && !mustChangePassword) {
     const clinicalNavItems = isNurse
       ? [
-          { key: 'patients', label: 'Patients', icon: <Users size={17} /> },
           { key: 'vitals', label: 'Vitals', icon: <Activity size={17} /> },
+          { key: 'patients', label: 'Register', icon: <Users size={17} /> },
           { key: 'alerts', label: 'Alerts', icon: <ShieldAlert size={17} /> },
           { key: 'queue', label: 'Queue', icon: <Clock size={17} /> },
           { key: 'referrals', label: 'Referrals', icon: <CornerUpRight size={17} /> },
@@ -2501,7 +2503,7 @@ function App() {
 
     const renderNurseRegisterPanel = () => (
       <>
-        <h1 className="udhr-page-title">Patients</h1>
+        <h1 className="udhr-page-title">Register</h1>
         <p className="udhr-page-subtitle">Register a new patient at this facility.</p>
         <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)' }}>
           <div className="udhr-record-body">

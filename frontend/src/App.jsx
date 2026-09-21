@@ -220,7 +220,11 @@ function App() {
         });
       }
 
-      const data = await response.json();
+      // The backend can send a plain-text error body (e.g. "Invalid password")
+      // rather than JSON, which response.json() would choke on — parse
+      // leniently so a wrong password shows its real message, not a JSON
+      // parse error.
+      const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(typeof data === 'string' ? data : data.message || 'Login failed');
       }
@@ -297,7 +301,7 @@ function App() {
           newPassword: changePasswordForm.newPassword
         })
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to change password');
 
       localStorage.setItem('token', data.token);
@@ -1608,17 +1612,17 @@ function App() {
             const current = publicAnnouncements[announcementCarouselIndex % publicAnnouncements.length];
             return (
               <div className="udhr-announcement-card">
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  {current.photoUrl && (
-                    <div className="udhr-announcement-photo">
-                      <img src={current.photoUrl} alt="" onError={(e) => { e.target.parentElement.style.display = 'none'; }} />
-                    </div>
-                  )}
-                  <div style={{ minWidth: 0 }}>
-                    <p className="udhr-announcement-label">Public Notice</p>
-                    <p className="udhr-announcement-title">{current.title}</p>
-                    <p className="udhr-announcement-message">{current.message}</p>
+                {current.photoUrl && (
+                  <div className="udhr-announcement-banner">
+                    <img src={current.photoUrl} alt="" onError={(e) => { e.target.parentElement.style.display = 'none'; }} />
                   </div>
+                )}
+                <div className="udhr-announcement-body">
+                  <p className="udhr-announcement-label">
+                    <Megaphone size={13} /> Public Notice
+                  </p>
+                  <p className="udhr-announcement-title">{current.title}</p>
+                  <p className="udhr-announcement-message">{current.message}</p>
                 </div>
                 {publicAnnouncements.length > 1 && (
                   <div className="udhr-announcement-dots">

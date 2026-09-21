@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
@@ -71,7 +71,10 @@ function App() {
   const [patientAlerts, setPatientAlerts] = useState([]);
   const [activeTabStaff, setActiveTabStaff] = useState('patients'); // 'patients', 'vitals', 'alerts', 'queue', or 'referrals'
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [activeRecordTab, setActiveRecordTab] = useState('diagnoses'); // sub-tab within a loaded patient record (doctor view)
+  const [activeRecordTab, setActiveRecordTab] = useState('add'); // sub-tab within a loaded patient record (doctor view) — lands on Diagnose & Prescribe, the doctor's core job
+  // Lets clicking the visit-status pill (e.g. "VITALS DONE") jump straight
+  // to the Vitals sub-tab below instead of making the doctor hunt for it.
+  const recordSubTabsRef = useRef(null);
 
   // Staff Dashboard Data State
   const [searchId, setSearchId] = useState('9001015000083');
@@ -2391,6 +2394,40 @@ function App() {
       <>
         <h1 className="udhr-page-title">Referrals</h1>
         <p className="udhr-page-subtitle">Incoming and outgoing referrals between facilities.</p>
+
+        <div className="udhr-record-card" style={{ maxWidth: 'clamp(280px, 60%, 480px)', marginBottom: '20px' }}>
+          <div className="udhr-record-body">
+            <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px' }}>Refer to another facility</h3>
+            {searchedPatientRecord ? (
+              <>
+                <p className="udhr-empty-note" style={{ marginBottom: '14px' }}>
+                  For {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}. Load a different patient under "Patients" to refer someone else.
+                </p>
+                <form onSubmit={handleCreateReferral}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <select className="udhr-input" value={referralForm.toFacilityId} onChange={(e) => setReferralForm({ ...referralForm, toFacilityId: e.target.value })} required>
+                      <option value="">Select destination facility...</option>
+                      {facilitiesForReferral.map(f => (
+                        <option key={f.id} value={f.id}>{f.name}</option>
+                      ))}
+                    </select>
+                    <select className="udhr-input" value={referralForm.urgency} onChange={(e) => setReferralForm({ ...referralForm, urgency: e.target.value })}>
+                      <option value="ROUTINE">Routine</option>
+                      <option value="URGENT">Urgent</option>
+                      <option value="EMERGENCY">Emergency</option>
+                    </select>
+                    <input type="text" className="udhr-input" placeholder="Reason for referral" value={referralForm.reason} onChange={(e) => setReferralForm({ ...referralForm, reason: e.target.value })} required />
+                    <textarea className="udhr-textarea" placeholder="Clinical summary" value={referralForm.clinicalSummary} onChange={(e) => setReferralForm({ ...referralForm, clinicalSummary: e.target.value })} rows={2} />
+                    <button type="submit" className="udhr-btn-primary" disabled={loading}>Send referral</button>
+                  </div>
+                </form>
+              </>
+            ) : (
+              <p className="udhr-empty-note">Load a patient under "Patients" first, then come back here to refer them.</p>
+            )}
+          </div>
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px,1fr))', gap: '16px' }}>
           <div>
             <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Incoming</p>
@@ -2418,7 +2455,7 @@ function App() {
             <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Outgoing</p>
             {referralOutgoing.length === 0 ? (
               <p className="udhr-empty-note">
-                No outgoing referrals yet. Locate a patient under "Patients" and use "Refer to Another Facility" there.
+                No outgoing referrals yet. Use "Refer to another facility" above.
               </p>
             ) : (
               referralOutgoing.map(r => (
@@ -2652,6 +2689,7 @@ function App() {
     );
 
     const recordSubTabs = [
+      ['add', 'Diagnose & Prescribe'],
       ['diagnoses', 'Diagnoses'],
       ['prescriptions', 'Prescriptions'],
       ['labs', 'Labs'],
@@ -2659,7 +2697,6 @@ function App() {
       ['conditions', 'Conditions'],
       ['immunizations', 'Immunizations'],
       ['timeline', 'Timeline'],
-      ['add', 'Add entry'],
     ];
 
     const renderDoctorPatientsPanel = () => (
@@ -2739,40 +2776,30 @@ function App() {
                       <span key={c.id} className="udhr-tag info">{c.conditionName}</span>
                     ))}
                   </div>
-                  <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px' }}>
-                    {searchedPatientRecord.currentVisit ? searchedPatientRecord.currentVisit.status.replaceAll('_', ' ') : 'No open visit'}
-                  </span>
+                  {searchedPatientRecord.currentVisit ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveRecordTab('vitals');
+                        recordSubTabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }}
+                      title="View vitals and the nurse's notes"
+                      style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px', border: 'none', cursor: 'pointer' }}
+                    >
+                      {searchedPatientRecord.currentVisit.status.replaceAll('_', ' ')} →
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px' }}>
+                      No open visit
+                    </span>
+                  )}
                   <button type="button" className="udhr-btn-neutral" onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}>
                     <RefreshCw size={14} style={{ marginRight: '4px' }} /> Analyze response (CDS)
                   </button>
                 </div>
               </div>
 
-              <div className="udhr-record-body" style={{ paddingBottom: 0 }}>
-                <div style={{ maxWidth: 'clamp(280px, 45%, 420px)', marginBottom: '20px' }}>
-                  <form onSubmit={handleCreateReferral}>
-                    <p className="udhr-label" style={{ marginBottom: '8px' }}>Refer to another facility</p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <select className="udhr-input" value={referralForm.toFacilityId} onChange={(e) => setReferralForm({ ...referralForm, toFacilityId: e.target.value })} required>
-                        <option value="">Select destination facility...</option>
-                        {facilitiesForReferral.map(f => (
-                          <option key={f.id} value={f.id}>{f.name}</option>
-                        ))}
-                      </select>
-                      <select className="udhr-input" value={referralForm.urgency} onChange={(e) => setReferralForm({ ...referralForm, urgency: e.target.value })}>
-                        <option value="ROUTINE">Routine</option>
-                        <option value="URGENT">Urgent</option>
-                        <option value="EMERGENCY">Emergency</option>
-                      </select>
-                      <input type="text" className="udhr-input" placeholder="Reason for referral" value={referralForm.reason} onChange={(e) => setReferralForm({ ...referralForm, reason: e.target.value })} required />
-                      <textarea className="udhr-textarea" placeholder="Clinical summary" value={referralForm.clinicalSummary} onChange={(e) => setReferralForm({ ...referralForm, clinicalSummary: e.target.value })} rows={2} />
-                      <button type="submit" className="udhr-btn-neutral" disabled={loading}>Send referral</button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-
-              <div className="udhr-record-subtabs">
+              <div className="udhr-record-subtabs" ref={recordSubTabsRef}>
                 {recordSubTabs.map(([key, label]) => (
                   <button key={key} type="button" className={`udhr-subtab ${activeRecordTab === key ? 'active' : ''}`} onClick={() => setActiveRecordTab(key)}>
                     {label}

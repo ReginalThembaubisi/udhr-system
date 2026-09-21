@@ -3,7 +3,7 @@ import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
   Clipboard, RefreshCw, AlertCircle, FileSpreadsheet, Upload, Barcode,
-  Menu, Users, CornerUpRight, Package, Building2, Megaphone, MessageCircle, Send
+  Menu, Users, CornerUpRight, Package, Building2, Megaphone, MessageCircle, Send, Eye, EyeOff
 } from 'lucide-react';
 import './App.css';
 
@@ -17,11 +17,16 @@ function App() {
   const [changePasswordForm, setChangePasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
 
   const [loginRole, setLoginRole] = useState('patient'); // 'patient' or 'staff'
-  const [staffNumber, setStaffNumber] = useState('DOC001');
-  const [staffPassword, setStaffPassword] = useState('Doctor@123');
-  const [patientIdNumber, setPatientIdNumber] = useState('9001015000083');
-  const [patientDob, setPatientDob] = useState('1990-01-01');
-  
+  const [staffNumber, setStaffNumber] = useState('');
+  const [staffPassword, setStaffPassword] = useState('');
+  const [patientIdNumber, setPatientIdNumber] = useState('');
+  const [patientDob, setPatientDob] = useState('');
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
+  const [showNewStaffPassword, setShowNewStaffPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -74,7 +79,7 @@ function App() {
   
   // Forms for Staff
   const [patientRegForm, setPatientRegForm] = useState({
-    idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: '',
+    idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: '', contactNumber: '', address: '', email: '',
     nextOfKinFirstName: '', nextOfKinLastName: '', nextOfKinRelationship: '', nextOfKinPhone: '',
     motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: ''
   });
@@ -90,7 +95,7 @@ function App() {
   });
 
   // Nurse: Vitals capture (look patient up by ID, no queue ticket needed)
-  const [vitalsSearchId, setVitalsSearchId] = useState('9001015000083');
+  const [vitalsSearchId, setVitalsSearchId] = useState('');
   const [vitalsPatient, setVitalsPatient] = useState(null);
   const [vitalsForm, setVitalsForm] = useState({
     bloodPressure: '', temperatureCelsius: '', pulseBpm: '', respirationRate: '', oxygenSaturation: '', weightKg: '', heightCm: '', notes: ''
@@ -605,6 +610,12 @@ function App() {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
+
+    if (patientRegForm.idNumber && patientRegForm.idNumber.length !== 13) {
+      setErrorMessage('ID number must be exactly 13 digits, or left blank.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -620,7 +631,7 @@ function App() {
       setSuccessMessage(`Patient '${data.firstName} ${data.lastName}' registered successfully! MRN: ${data.mrn}`);
       setSearchId(data.idNumber || data.mrn);
       setPatientRegForm({
-        idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE', contactNumber: '', address: '', email: '',
+        idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: '', contactNumber: '', address: '', email: '',
         nextOfKinFirstName: '', nextOfKinLastName: '', nextOfKinRelationship: '', nextOfKinPhone: '',
         motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: ''
       });
@@ -1431,7 +1442,7 @@ function App() {
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   {current.photoUrl && (
                     <div className="udhr-announcement-photo">
-                      <img src={current.photoUrl} alt="" />
+                      <img src={current.photoUrl} alt="" onError={(e) => { e.target.parentElement.style.display = 'none'; }} />
                     </div>
                   )}
                   <div style={{ minWidth: 0 }}>
@@ -1540,15 +1551,20 @@ function App() {
                   </div>
                   <div className="udhr-form-group">
                     <label className="udhr-label" htmlFor="staffPass">Password</label>
-                    <input
-                      type="password"
-                      id="staffPass"
-                      className="udhr-input"
-                      value={staffPassword}
-                      onChange={(e) => setStaffPassword(e.target.value)}
-                      placeholder="••••••••"
-                      required
-                    />
+                    <div className="udhr-password-field">
+                      <input
+                        type={showStaffPassword ? 'text' : 'password'}
+                        id="staffPass"
+                        className="udhr-input"
+                        value={staffPassword}
+                        onChange={(e) => setStaffPassword(e.target.value)}
+                        placeholder="••••••••"
+                        required
+                      />
+                      <button type="button" className="udhr-password-toggle" onClick={() => setShowStaffPassword(!showStaffPassword)} aria-label={showStaffPassword ? 'Hide password' : 'Show password'}>
+                        {showStaffPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </div>
                 </>
               )}
@@ -2262,7 +2278,7 @@ function App() {
       <>
         <div className="udhr-form-group">
           <label className="udhr-label">ID Number</label>
-          <input type="text" className="udhr-input" value={patientRegForm.idNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, idNumber: e.target.value })} placeholder="SA ID number (optional)" />
+          <input type="text" className="udhr-input" value={patientRegForm.idNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, idNumber: e.target.value.replace(/\D/g, '').slice(0, 13) })} placeholder="SA ID number (optional)" maxLength={13} inputMode="numeric" pattern="[0-9]*" />
         </div>
         <div className="udhr-form-group">
           <label className="udhr-label">Passport Number</label>
@@ -2281,11 +2297,12 @@ function App() {
         </div>
         <div className="udhr-form-group">
           <label className="udhr-label">Date of Birth</label>
-          <input type="date" className="udhr-input" value={patientRegForm.dateOfBirth} onChange={(e) => setPatientRegForm({ ...patientRegForm, dateOfBirth: e.target.value })} required />
+          <input type="date" className="udhr-input" value={patientRegForm.dateOfBirth} onChange={(e) => setPatientRegForm({ ...patientRegForm, dateOfBirth: e.target.value })} required max={new Date().toISOString().split('T')[0]} />
         </div>
         <div className="udhr-form-group">
           <label className="udhr-label">Gender</label>
-          <select className="udhr-input" value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })}>
+          <select className="udhr-input" value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })} required>
+            <option value="" disabled>Select gender</option>
             <option value="MALE">Male</option>
             <option value="FEMALE">Female</option>
             <option value="OTHER">Other</option>
@@ -2293,7 +2310,7 @@ function App() {
         </div>
         <div className="udhr-form-group">
           <label className="udhr-label">Contact Number</label>
-          <input type="text" className="udhr-input" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value })} />
+          <input type="text" className="udhr-input" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value.replace(/\D/g, '') })} inputMode="numeric" pattern="[0-9]*" />
         </div>
         <div className="udhr-form-group">
           <label className="udhr-label">Email Address</label>
@@ -2335,7 +2352,7 @@ function App() {
       <>
         <h1 className="udhr-page-title">Patients</h1>
         <p className="udhr-page-subtitle">Register a new patient at this facility.</p>
-        <div className="udhr-record-card" style={{ maxWidth: '480px' }}>
+        <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)' }}>
           <div className="udhr-record-body">
             <form onSubmit={handleRegisterPatient}>
               {renderRegistrationFields()}
@@ -2364,7 +2381,7 @@ function App() {
 
         {vitalsPatient && (
           <>
-            <div className="udhr-record-card" style={{ maxWidth: '480px', marginBottom: '16px' }}>
+            <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)', marginBottom: '16px' }}>
               <div className="udhr-record-body">
                 <p className="udhr-row-title" style={{ fontSize: '14px', marginBottom: '2px' }}>{vitalsPatient.firstName} {vitalsPatient.lastName}</p>
                 <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>
@@ -2392,7 +2409,7 @@ function App() {
               </div>
             </div>
 
-            <div className="udhr-record-card" style={{ maxWidth: '480px' }}>
+            <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)' }}>
               <div className="udhr-record-body">
                 <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 12px' }}>Add Lab Result</h3>
                 <form onSubmit={handleAddLabResult}>
@@ -2831,7 +2848,7 @@ function App() {
           </div>
         )}
 
-        <div style={{ marginTop: '20px', maxWidth: '480px' }}>
+        <div style={{ marginTop: '20px', maxWidth: 'clamp(320px, 60%, 720px)' }}>
           <h3 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Register a new patient</h3>
           <div className="udhr-record-card">
             <div className="udhr-record-body">
@@ -3271,7 +3288,7 @@ function App() {
               <form onSubmit={handleRegisterPatient}>
                 <div className="udhr-form-group">
                   <label className="udhr-label">ID Number</label>
-                  <input type="text" className="udhr-input" value={patientRegForm.idNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, idNumber: e.target.value })} placeholder="SA ID number (optional)" />
+                  <input type="text" className="udhr-input" value={patientRegForm.idNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, idNumber: e.target.value.replace(/\D/g, '').slice(0, 13) })} placeholder="SA ID number (optional)" maxLength={13} inputMode="numeric" pattern="[0-9]*" />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Passport Number</label>
@@ -3290,11 +3307,12 @@ function App() {
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Date of Birth</label>
-                  <input type="date" className="udhr-input" value={patientRegForm.dateOfBirth} onChange={(e) => setPatientRegForm({ ...patientRegForm, dateOfBirth: e.target.value })} required />
+                  <input type="date" className="udhr-input" value={patientRegForm.dateOfBirth} onChange={(e) => setPatientRegForm({ ...patientRegForm, dateOfBirth: e.target.value })} required max={new Date().toISOString().split('T')[0]} />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Gender</label>
-                  <select className="udhr-input" value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })}>
+                  <select className="udhr-input" value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })} required>
+                    <option value="" disabled>Select gender</option>
                     <option value="MALE">Male</option>
                     <option value="FEMALE">Female</option>
                     <option value="OTHER">Other</option>
@@ -3302,7 +3320,7 @@ function App() {
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Contact Number</label>
-                  <input type="text" className="udhr-input" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value })} />
+                  <input type="text" className="udhr-input" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value.replace(/\D/g, '') })} inputMode="numeric" pattern="[0-9]*" />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Email Address</label>
@@ -3442,7 +3460,12 @@ function App() {
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Temporary Password</label>
-                  <input type="password" className="udhr-input" value={newStaffForm.password} onChange={(e) => setNewStaffForm({ ...newStaffForm, password: e.target.value })} required />
+                  <div className="udhr-password-field">
+                    <input type={showNewStaffPassword ? 'text' : 'password'} className="udhr-input" value={newStaffForm.password} onChange={(e) => setNewStaffForm({ ...newStaffForm, password: e.target.value })} required />
+                    <button type="button" className="udhr-password-toggle" onClick={() => setShowNewStaffPassword(!showNewStaffPassword)} aria-label={showNewStaffPassword ? 'Hide password' : 'Show password'}>
+                      {showNewStaffPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
                 <button type="submit" className="udhr-btn-primary">Create staff account</button>
               </form>
@@ -3777,52 +3800,71 @@ function App() {
         {/* Forced password change gate — blocks everything else until this is cleared */}
         {token && mustChangePassword && (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, padding: '20px 0' }}>
-            <div className="glass-card" style={{ width: '420px', maxWidth: '100%', textAlign: 'center' }}>
-              <Shield size={48} color="#4f46e5" style={{ margin: '0 auto 16px' }} />
-              <h2 style={{ marginBottom: '8px' }}>Set a New Password</h2>
-              <p style={{ marginBottom: '24px' }} className="text-muted">
+            <div className="udhr-card" style={{ width: '420px', maxWidth: '100%', textAlign: 'center' }}>
+              <Shield size={40} color="var(--udhr-primary)" style={{ margin: '0 auto 16px' }} />
+              <h2 style={{ margin: '0 0 8px', fontSize: '19px', fontWeight: 700, color: 'var(--udhr-text)' }}>Set a new password</h2>
+              <p style={{ margin: '0 0 24px', fontSize: '13.5px', color: 'var(--udhr-text-muted)' }}>
                 This account was created with a temporary password. Choose your own before continuing.
               </p>
               <form onSubmit={handleChangePassword} style={{ textAlign: 'left' }}>
-                <div className="form-group">
-                  <label htmlFor="currentPassword">Temporary / Current Password</label>
-                  <input
-                    type="password"
-                    id="currentPassword"
-                    value={changePasswordForm.currentPassword}
-                    onChange={(e) => setChangePasswordForm({ ...changePasswordForm, currentPassword: e.target.value })}
-                    required
-                  />
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="currentPassword">Temporary / Current Password</label>
+                  <div className="udhr-password-field">
+                    <input
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      id="currentPassword"
+                      className="udhr-input"
+                      value={changePasswordForm.currentPassword}
+                      onChange={(e) => setChangePasswordForm({ ...changePasswordForm, currentPassword: e.target.value })}
+                      required
+                    />
+                    <button type="button" className="udhr-password-toggle" onClick={() => setShowCurrentPassword(!showCurrentPassword)} aria-label={showCurrentPassword ? 'Hide password' : 'Show password'}>
+                      {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label htmlFor="newPassword">New Password</label>
-                  <input
-                    type="password"
-                    id="newPassword"
-                    placeholder="At least 8 characters"
-                    value={changePasswordForm.newPassword}
-                    onChange={(e) => setChangePasswordForm({ ...changePasswordForm, newPassword: e.target.value })}
-                    required
-                    minLength={8}
-                  />
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="newPassword">New Password</label>
+                  <div className="udhr-password-field">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      id="newPassword"
+                      className="udhr-input"
+                      placeholder="At least 8 characters"
+                      value={changePasswordForm.newPassword}
+                      onChange={(e) => setChangePasswordForm({ ...changePasswordForm, newPassword: e.target.value })}
+                      required
+                      minLength={8}
+                    />
+                    <button type="button" className="udhr-password-toggle" onClick={() => setShowNewPassword(!showNewPassword)} aria-label={showNewPassword ? 'Hide password' : 'Show password'}>
+                      {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label htmlFor="confirmPassword">Confirm New Password</label>
-                  <input
-                    type="password"
-                    id="confirmPassword"
-                    value={changePasswordForm.confirmPassword}
-                    onChange={(e) => setChangePasswordForm({ ...changePasswordForm, confirmPassword: e.target.value })}
-                    required
-                    minLength={8}
-                  />
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="confirmPassword">Confirm New Password</label>
+                  <div className="udhr-password-field">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      id="confirmPassword"
+                      className="udhr-input"
+                      value={changePasswordForm.confirmPassword}
+                      onChange={(e) => setChangePasswordForm({ ...changePasswordForm, confirmPassword: e.target.value })}
+                      required
+                      minLength={8}
+                    />
+                    <button type="button" className="udhr-password-toggle" onClick={() => setShowConfirmPassword(!showConfirmPassword)} aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}>
+                      {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
-                <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
+                <button type="submit" className="udhr-btn-primary" style={{ width: '100%' }} disabled={loading}>
                   {loading ? 'Updating...' : 'Set Password & Continue'}
                 </button>
               </form>
               <button
-                className="btn btn-secondary"
+                type="button"
+                className="udhr-btn-neutral"
                 style={{ marginTop: '12px', width: '100%' }}
                 onClick={handleLogout}
               >

@@ -1217,14 +1217,30 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Always the same height and always has something to show — an icon on a
+   gradient by default, covered by the real photo once it loads. Keeping
+   this fixed (rather than only rendering a banner when a photo exists)
+   is what stops the card from resizing/jumping as the carousel rotates
+   between announcements that do and don't have a photo. */
 .udhr-announcement-banner {
   width: 100%;
   height: 140px;
   flex-shrink: 0;
-  background: #eef2f7;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #fde68a, #f59e0b);
+  overflow: hidden;
+}
+
+.udhr-announcement-banner-icon {
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .udhr-announcement-banner img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;

@@ -150,6 +150,11 @@ function App() {
   const [checkinReason, setCheckinReason] = useState('');
   const [recentCheckIns, setRecentCheckIns] = useState([]);
 
+  // Admin front desk: look up any patient (registered any time, not just
+  // today) by ID/MRN — demographics + visit history only, no clinical data.
+  const [adminLookupId, setAdminLookupId] = useState('');
+  const [adminLookupRecord, setAdminLookupRecord] = useState(null);
+
   // Restored feature: Reception queue (Doctor/Nurse check patients into today's facility queue)
   const [queueList, setQueueList] = useState([]);
   const [queueCheckInForm, setQueueCheckInForm] = useState({ department: 'GP', urgency: 'GREEN', reason: '' });
@@ -974,6 +979,26 @@ function App() {
       fetchRecentCheckIns();
     } catch (err) {
       setErrorMessage(err.message);
+    }
+  };
+
+  // Admin looks up a patient who isn't on today's list — e.g. confirming
+  // they're already registered, or checking when they were last seen.
+  const handleAdminPatientLookup = async (e) => {
+    if (e) e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setAdminLookupRecord(null);
+    setLoading(true);
+    try {
+      const response = await fetch(`/api/checkin/lookup/${adminLookupId}`, { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Patient not found');
+      setAdminLookupRecord(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -3533,6 +3558,59 @@ function App() {
                 <button type="submit" className="udhr-btn-primary">Check in</button>
               </form>
             </div>
+          </div>
+        </div>
+
+        <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
+          <div className="udhr-record-body">
+            <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px' }}>Look up a patient</h3>
+            <p className="udhr-empty-note" style={{ marginBottom: '14px' }}>
+              For anyone not on today's list — confirms they're registered and shows when they were last seen. Registration and contact details only, no clinical record.
+            </p>
+            <form onSubmit={handleAdminPatientLookup} className="udhr-search-bar">
+              <input
+                type="text"
+                className="udhr-input"
+                value={adminLookupId}
+                onChange={(e) => setAdminLookupId(e.target.value)}
+                placeholder="Enter patient ID number or MRN"
+                required
+              />
+              <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
+            </form>
+
+            {adminLookupRecord && (
+              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px dashed var(--udhr-border)' }}>
+                <p className="udhr-row-title" style={{ fontSize: '15px' }}>
+                  {adminLookupRecord.patient.firstName} {adminLookupRecord.patient.lastName}
+                  <span className={`udhr-tag ${adminLookupRecord.firstVisit ? 'info' : 'neutral'}`} style={{ marginLeft: '8px' }}>{adminLookupRecord.firstVisit ? 'NEW' : 'RETURNING'}</span>
+                </p>
+                <p className="udhr-row-subtitle">
+                  {adminLookupRecord.patient.idNumber ? `ID: ${adminLookupRecord.patient.idNumber} · ` : ''}MRN: {adminLookupRecord.patient.mrn} · {adminLookupRecord.patient.gender} · Born {adminLookupRecord.patient.dateOfBirth}
+                </p>
+                <p className="udhr-row-subtitle" style={{ marginBottom: '12px' }}>
+                  Contact: {adminLookupRecord.patient.contactNumber || 'N/A'} · Email: {adminLookupRecord.patient.email || 'N/A'}
+                </p>
+
+                <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 8px' }}>Visit history</p>
+                {adminLookupRecord.visits.length === 0 ? (
+                  <p className="udhr-empty-note">No visits on file yet.</p>
+                ) : (
+                  adminLookupRecord.visits.map(v => (
+                    <div key={v.id} className="udhr-list-row">
+                      <div>
+                        <p className="udhr-row-title">{v.reason}</p>
+                        <p className="udhr-row-subtitle">{v.facility?.name || 'Unknown facility'}</p>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <span className={`udhr-tag ${v.status === 'COMPLETE' ? 'info' : 'warning'}`}>{v.status.replaceAll('_', ' ')}</span>
+                        <p className="udhr-row-subtitle" style={{ marginTop: '2px' }}>{new Date(v.visitDate).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
 

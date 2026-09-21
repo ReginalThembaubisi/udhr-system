@@ -1,5 +1,6 @@
 package com.udhr.service;
 
+import com.udhr.dto.AdminPatientLookupResponse;
 import com.udhr.dto.CheckInRequest;
 import com.udhr.dto.CheckInSummaryResponse;
 import com.udhr.model.Patient;
@@ -69,5 +70,17 @@ public class CheckInService {
                     return new CheckInSummaryResponse(v, totalVisits <= 1);
                 })
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Front desk look-up for a patient who isn't on today's list — e.g.
+     * confirming someone is already registered, or checking when they were
+     * last seen. Deliberately non-clinical: patient demographics and visit
+     * history only, nothing a doctor or nurse recorded during a visit.
+     */
+    public AdminPatientLookupResponse lookupPatient(String identifier) {
+        Patient patient = patientService.findByIdentifier(identifier);
+        List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
+        return new AdminPatientLookupResponse(patient, visits, visits.size() <= 1);
     }
 }

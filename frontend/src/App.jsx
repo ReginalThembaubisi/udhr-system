@@ -158,9 +158,14 @@ function App() {
   const [adminLookupId, setAdminLookupId] = useState('');
   const [adminLookupRecord, setAdminLookupRecord] = useState(null);
 
-  // Restored feature: Reception queue (Doctor/Nurse check patients into today's facility queue)
-  const [queueList, setQueueList] = useState([]);
-  const [queueCheckInForm, setQueueCheckInForm] = useState({ department: 'GP', urgency: 'GREEN', reason: '' });
+  // "Today's Queue" board — everyone still in progress at this facility
+  // today, across the whole admin -> nurse -> doctor -> pharmacy pipeline.
+  const [facilityQueueToday, setFacilityQueueToday] = useState([]);
+
+  // Nurse: Lab Results, its own nav tab — look a patient up by ID/MRN and
+  // attach a result, independent of whichever patient is mid-vitals.
+  const [labsSearchId, setLabsSearchId] = useState('');
+  const [labsPatient, setLabsPatient] = useState(null);
 
   // Restored feature: Referrals (Doctor/Nurse refer a patient to another facility)
   const [referralInbox, setReferralInbox] = useState([]);
@@ -880,13 +885,13 @@ function App() {
     }
   };
 
-  // Nurse pastes a lab result in for the patient they've already looked up for vitals
+  // Nurse pastes a lab result in for the patient looked up on the Lab Results tab
   const handleAddLabResult = async (e) => {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const payload = { idNumber: vitalsSearchId, ...labResultForm };
+      const payload = { idNumber: labsSearchId, ...labResultForm };
       const response = await fetch('/api/lab-results', {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -1343,38 +1348,34 @@ function App() {
     fetchPharmacyQueue();
   };
 
-  // ===== Restored feature: Reception Queue =====
-  const fetchQueue = async () => {
+  // "Today's Queue" — a live, read-only board of every patient still in
+  // progress at this facility today, across the whole pipeline.
+  const fetchFacilityQueueToday = async () => {
     try {
-      const response = await fetch('/api/queue/today', { headers: getAuthHeaders() });
+      const response = await fetch('/api/visits/today', { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
-      if (!response.ok) throw new Error(data.message || 'Failed to load queue');
-      setQueueList(data);
+      if (!response.ok) throw new Error(data.message || "Failed to load today's queue");
+      setFacilityQueueToday(data);
     } catch (err) {
       setErrorMessage(err.message);
     }
   };
 
-  const handleQueueCheckIn = async (e) => {
-    e.preventDefault();
-    if (!searchedPatientRecord) {
-      setErrorMessage('Locate a patient first, then check them into the queue.');
-      return;
-    }
+  // Nurse looks a patient up by ID/MRN to attach a lab result — independent
+  // of whichever patient they're currently taking vitals for.
+  const handleLookupForLabs = async (e) => {
+    if (e) e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
+    setLabsPatient(null);
     setLoading(true);
     try {
-      const response = await fetch('/api/queue/check-in', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ patientId: searchedPatientRecord.patient.id, ...queueCheckInForm })
-      });
-      const data = await parseResponseBody(response);
-      if (!response.ok) throw new Error(data.message || 'Check-in failed');
-      setSuccessMessage(`Checked in — queue number ${data.queueNumber}`);
-      setQueueCheckInForm({ department: 'GP', urgency: 'GREEN', reason: '' });
-      fetchQueue();
+      const response = await fetch(`/api/patients/${labsSearchId}`, { headers: getAuthHeaders() });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Patient not found');
+      }
+      setLabsPatient(data);
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -1382,17 +1383,9 @@ function App() {
     }
   };
 
-  const handleQueueAction = async (id, action) => {
-    setErrorMessage('');
-    setSuccessMessage('');
-    try {
-      const response = await fetch(`/api/queue/${id}/${action}`, { method: 'POST', headers: getAuthHeaders() });
-      const data = await parseResponseBody(response);
-      if (!response.ok) throw new Error(data.message || `Failed to ${action} queue entry`);
-      fetchQueue();
-    } catch (err) {
-      setErrorMessage(err.message);
-    }
+  const handleBackToLabsSearch = () => {
+    setLabsPatient(null);
+    setLabsSearchId('');
   };
 
   // ===== Restored feature: Referrals =====
@@ -2338,6 +2331,7 @@ function App() {
     const clinicalNavItems = isNurse
       ? [
           { key: 'vitals', label: 'Vitals', icon: <Activity size={17} /> },
+          { key: 'labs', label: 'Lab Results', icon: <FileSpreadsheet size={17} /> },
           { key: 'patients', label: 'Register', icon: <Users size={17} /> },
           { key: 'alerts', label: 'Alerts', icon: <ShieldAlert size={17} /> },
           { key: 'queue', label: 'Queue', icon: <Clock size={17} /> },
@@ -2354,44 +2348,37 @@ function App() {
       setActiveTabStaff(key);
       setIsMobileNavOpen(false);
       if (key === 'alerts') fetchClinicalAlerts();
-      if (key === 'queue') fetchQueue();
+      if (key === 'queue') fetchFacilityQueueToday();
       if (key === 'referrals') fetchReferrals();
       if (key === 'vitals' && isNurse) fetchNurseVitalsQueue();
       if (key === 'patients' && isDoctor) fetchDoctorConsultQueue();
     };
 
+    const queueStageLabel = {
+      WAITING_VITALS: 'Waiting for vitals',
+      VITALS_DONE: 'Waiting for doctor',
+      DIAGNOSED: 'Waiting for pharmacy',
+    };
+
     const renderQueuePanel = () => (
       <>
         <h1 className="udhr-page-title">Today's Queue</h1>
-        <p className="udhr-page-subtitle">Patients waiting to be seen at your facility.</p>
+        <p className="udhr-page-subtitle">Everyone still in progress at your facility today, across the whole pipeline.</p>
         <div className="udhr-record-card">
           <div className="udhr-record-body">
-            {queueList.length === 0 ? (
-              <p className="udhr-empty-note">
-                No one in the queue yet. Locate a patient under "Patients" and use "Check In to Queue" there.
-              </p>
+            {facilityQueueToday.length === 0 ? (
+              <p className="udhr-empty-note">No one in the queue right now.</p>
             ) : (
-              queueList.map(entry => (
-                <div key={entry.id} className="udhr-list-row" style={{ flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span className="udhr-queue-dot" style={{ background: entry.urgency === 'RED' ? 'var(--udhr-danger)' : entry.urgency === 'YELLOW' ? 'var(--udhr-warning)' : 'var(--udhr-success)' }}></span>
-                    <div>
-                      <p className="udhr-row-title">#{entry.queueNumber} — {entry.patient.firstName} {entry.patient.lastName}</p>
-                      <p className="udhr-row-subtitle">{entry.department} · {entry.reason} · waiting since {new Date(entry.checkedInAt || entry.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                    </div>
+              facilityQueueToday.map(visit => (
+                <div key={visit.id} className="udhr-list-row" style={{ flexWrap: 'wrap' }}>
+                  <div>
+                    <p className="udhr-row-title">{visit.patient.firstName} {visit.patient.lastName}</p>
+                    <p className="udhr-row-subtitle">
+                      {visit.patient.idNumber ? `ID: ${visit.patient.idNumber} · ` : ''}MRN: {visit.patient.mrn}
+                    </p>
+                    <p className="udhr-row-subtitle">{visit.reason} · waiting since {new Date(visit.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--udhr-text-secondary)' }}>{entry.status.replaceAll('_', ' ')}</span>
-                    {entry.status === 'WAITING' && (
-                      <button type="button" className="udhr-btn-neutral" onClick={() => handleQueueAction(entry.id, 'call')}>Call</button>
-                    )}
-                    {entry.status === 'IN_CONSULTATION' && (
-                      <button type="button" className="udhr-btn-soft-success" onClick={() => handleQueueAction(entry.id, 'complete')}>Complete</button>
-                    )}
-                    {(entry.status === 'WAITING' || entry.status === 'IN_CONSULTATION') && (
-                      <button type="button" className="udhr-btn-neutral" onClick={() => handleQueueAction(entry.id, 'cancel')}>Cancel</button>
-                    )}
-                  </div>
+                  <span className="udhr-tag info">{queueStageLabel[visit.status] || visit.status.replaceAll('_', ' ')}</span>
                 </div>
               ))
             )}
@@ -2609,10 +2596,39 @@ function App() {
                 </form>
               </div>
             </div>
+          </>
+        )}
+      </>
+    );
 
+    const renderNurseLabsPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Lab Results</h1>
+        <p className="udhr-page-subtitle">Look a patient up by ID or MRN to attach a lab result to their file.</p>
+
+        {!labsPatient && (
+          <form onSubmit={handleLookupForLabs} className="udhr-search-bar">
+            <input
+              type="text"
+              className="udhr-input"
+              value={labsSearchId}
+              onChange={(e) => setLabsSearchId(e.target.value)}
+              placeholder="Enter patient ID number or MRN"
+              required
+            />
+            <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Find'}</button>
+          </form>
+        )}
+
+        {labsPatient && (
+          <>
+            <button type="button" className="udhr-btn-neutral" onClick={handleBackToLabsSearch} style={{ marginBottom: '16px' }}>← Search another patient</button>
             <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)' }}>
               <div className="udhr-record-body">
-                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 12px' }}>Add Lab Result</h3>
+                <p className="udhr-row-title" style={{ fontSize: '14px', marginBottom: '2px' }}>{labsPatient.firstName} {labsPatient.lastName}</p>
+                <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>
+                  {labsPatient.idNumber ? `ID: ${labsPatient.idNumber} · ` : ''}MRN: {labsPatient.mrn} · {labsPatient.gender} · DOB {labsPatient.dateOfBirth}
+                </p>
                 <form onSubmit={handleAddLabResult}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
                     <input type="text" className="udhr-input" placeholder="Test name (e.g. HbA1c)" value={labResultForm.testName} onChange={(e) => setLabResultForm({ ...labResultForm, testName: e.target.value })} required />
@@ -2625,7 +2641,7 @@ function App() {
                   <div className="udhr-form-group">
                     <textarea className="udhr-textarea" rows={2} placeholder="Notes" value={labResultForm.notes} onChange={(e) => setLabResultForm({ ...labResultForm, notes: e.target.value })} />
                   </div>
-                  <button type="submit" className="udhr-btn-neutral" style={{ width: '100%' }}>Save result</button>
+                  <button type="submit" className="udhr-btn-primary" style={{ width: '100%' }} disabled={loading}>Save result</button>
                 </form>
               </div>
             </div>
@@ -2731,27 +2747,7 @@ function App() {
               </div>
 
               <div className="udhr-record-body" style={{ paddingBottom: 0 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-                  <form onSubmit={handleQueueCheckIn}>
-                    <p className="udhr-label" style={{ marginBottom: '8px' }}>Check in to today's queue</p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <select className="udhr-input" value={queueCheckInForm.department} onChange={(e) => setQueueCheckInForm({ ...queueCheckInForm, department: e.target.value })}>
-                        <option value="GP">GP</option>
-                        <option value="DENTAL">Dental</option>
-                        <option value="MATERNITY">Maternity</option>
-                        <option value="PEDIATRICS">Pediatrics</option>
-                        <option value="CASUALTY">Casualty</option>
-                        <option value="CHRONIC_CLUB">Chronic Club</option>
-                      </select>
-                      <select className="udhr-input" value={queueCheckInForm.urgency} onChange={(e) => setQueueCheckInForm({ ...queueCheckInForm, urgency: e.target.value })}>
-                        <option value="GREEN">Green (routine)</option>
-                        <option value="YELLOW">Yellow (priority)</option>
-                        <option value="RED">Red (urgent)</option>
-                      </select>
-                      <input type="text" className="udhr-input" placeholder="Reason for visit" value={queueCheckInForm.reason} onChange={(e) => setQueueCheckInForm({ ...queueCheckInForm, reason: e.target.value })} required />
-                      <button type="submit" className="udhr-btn-neutral" disabled={loading}>Check in</button>
-                    </div>
-                  </form>
+                <div style={{ maxWidth: 'clamp(280px, 45%, 420px)', marginBottom: '20px' }}>
                   <form onSubmit={handleCreateReferral}>
                     <p className="udhr-label" style={{ marginBottom: '8px' }}>Refer to another facility</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -3233,6 +3229,7 @@ function App() {
 
           {activeTabStaff === 'patients' && (isNurse ? renderNurseRegisterPanel() : renderDoctorPatientsPanel())}
           {activeTabStaff === 'vitals' && isNurse && renderNurseVitalsPanel()}
+          {activeTabStaff === 'labs' && isNurse && renderNurseLabsPanel()}
           {activeTabStaff === 'alerts' && renderAlertsPanel()}
           {activeTabStaff === 'queue' && renderQueuePanel()}
           {activeTabStaff === 'referrals' && renderReferralsPanel()}

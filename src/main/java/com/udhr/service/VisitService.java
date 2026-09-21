@@ -14,8 +14,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class VisitService {
@@ -102,6 +104,23 @@ public class VisitService {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
         return visitRepository.findByFacilityIdAndStatusOrderByVisitDateAsc(staff.getFacility().getId(), status);
+    }
+
+    /**
+     * The "Today's Queue" board: every one of today's visits at this facility
+     * still in progress, across every stage of the pipeline (waiting for
+     * vitals, waiting for the doctor, waiting for pharmacy) — a single
+     * live view of who's where, oldest arrival first.
+     */
+    public List<Visit> getTodayFacilityQueue(String staffNumber) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        LocalDate today = LocalDate.now();
+        return visitRepository.findByFacilityIdOrderByVisitDateDesc(staff.getFacility().getId()).stream()
+                .filter(v -> v.getVisitDate() != null && v.getVisitDate().toLocalDate().equals(today))
+                .filter(v -> !TERMINAL_STATUSES.contains(v.getStatus()))
+                .sorted(Comparator.comparing(Visit::getVisitDate))
+                .collect(Collectors.toList());
     }
 
     // Explicitly closes out a visit — a clinical decision distinct from the

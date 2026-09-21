@@ -68,6 +68,23 @@ public class VisitController {
         }
     }
 
+    // The "Today's Queue" board: everyone still in progress at this facility
+    // today, across every stage of the pipeline — one live view of who's where.
+    @GetMapping("/today")
+    public ResponseEntity<?> getTodayFacilityQueue(HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            List<Visit> queue = visitService.getTodayFacilityQueue(staffNumber);
+            return ResponseEntity.ok(queue);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
     @GetMapping("/patient/{patientId}")
     public ResponseEntity<?> getVisitsByPatient(@PathVariable Long patientId, HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);

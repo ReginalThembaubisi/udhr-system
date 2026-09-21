@@ -1323,6 +1323,26 @@ function App() {
     handleSearchPharmacyPatient(null, item.patient.idNumber || item.patient.mrn);
   };
 
+  // "Back" out of a selected patient and return to the queue list — each
+  // role's detail view replaces the list rather than stacking below it, so
+  // this is how you get back to picking someone else.
+  const handleBackToVitalsQueue = () => {
+    setVitalsPatient(null);
+    setVitalsSearchId('');
+  };
+
+  const handleBackToDoctorQueue = () => {
+    setSearchedPatientRecord(null);
+    setPatientAdherence(null);
+    setPatientTimeline(null);
+    fetchDoctorConsultQueue();
+  };
+
+  const handleBackToPharmacyQueue = () => {
+    setPharmacyRecord(null);
+    fetchPharmacyQueue();
+  };
+
   // ===== Restored feature: Reception Queue =====
   const fetchQueue = async () => {
     try {
@@ -2521,39 +2541,47 @@ function App() {
         <h1 className="udhr-page-title">Capture Vitals</h1>
         <p className="udhr-page-subtitle">Patients admin has checked in and queued for vitals — pick one from the list below.</p>
 
-        <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)', marginBottom: '20px' }}>
-          <div className="udhr-record-body">
-            {nurseVitalsQueue.length === 0 ? (
-              <p className="udhr-empty-note">No one waiting for vitals right now. Admin queues patients at check-in.</p>
-            ) : (
-              nurseVitalsQueue.map(visit => (
-                <div key={visit.id} className="udhr-list-row">
-                  <div>
-                    <p className="udhr-row-title">{visit.patient.firstName} {visit.patient.lastName}</p>
-                    <p className="udhr-row-subtitle">{visit.reason} · waiting since {new Date(visit.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                  </div>
-                  <button type="button" className="udhr-btn-primary" onClick={() => handleSelectFromVitalsQueue(visit)}>Take vitals</button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        {!vitalsPatient && (
+          <>
+            <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)', marginBottom: '20px' }}>
+              <div className="udhr-record-body">
+                {nurseVitalsQueue.length === 0 ? (
+                  <p className="udhr-empty-note">No one waiting for vitals right now. Admin queues patients at check-in.</p>
+                ) : (
+                  nurseVitalsQueue.map(visit => (
+                    <div key={visit.id} className="udhr-list-row">
+                      <div>
+                        <p className="udhr-row-title">{visit.patient.firstName} {visit.patient.lastName}</p>
+                        <p className="udhr-row-subtitle">
+                          {visit.patient.idNumber ? `ID: ${visit.patient.idNumber} · ` : ''}MRN: {visit.patient.mrn}
+                        </p>
+                        <p className="udhr-row-subtitle">{visit.reason} · waiting since {new Date(visit.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                      </div>
+                      <button type="button" className="udhr-btn-primary" onClick={() => handleSelectFromVitalsQueue(visit)}>Take vitals</button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
 
-        <p className="udhr-label" style={{ marginBottom: '8px' }}>Or look up by ID/MRN (e.g. a walk-in who bypassed the front desk)</p>
-        <form onSubmit={handleLookupForVitals} className="udhr-search-bar">
-          <input
-            type="text"
-            className="udhr-input"
-            value={vitalsSearchId}
-            onChange={(e) => setVitalsSearchId(e.target.value)}
-            placeholder="Enter patient ID number or MRN"
-            required
-          />
-          <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Find'}</button>
-        </form>
+            <p className="udhr-label" style={{ marginBottom: '8px' }}>Or look up by ID/MRN (e.g. a walk-in who bypassed the front desk)</p>
+            <form onSubmit={handleLookupForVitals} className="udhr-search-bar">
+              <input
+                type="text"
+                className="udhr-input"
+                value={vitalsSearchId}
+                onChange={(e) => setVitalsSearchId(e.target.value)}
+                placeholder="Enter patient ID number or MRN"
+                required
+              />
+              <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Find'}</button>
+            </form>
+          </>
+        )}
 
         {vitalsPatient && (
           <>
+            <button type="button" className="udhr-btn-neutral" onClick={handleBackToVitalsQueue} style={{ marginBottom: '16px' }}>← Back to queue</button>
             <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)', marginBottom: '16px' }}>
               <div className="udhr-record-body">
                 <p className="udhr-row-title" style={{ fontSize: '14px', marginBottom: '2px' }}>{vitalsPatient.firstName} {vitalsPatient.lastName}</p>
@@ -2622,39 +2650,47 @@ function App() {
         <h1 className="udhr-page-title">Patients</h1>
         <p className="udhr-page-subtitle">Patients the nurse has taken vitals for and sent through to you — pick one from the list below.</p>
 
-        <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
-          <div className="udhr-record-body">
-            {doctorConsultQueue.length === 0 ? (
-              <p className="udhr-empty-note">No one waiting for consultation right now.</p>
-            ) : (
-              doctorConsultQueue.map(visit => (
-                <div key={visit.id} className="udhr-list-row">
-                  <div>
-                    <p className="udhr-row-title">{visit.patient.firstName} {visit.patient.lastName}</p>
-                    <p className="udhr-row-subtitle">{visit.reason} · waiting since {new Date(visit.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                  </div>
-                  <button type="button" className="udhr-btn-primary" onClick={() => handleSelectFromDoctorQueue(visit)} disabled={loading}>See patient</button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        {!searchedPatientRecord && (
+          <>
+            <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
+              <div className="udhr-record-body">
+                {doctorConsultQueue.length === 0 ? (
+                  <p className="udhr-empty-note">No one waiting for consultation right now.</p>
+                ) : (
+                  doctorConsultQueue.map(visit => (
+                    <div key={visit.id} className="udhr-list-row">
+                      <div>
+                        <p className="udhr-row-title">{visit.patient.firstName} {visit.patient.lastName}</p>
+                        <p className="udhr-row-subtitle">
+                          {visit.patient.idNumber ? `ID: ${visit.patient.idNumber} · ` : ''}MRN: {visit.patient.mrn}
+                        </p>
+                        <p className="udhr-row-subtitle">{visit.reason} · waiting since {new Date(visit.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                      </div>
+                      <button type="button" className="udhr-btn-primary" onClick={() => handleSelectFromDoctorQueue(visit)} disabled={loading}>See patient</button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
 
-        <p className="udhr-label" style={{ marginBottom: '8px' }}>Or look up by ID/MRN (e.g. a follow-up not on today's queue)</p>
-        <form onSubmit={handleSearchPatient} className="udhr-search-bar">
-          <input
-            type="text"
-            className="udhr-input"
-            value={searchId}
-            onChange={(e) => setSearchId(e.target.value)}
-            placeholder="Enter patient ID number or MRN"
-            required
-          />
-          <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
-        </form>
+            <p className="udhr-label" style={{ marginBottom: '8px' }}>Or look up by ID/MRN (e.g. a follow-up not on today's queue)</p>
+            <form onSubmit={handleSearchPatient} className="udhr-search-bar">
+              <input
+                type="text"
+                className="udhr-input"
+                value={searchId}
+                onChange={(e) => setSearchId(e.target.value)}
+                placeholder="Enter patient ID number or MRN"
+                required
+              />
+              <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
+            </form>
+          </>
+        )}
 
         {searchedPatientRecord ? (
           <>
+            <button type="button" className="udhr-btn-neutral" onClick={handleBackToDoctorQueue} style={{ marginBottom: '16px' }}>← Back to queue</button>
             <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
               <div className="udhr-record-header">
                 <div>
@@ -3032,25 +3068,21 @@ function App() {
               </div>
             </div>
           </>
-        ) : (
-          <div className="udhr-empty-state">
-            <Clipboard size={48} color="#cbd5e1" style={{ margin: '0 auto 16px' }} />
-            <h3>No patient file loaded</h3>
-            <p className="udhr-empty-note">Use the lookup above to locate a patient by their ID number or MRN.</p>
-          </div>
-        )}
+        ) : null}
 
-        <div style={{ marginTop: '20px', maxWidth: 'clamp(320px, 60%, 720px)' }}>
-          <h3 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Register a new patient</h3>
-          <div className="udhr-record-card">
-            <div className="udhr-record-body">
-              <form onSubmit={handleRegisterPatient}>
-                {renderRegistrationFields()}
-                <button type="submit" className="udhr-btn-primary">Create patient record</button>
-              </form>
+        {!searchedPatientRecord && (
+          <div style={{ marginTop: '20px', maxWidth: 'clamp(320px, 60%, 720px)' }}>
+            <h3 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Register a new patient</h3>
+            <div className="udhr-record-card">
+              <div className="udhr-record-body">
+                <form onSubmit={handleRegisterPatient}>
+                  {renderRegistrationFields()}
+                  <button type="submit" className="udhr-btn-primary">Create patient record</button>
+                </form>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </>
     );
 
@@ -3229,39 +3261,47 @@ function App() {
         <h1 className="udhr-page-title">Dispense</h1>
         <p className="udhr-page-subtitle">Patients the doctor has just prescribed for — pick one from the list below.</p>
 
-        <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
-          <div className="udhr-record-body">
-            {pharmacyQueue.length === 0 ? (
-              <p className="udhr-empty-note">Nothing waiting to be dispensed right now.</p>
-            ) : (
-              pharmacyQueue.map(item => (
-                <div key={item.currentVisit.id} className="udhr-list-row">
-                  <div>
-                    <p className="udhr-row-title">{item.patient.firstName} {item.patient.lastName}</p>
-                    <p className="udhr-row-subtitle">{item.pendingPrescriptions.length} prescription{item.pendingPrescriptions.length === 1 ? '' : 's'} waiting · from {item.currentVisit.staff ? `${item.currentVisit.staff.firstName} ${item.currentVisit.staff.lastName}` : 'doctor'}</p>
-                  </div>
-                  <button type="button" className="udhr-btn-primary" onClick={() => handleSelectFromPharmacyQueue(item)} disabled={loading}>View & dispense</button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        {!pharmacyRecord && (
+          <>
+            <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
+              <div className="udhr-record-body">
+                {pharmacyQueue.length === 0 ? (
+                  <p className="udhr-empty-note">Nothing waiting to be dispensed right now.</p>
+                ) : (
+                  pharmacyQueue.map(item => (
+                    <div key={item.currentVisit.id} className="udhr-list-row">
+                      <div>
+                        <p className="udhr-row-title">{item.patient.firstName} {item.patient.lastName}</p>
+                        <p className="udhr-row-subtitle">
+                          {item.patient.idNumber ? `ID: ${item.patient.idNumber} · ` : ''}MRN: {item.patient.mrn}
+                        </p>
+                        <p className="udhr-row-subtitle">{item.pendingPrescriptions.length} prescription{item.pendingPrescriptions.length === 1 ? '' : 's'} waiting · from {item.currentVisit.staff ? `${item.currentVisit.staff.firstName} ${item.currentVisit.staff.lastName}` : 'doctor'}</p>
+                      </div>
+                      <button type="button" className="udhr-btn-primary" onClick={() => handleSelectFromPharmacyQueue(item)} disabled={loading}>View & dispense</button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
 
-        <p className="udhr-label" style={{ marginBottom: '8px' }}>Or look up by ID/MRN (e.g. a self-pay walk-in)</p>
-        <form onSubmit={handleSearchPharmacyPatient} className="udhr-search-bar">
-          <input
-            type="text"
-            className="udhr-input"
-            value={pharmacySearchId}
-            onChange={(e) => setPharmacySearchId(e.target.value)}
-            placeholder="Enter patient ID number or MRN"
-            required
-          />
-          <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
-        </form>
+            <p className="udhr-label" style={{ marginBottom: '8px' }}>Or look up by ID/MRN (e.g. a self-pay walk-in)</p>
+            <form onSubmit={handleSearchPharmacyPatient} className="udhr-search-bar">
+              <input
+                type="text"
+                className="udhr-input"
+                value={pharmacySearchId}
+                onChange={(e) => setPharmacySearchId(e.target.value)}
+                placeholder="Enter patient ID number or MRN"
+                required
+              />
+              <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
+            </form>
+          </>
+        )}
 
         {pharmacyRecord ? (
           <>
+            <button type="button" className="udhr-btn-neutral" onClick={handleBackToPharmacyQueue} style={{ marginBottom: '16px' }}>← Back to queue</button>
             <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
               <div className="udhr-record-body">
                 <p className="udhr-row-title" style={{ fontSize: '15px' }}>{pharmacyRecord.patient.firstName} {pharmacyRecord.patient.lastName}</p>
@@ -3332,13 +3372,7 @@ function App() {
               </div>
             </div>
           </>
-        ) : (
-          <div className="udhr-empty-state">
-            <Pill size={48} color="#cbd5e1" style={{ margin: '0 auto 16px' }} />
-            <h3>No patient loaded</h3>
-            <p className="udhr-empty-note">Look a patient up by their ID number to see what's waiting to be dispensed.</p>
-          </div>
-        )}
+        ) : null}
       </>
     );
 

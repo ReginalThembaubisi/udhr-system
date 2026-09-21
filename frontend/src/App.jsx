@@ -1612,11 +1612,12 @@ function App() {
             const current = publicAnnouncements[announcementCarouselIndex % publicAnnouncements.length];
             return (
               <div className="udhr-announcement-card">
-                {current.photoUrl && (
-                  <div className="udhr-announcement-banner">
-                    <img src={current.photoUrl} alt="" onError={(e) => { e.target.parentElement.style.display = 'none'; }} />
-                  </div>
-                )}
+                <div className="udhr-announcement-banner">
+                  <Megaphone size={30} className="udhr-announcement-banner-icon" />
+                  {current.photoUrl && (
+                    <img key={current.id} src={current.photoUrl} alt="" onError={(e) => { e.target.style.display = 'none'; }} />
+                  )}
+                </div>
                 <div className="udhr-announcement-body">
                   <p className="udhr-announcement-label">
                     <Megaphone size={13} /> Public Notice

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
@@ -72,6 +72,9 @@ function App() {
   const [activeTabStaff, setActiveTabStaff] = useState('patients'); // 'patients', 'vitals', 'alerts', 'queue', or 'referrals'
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [activeRecordTab, setActiveRecordTab] = useState('diagnoses'); // sub-tab within a loaded patient record (doctor view)
+  // Lets clicking the visit-status pill (e.g. "VITALS DONE") jump straight
+  // to the Vitals sub-tab below instead of making the doctor hunt for it.
+  const recordSubTabsRef = useRef(null);
 
   // Staff Dashboard Data State
   const [searchId, setSearchId] = useState('9001015000083');
@@ -2739,9 +2742,23 @@ function App() {
                       <span key={c.id} className="udhr-tag info">{c.conditionName}</span>
                     ))}
                   </div>
-                  <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px' }}>
-                    {searchedPatientRecord.currentVisit ? searchedPatientRecord.currentVisit.status.replaceAll('_', ' ') : 'No open visit'}
-                  </span>
+                  {searchedPatientRecord.currentVisit ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveRecordTab('vitals');
+                        recordSubTabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }}
+                      title="View vitals and the nurse's notes"
+                      style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px', border: 'none', cursor: 'pointer' }}
+                    >
+                      {searchedPatientRecord.currentVisit.status.replaceAll('_', ' ')} →
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px' }}>
+                      No open visit
+                    </span>
+                  )}
                   <button type="button" className="udhr-btn-neutral" onClick={() => handleEvaluatePatient(searchedPatientRecord.patient.id)}>
                     <RefreshCw size={14} style={{ marginRight: '4px' }} /> Analyze response (CDS)
                   </button>
@@ -2772,7 +2789,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="udhr-record-subtabs">
+              <div className="udhr-record-subtabs" ref={recordSubTabsRef}>
                 {recordSubTabs.map(([key, label]) => (
                   <button key={key} type="button" className={`udhr-subtab ${activeRecordTab === key ? 'active' : ''}`} onClick={() => setActiveRecordTab(key)}>
                     {label}

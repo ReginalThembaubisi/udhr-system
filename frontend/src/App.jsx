@@ -94,16 +94,24 @@ function App() {
     patientId: '', severity: 'HIGH', message: ''
   });
 
-  // Nurse: Vitals capture (look patient up by ID, no queue ticket needed)
+  // Nurse: Vitals capture. Primary flow is the automatic queue of patients
+  // admin has checked in (waiting for vitals); ID/MRN search stays as a
+  // manual fallback for walk-ins that bypassed the front desk (e.g. emergencies).
   const [vitalsSearchId, setVitalsSearchId] = useState('');
   const [vitalsPatient, setVitalsPatient] = useState(null);
   const [vitalsForm, setVitalsForm] = useState({
     bloodPressure: '', temperatureCelsius: '', pulseBpm: '', respirationRate: '', oxygenSaturation: '', weightKg: '', heightCm: '', notes: ''
   });
+  const [nurseVitalsQueue, setNurseVitalsQueue] = useState([]);
 
-  // Pharmacy: look patient up by ID, see where they came from, dispense
+  // Doctor: automatic queue of patients the nurse has just taken vitals for
+  const [doctorConsultQueue, setDoctorConsultQueue] = useState([]);
+
+  // Pharmacy: automatic queue of patients the doctor has just prescribed for.
+  // ID/MRN search stays as a manual fallback.
   const [pharmacySearchId, setPharmacySearchId] = useState('9001015000083');
   const [pharmacyRecord, setPharmacyRecord] = useState(null);
+  const [pharmacyQueue, setPharmacyQueue] = useState([]);
 
   // Nurse: paste in a lab result for the patient they've just looked up
   const [labResultForm, setLabResultForm] = useState({
@@ -292,8 +300,14 @@ function App() {
     if (token) {
       if (userRole === 'PATIENT') {
         fetchPatientPortalData();
-      } else if (userRole === 'DOCTOR' || userRole === 'NURSE') {
+      } else if (userRole === 'NURSE') {
         fetchClinicalAlerts();
+        fetchNurseVitalsQueue();
+      } else if (userRole === 'DOCTOR') {
+        fetchClinicalAlerts();
+        fetchDoctorConsultQueue();
+      } else if (userRole === 'PHARMACIST') {
+        fetchPharmacyQueue();
       } else if (userRole === 'ADMIN') {
         fetchStaffList();
         fetchFacilityList();
@@ -511,17 +525,21 @@ function App() {
     }
   };
 
-  // Staff search patient
-  const handleSearchPatient = async (e) => {
+  // Staff search patient. Accepts an optional idOverride so a click on the
+  // automatic consultation queue can search immediately without waiting on
+  // a setSearchId state update to land first.
+  const handleSearchPatient = async (e, idOverride) => {
     if (e) e.preventDefault();
+    const idToSearch = idOverride || searchId;
     setErrorMessage('');
     setLoading(true);
     setSearchedPatientRecord(null);
     setPatientAdherence(null);
     setPatientTimeline(null);
+    if (idOverride) setSearchId(idOverride);
 
     try {
-      const response = await fetch(`/api/patients/${searchId}/record`, { headers: getAuthHeaders() });
+      const response = await fetch(`/api/patients/${idToSearch}/record`, { headers: getAuthHeaders() });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.message || 'Patient record not found');
@@ -671,6 +689,7 @@ function App() {
       setSuccessMessage('Diagnosis added successfully!');
       setAddDiagnosisForm(prev => ({ ...prev, conditionName: '', notes: '' }));
       handleSearchPatient(); // Refresh record
+      fetchDoctorConsultQueue();
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -752,10 +771,11 @@ function App() {
       if (!response.ok) {
         throw new Error(data.message || 'Failed to record vitals');
       }
-      setSuccessMessage(`Vitals recorded for ${vitalsPatient.firstName} ${vitalsPatient.lastName}. They're now ready for the doctor — no need to send them to a queue.`);
+      setSuccessMessage(`Vitals recorded for ${vitalsPatient.firstName} ${vitalsPatient.lastName}. They now appear automatically on the doctor's queue.`);
       setVitalsForm({ bloodPressure: '', temperatureCelsius: '', pulseBpm: '', respirationRate: '', oxygenSaturation: '', weightKg: '', heightCm: '', notes: '' });
       setVitalsPatient(null);
       setVitalsSearchId('');
+      fetchNurseVitalsQueue();
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -763,15 +783,19 @@ function App() {
     }
   };
 
-  // Pharmacist looks a patient up by ID and sees exactly where they came from
-  const handleSearchPharmacyPatient = async (e) => {
+  // Pharmacist looks a patient up by ID and sees exactly where they came
+  // from. Accepts an optional idOverride for a click straight off the
+  // automatic dispense queue.
+  const handleSearchPharmacyPatient = async (e, idOverride) => {
     if (e) e.preventDefault();
+    const idToSearch = idOverride || pharmacySearchId;
     setErrorMessage('');
     setSuccessMessage('');
     setPharmacyRecord(null);
     setLoading(true);
+    if (idOverride) setPharmacySearchId(idOverride);
     try {
-      const response = await fetch(`/api/pharmacy/patient/${pharmacySearchId}`, { headers: getAuthHeaders() });
+      const response = await fetch(`/api/pharmacy/patient/${idToSearch}`, { headers: getAuthHeaders() });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.message || 'Patient not found');
@@ -800,6 +824,7 @@ function App() {
       }
       setSuccessMessage('Marked as dispensed.');
       handleSearchPharmacyPatient();
+      fetchPharmacyQueue();
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -916,9 +941,9 @@ function App() {
     }
   };
 
-  // Front desk: log that a patient has arrived — pure paperwork, no clinical action.
-  // The nurse still just types the ID number; this simply means the visit is
-  // already open and waiting for her by the time she does.
+  // Front desk: log that a patient has arrived and puts them straight onto
+  // the nurse's automatic vitals queue. This is also admin's record of who
+  // has come in today and whether they're a new or returning patient.
   const fetchRecentCheckIns = async () => {
     setErrorMessage('');
     try {
@@ -943,7 +968,7 @@ function App() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Failed to check patient in');
-      setSuccessMessage(`Checked in ${data.patient.firstName} ${data.patient.lastName}. The nurse can now find them by ID number — no queue ticket needed.`);
+      setSuccessMessage(`Checked in ${data.patient.firstName} ${data.patient.lastName}. They now appear automatically on the nurse's vitals queue.`);
       setCheckinSearchId('');
       setCheckinReason('');
       fetchRecentCheckIns();
@@ -1170,6 +1195,62 @@ function App() {
     } catch {
       return { message: text };
     }
+  };
+
+  // ===== Automatic hand-off queues: admin -> nurse -> doctor -> pharmacy =====
+  // Each stage reads a list of patients the previous stage already queued —
+  // nobody has to search for a patient by ID except as a manual fallback.
+  const fetchNurseVitalsQueue = async () => {
+    try {
+      const response = await fetch('/api/visits/queue/WAITING_VITALS', { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to load the vitals queue');
+      setNurseVitalsQueue(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const fetchDoctorConsultQueue = async () => {
+    try {
+      const response = await fetch('/api/visits/queue/VITALS_DONE', { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to load the consultation queue');
+      setDoctorConsultQueue(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const fetchPharmacyQueue = async () => {
+    try {
+      const response = await fetch('/api/pharmacy/queue', { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to load the pharmacy queue');
+      setPharmacyQueue(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // Nurse picks a patient straight off the vitals queue — same effect as
+  // looking them up by ID, just without typing anything.
+  const handleSelectFromVitalsQueue = (visit) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setVitalsSearchId(visit.patient.idNumber || visit.patient.mrn);
+    setVitalsPatient(visit.patient);
+  };
+
+  // Doctor picks a patient straight off the consultation queue — loads the
+  // full record exactly like a manual search would.
+  const handleSelectFromDoctorQueue = (visit) => {
+    handleSearchPatient(null, visit.patient.idNumber || visit.patient.mrn);
+  };
+
+  // Pharmacist picks a patient straight off the dispense queue.
+  const handleSelectFromPharmacyQueue = (item) => {
+    handleSearchPharmacyPatient(null, item.patient.idNumber || item.patient.mrn);
   };
 
   // ===== Restored feature: Reception Queue =====
@@ -2185,6 +2266,8 @@ function App() {
       if (key === 'alerts') fetchClinicalAlerts();
       if (key === 'queue') fetchQueue();
       if (key === 'referrals') fetchReferrals();
+      if (key === 'vitals' && isNurse) fetchNurseVitalsQueue();
+      if (key === 'patients' && isDoctor) fetchDoctorConsultQueue();
     };
 
     const renderQueuePanel = () => (
@@ -2366,7 +2449,27 @@ function App() {
     const renderNurseVitalsPanel = () => (
       <>
         <h1 className="udhr-page-title">Capture Vitals</h1>
-        <p className="udhr-page-subtitle">Look a patient up by ID or MRN, then record their vitals and any lab results.</p>
+        <p className="udhr-page-subtitle">Patients admin has checked in and queued for vitals — pick one from the list below.</p>
+
+        <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)', marginBottom: '20px' }}>
+          <div className="udhr-record-body">
+            {nurseVitalsQueue.length === 0 ? (
+              <p className="udhr-empty-note">No one waiting for vitals right now. Admin queues patients at check-in.</p>
+            ) : (
+              nurseVitalsQueue.map(visit => (
+                <div key={visit.id} className="udhr-list-row">
+                  <div>
+                    <p className="udhr-row-title">{visit.patient.firstName} {visit.patient.lastName}</p>
+                    <p className="udhr-row-subtitle">{visit.reason} · waiting since {new Date(visit.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                  <button type="button" className="udhr-btn-primary" onClick={() => handleSelectFromVitalsQueue(visit)}>Take vitals</button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <p className="udhr-label" style={{ marginBottom: '8px' }}>Or look up by ID/MRN (e.g. a walk-in who bypassed the front desk)</p>
         <form onSubmit={handleLookupForVitals} className="udhr-search-bar">
           <input
             type="text"
@@ -2447,8 +2550,27 @@ function App() {
     const renderDoctorPatientsPanel = () => (
       <>
         <h1 className="udhr-page-title">Patients</h1>
-        <p className="udhr-page-subtitle">Look up a patient by ID or MRN to view and manage their record.</p>
+        <p className="udhr-page-subtitle">Patients the nurse has taken vitals for and sent through to you — pick one from the list below.</p>
 
+        <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
+          <div className="udhr-record-body">
+            {doctorConsultQueue.length === 0 ? (
+              <p className="udhr-empty-note">No one waiting for consultation right now.</p>
+            ) : (
+              doctorConsultQueue.map(visit => (
+                <div key={visit.id} className="udhr-list-row">
+                  <div>
+                    <p className="udhr-row-title">{visit.patient.firstName} {visit.patient.lastName}</p>
+                    <p className="udhr-row-subtitle">{visit.reason} · waiting since {new Date(visit.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                  <button type="button" className="udhr-btn-primary" onClick={() => handleSelectFromDoctorQueue(visit)} disabled={loading}>See patient</button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <p className="udhr-label" style={{ marginBottom: '8px' }}>Or look up by ID/MRN (e.g. a follow-up not on today's queue)</p>
         <form onSubmit={handleSearchPatient} className="udhr-search-bar">
           <input
             type="text"
@@ -3029,13 +3151,33 @@ function App() {
       setPharmacistTab(key);
       setIsMobileNavOpen(false);
       if (key === 'stock') fetchStockItems();
+      if (key === 'dispense') fetchPharmacyQueue();
     };
 
     const renderDispensePanel = () => (
       <>
         <h1 className="udhr-page-title">Dispense</h1>
-        <p className="udhr-page-subtitle">Find a patient to see pending prescriptions.</p>
+        <p className="udhr-page-subtitle">Patients the doctor has just prescribed for — pick one from the list below.</p>
 
+        <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
+          <div className="udhr-record-body">
+            {pharmacyQueue.length === 0 ? (
+              <p className="udhr-empty-note">Nothing waiting to be dispensed right now.</p>
+            ) : (
+              pharmacyQueue.map(item => (
+                <div key={item.currentVisit.id} className="udhr-list-row">
+                  <div>
+                    <p className="udhr-row-title">{item.patient.firstName} {item.patient.lastName}</p>
+                    <p className="udhr-row-subtitle">{item.pendingPrescriptions.length} prescription{item.pendingPrescriptions.length === 1 ? '' : 's'} waiting · from {item.currentVisit.staff ? `${item.currentVisit.staff.firstName} ${item.currentVisit.staff.lastName}` : 'doctor'}</p>
+                  </div>
+                  <button type="button" className="udhr-btn-primary" onClick={() => handleSelectFromPharmacyQueue(item)} disabled={loading}>View & dispense</button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <p className="udhr-label" style={{ marginBottom: '8px' }}>Or look up by ID/MRN (e.g. a self-pay walk-in)</p>
         <form onSubmit={handleSearchPharmacyPatient} className="udhr-search-bar">
           <input
             type="text"
@@ -3364,7 +3506,7 @@ function App() {
             <div className="udhr-record-body">
               <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px' }}>Check in patient</h3>
               <p className="udhr-empty-note" style={{ marginBottom: '14px' }}>
-                Logs that the patient has arrived so the nurse can find them straight away by ID number or MRN — no queue ticket needed.
+                Queues the patient for vitals — they'll appear automatically on the nurse's dashboard, no ID search needed on either side.
               </p>
               <form onSubmit={handleCheckIn}>
                 <div className="udhr-form-group">
@@ -3394,24 +3536,30 @@ function App() {
           </div>
         </div>
 
-        <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Recent check-ins</p>
+        <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Today's visitors</p>
         <div className="udhr-record-card">
           <div className="udhr-record-body">
             {recentCheckIns.length === 0 ? (
               <p className="udhr-empty-note">No check-ins logged yet today.</p>
             ) : (
-              recentCheckIns.map(v => (
-                <div key={v.id} className="udhr-list-row">
-                  <div>
-                    <p className="udhr-row-title">{v.patient.firstName} {v.patient.lastName} <span className="udhr-row-subtitle">({v.patient.idNumber || v.patient.mrn})</span></p>
-                    <p className="udhr-row-subtitle">{v.reason}</p>
+              recentCheckIns.map(entry => {
+                const v = entry.visit;
+                return (
+                  <div key={v.id} className="udhr-list-row">
+                    <div>
+                      <p className="udhr-row-title">
+                        {v.patient.firstName} {v.patient.lastName} <span className="udhr-row-subtitle">({v.patient.idNumber || v.patient.mrn})</span>
+                        <span className={`udhr-tag ${entry.firstVisit ? 'info' : 'neutral'}`} style={{ marginLeft: '8px' }}>{entry.firstVisit ? 'NEW' : 'RETURNING'}</span>
+                      </p>
+                      <p className="udhr-row-subtitle">{v.reason}</p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span className={`udhr-tag ${v.status === 'COMPLETE' ? 'info' : 'warning'}`}>{v.status.replaceAll('_', ' ')}</span>
+                      <p className="udhr-row-subtitle" style={{ marginTop: '2px' }}>{new Date(v.visitDate).toLocaleString()}</p>
+                    </div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <span className={`udhr-tag ${v.status === 'COMPLETE' ? 'info' : 'warning'}`}>{v.status.replaceAll('_', ' ')}</span>
-                    <p className="udhr-row-subtitle" style={{ marginTop: '2px' }}>{new Date(v.visitDate).toLocaleString()}</p>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

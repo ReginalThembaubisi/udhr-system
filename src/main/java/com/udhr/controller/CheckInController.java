@@ -1,6 +1,7 @@
 package com.udhr.controller;
 
 import com.udhr.dto.CheckInRequest;
+import com.udhr.dto.CheckInSummaryResponse;
 import com.udhr.model.Visit;
 import com.udhr.service.CheckInService;
 import com.udhr.security.JwtUtil;
@@ -57,7 +58,7 @@ public class CheckInController {
         }
 
         try {
-            List<Visit> visits = checkInService.getRecentCheckIns(staffNumber);
+            List<CheckInSummaryResponse> visits = checkInService.getTodayCheckIns(staffNumber);
             return ResponseEntity.ok(visits);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());

@@ -60,6 +60,33 @@ public class PharmacyService {
         return new PharmacyLookupResponse(patient, currentVisit, pending);
     }
 
+    /**
+     * The pharmacist's automatic dispense list: every visit at this facility
+     * the doctor has finished with (status DIAGNOSED) that still has a
+     * pending pharmacy-bound prescription attached — no ID lookup needed,
+     * the doctor's hand-off is what puts a patient here.
+     */
+    public List<PharmacyLookupResponse> getQueue(String staffNumber) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+
+        List<Visit> diagnosedVisits = visitRepository
+                .findByFacilityIdAndStatusOrderByVisitDateAsc(staff.getFacility().getId(), "DIAGNOSED");
+
+        return diagnosedVisits.stream()
+                .map(visit -> {
+                    List<Prescription> pending = prescriptionRepository
+                            .findByPatientIdAndDispenseMethodAndDispensedFalseOrderByCreatedAtDesc(
+                                    visit.getPatient().getId(), "PHARMACY")
+                            .stream()
+                            .filter(p -> p.getVisit() != null && p.getVisit().getId().equals(visit.getId()))
+                            .collect(java.util.stream.Collectors.toList());
+                    return new PharmacyLookupResponse(visit.getPatient(), visit, pending);
+                })
+                .filter(response -> !response.getPendingPrescriptions().isEmpty())
+                .collect(java.util.stream.Collectors.toList());
+    }
+
     public Prescription dispense(Long prescriptionId, String staffNumber) {
         Prescription prescription = prescriptionRepository.findById(prescriptionId)
                 .orElseThrow(() -> new RuntimeException("Prescription not found"));

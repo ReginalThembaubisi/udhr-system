@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/pharmacy")
@@ -31,6 +32,23 @@ public class PharmacyController {
             }
         }
         return null;
+    }
+
+    // The pharmacist's automatic dispense list — patients the doctor has
+    // just finished with, no ID number needed to find them.
+    @GetMapping("/queue")
+    public ResponseEntity<?> getQueue(HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            List<PharmacyLookupResponse> queue = pharmacyService.getQueue(staffNumber);
+            return ResponseEntity.ok(queue);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
     }
 
     @GetMapping("/patient/{idNumber}")

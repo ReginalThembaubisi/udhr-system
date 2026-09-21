@@ -91,6 +91,19 @@ public class VisitService {
         return visitRepository.save(visit);
     }
 
+    /**
+     * The automatic hand-off list behind each role's dashboard: whoever
+     * checked the patient in (admin, or the previous stage) moves them into
+     * a status, and the next role's queue is simply "every visit at my
+     * facility currently sitting in that status" — no ID search needed.
+     * Nurse asks for WAITING_VITALS, doctor asks for VITALS_DONE.
+     */
+    public List<Visit> getFacilityQueue(String staffNumber, String status) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        return visitRepository.findByFacilityIdAndStatusOrderByVisitDateAsc(staff.getFacility().getId(), status);
+    }
+
     // Explicitly closes out a visit — a clinical decision distinct from the
     // routine WAITING_VITALS -> ... -> COMPLETE dispensing flow, and from a
     // Referral (which closes the visit itself, see ReferralService).

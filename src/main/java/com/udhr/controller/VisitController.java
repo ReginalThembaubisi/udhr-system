@@ -50,6 +50,24 @@ public class VisitController {
         }
     }
 
+    // The automatic queue each role's dashboard is built on: WAITING_VITALS
+    // for the nurse, VITALS_DONE for the doctor — whoever checked the
+    // patient in moved them into that status, so there's nothing to search for.
+    @GetMapping("/queue/{status}")
+    public ResponseEntity<?> getFacilityQueue(@PathVariable String status, HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            List<Visit> queue = visitService.getFacilityQueue(staffNumber, status);
+            return ResponseEntity.ok(queue);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
     @GetMapping("/patient/{patientId}")
     public ResponseEntity<?> getVisitsByPatient(@PathVariable Long patientId, HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);

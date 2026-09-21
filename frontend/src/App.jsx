@@ -220,7 +220,11 @@ function App() {
         });
       }
 
-      const data = await response.json();
+      // The backend can send a plain-text error body (e.g. "Invalid password")
+      // rather than JSON, which response.json() would choke on — parse
+      // leniently so a wrong password shows its real message, not a JSON
+      // parse error.
+      const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(typeof data === 'string' ? data : data.message || 'Login failed');
       }
@@ -297,7 +301,7 @@ function App() {
           newPassword: changePasswordForm.newPassword
         })
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to change password');
 
       localStorage.setItem('token', data.token);
@@ -774,7 +778,7 @@ function App() {
       setSuccessMessage(
         addPrescriptionForm.dispenseMethod === 'SELF'
           ? 'Prescription saved and marked as dispensed to the patient.'
-          : 'Prescription sent to the pharmacy for dispensing.'
+          : "Sent to the pharmacy. You stay on this patient's record in case you need to add another diagnosis or prescription — click \"← Back to queue\" above when you're done."
       );
       setAddPrescriptionForm(prev => ({ ...prev, medicationName: '', dosage: '', frequency: 'Once daily', durationDays: 7, notes: '', dispenseMethod: 'PHARMACY' }));
       handleSearchPatient(); // Refresh record
@@ -1608,17 +1612,17 @@ function App() {
             const current = publicAnnouncements[announcementCarouselIndex % publicAnnouncements.length];
             return (
               <div className="udhr-announcement-card">
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  {current.photoUrl && (
-                    <div className="udhr-announcement-photo">
-                      <img src={current.photoUrl} alt="" onError={(e) => { e.target.parentElement.style.display = 'none'; }} />
-                    </div>
-                  )}
-                  <div style={{ minWidth: 0 }}>
-                    <p className="udhr-announcement-label">Public Notice</p>
-                    <p className="udhr-announcement-title">{current.title}</p>
-                    <p className="udhr-announcement-message">{current.message}</p>
+                {current.photoUrl && (
+                  <div className="udhr-announcement-banner">
+                    <img src={current.photoUrl} alt="" onError={(e) => { e.target.parentElement.style.display = 'none'; }} />
                   </div>
+                )}
+                <div className="udhr-announcement-body">
+                  <p className="udhr-announcement-label">
+                    <Megaphone size={13} /> Public Notice
+                  </p>
+                  <p className="udhr-announcement-title">{current.title}</p>
+                  <p className="udhr-announcement-message">{current.message}</p>
                 </div>
                 {publicAnnouncements.length > 1 && (
                   <div className="udhr-announcement-dots">
@@ -3059,21 +3063,30 @@ function App() {
                     <form onSubmit={handleAddPrescription}>
                       <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Issue prescription</h4>
                       <div className="udhr-form-group">
-                        <input type="text" className="udhr-input" placeholder="Medication (e.g. Amoxicillin 250mg)" value={addPrescriptionForm.medicationName} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value })} required />
+                        <label className="udhr-label">Medication</label>
+                        <input type="text" className="udhr-input" placeholder="e.g. Amoxicillin 250mg" value={addPrescriptionForm.medicationName} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value })} required />
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                        <input type="text" className="udhr-input" placeholder="Dosage" value={addPrescriptionForm.dosage} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, dosage: e.target.value })} required />
-                        <select className="udhr-input" value={addPrescriptionForm.frequency} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, frequency: e.target.value })} required>
-                          <option value="Once daily">Once daily</option>
-                          <option value="Twice daily">Twice daily</option>
-                          <option value="Three times daily">Three times daily</option>
-                          <option value="With meals">With meals</option>
-                        </select>
+                        <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                          <label className="udhr-label">Dosage</label>
+                          <input type="text" className="udhr-input" placeholder="e.g. 1 tablet" value={addPrescriptionForm.dosage} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, dosage: e.target.value })} required />
+                        </div>
+                        <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                          <label className="udhr-label">Frequency</label>
+                          <select className="udhr-input" value={addPrescriptionForm.frequency} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, frequency: e.target.value })} required>
+                            <option value="Once daily">Once daily</option>
+                            <option value="Twice daily">Twice daily</option>
+                            <option value="Three times daily">Three times daily</option>
+                            <option value="With meals">With meals</option>
+                          </select>
+                        </div>
                       </div>
                       <div className="udhr-form-group">
+                        <label className="udhr-label">Duration (days)</label>
                         <input type="number" className="udhr-input" placeholder="Duration (days)" value={addPrescriptionForm.durationDays} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, durationDays: parseInt(e.target.value) || 7 })} required />
                       </div>
                       <div className="udhr-form-group">
+                        <label className="udhr-label">Dispensing</label>
                         <select className="udhr-input" value={addPrescriptionForm.dispenseMethod} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, dispenseMethod: e.target.value })} required>
                           <option value="PHARMACY">Send to pharmacy</option>
                           <option value="SELF">Give to patient myself</option>

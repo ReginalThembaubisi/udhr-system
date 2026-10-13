@@ -35,6 +35,13 @@ public class SecurityConfig {
                 .requestMatchers("/", "/index.html", "/assets/**", "/favicon.svg", "/icons.svg", "/vite.svg").permitAll()
                 .requestMatchers("/api/auth/change-password").authenticated()
                 .requestMatchers("/api/auth/**").permitAll()
+
+                // ---- System administrator: oversight of the system itself ----
+                // Account management, forced logouts and the audit trail. Kept
+                // separate from the clinic's "ADMIN" front desk, and from every
+                // clinical role — this person manages access, not patients.
+                // Listed before the rules below so it is matched first.
+                .requestMatchers("/api/system-admin/**").hasRole("SYSTEM_ADMIN")
                 // The login screen fetches this before anyone has signed in.
                 .requestMatchers(HttpMethod.GET, "/api/announcements/public").permitAll()
                 .requestMatchers("/api/announcements/**").hasRole("ADMIN")
@@ -61,9 +68,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/patients/*").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/checkin/**").hasRole("ADMIN")
                 .requestMatchers("/api/diagnoses/**").hasRole("DOCTOR")
-                .requestMatchers("/api/prescriptions/report/**").hasRole("ADMIN")
+                .requestMatchers("/api/prescriptions/report/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
                 .requestMatchers("/api/prescriptions/**").hasRole("DOCTOR")
-                .requestMatchers("/api/lab-results/report/**").hasRole("ADMIN")
+                .requestMatchers("/api/lab-results/report/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
                 .requestMatchers("/api/lab-results/my-results").hasRole("PATIENT")
                 .requestMatchers("/api/lab-results/**").hasAnyRole("DOCTOR", "NURSE")
                 // Discharge is the clinical decision that closes a visit out — same footing as
@@ -84,22 +91,22 @@ public class SecurityConfig {
 
                 // Referral creation/response is a clinical judgement call; the inbox/outgoing/report
                 // views are shared/read.
-                .requestMatchers("/api/referrals/report/**").hasRole("ADMIN")
+                .requestMatchers("/api/referrals/report/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/referrals").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers(HttpMethod.POST, "/api/referrals/*/respond").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/referrals/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
 
                 // ---- Dispensing/stock: DOCTOR + NURSE + PHARMACIST, never ADMIN ----
-                .requestMatchers("/api/dispensing/report/**").hasRole("ADMIN")
+                .requestMatchers("/api/dispensing/report/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
                 .requestMatchers("/api/dispensing/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
-                .requestMatchers("/api/stock/report/**").hasRole("ADMIN")
+                .requestMatchers("/api/stock/report/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
                 .requestMatchers("/api/stock/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
 
                 // Facility creation is administrative; listing facilities (needed for the
                 // referral-destination dropdown) is shared/read with DOCTOR/NURSE too.
                 .requestMatchers(HttpMethod.POST, "/api/facilities").hasRole("ADMIN")
                 .requestMatchers("/api/facilities/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
-                .requestMatchers("/api/staff/**").hasRole("ADMIN")
+                .requestMatchers("/api/staff/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

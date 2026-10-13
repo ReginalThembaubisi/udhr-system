@@ -35,6 +35,9 @@ public class StockService {
     @Autowired
     private AfricasTalkingService africasTalkingService;
 
+    @Autowired
+    private AuditService auditService;
+
     @Transactional
     public StockItem addStockItem(StockItemRequest request, String staffNumber) {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
@@ -50,6 +53,7 @@ public class StockService {
         item.setMedicationName(request.getMedicationName());
         item.setUnit(request.getUnit() != null && !request.getUnit().isBlank() ? request.getUnit() : "units");
         item.setReorderLevel(request.getReorderLevel() != null ? request.getReorderLevel() : 0);
+        item.setExpiryDate(request.getExpiryDate());
         item.setQuantityOnHand(0);
         StockItem saved = stockItemRepository.save(item);
 
@@ -70,6 +74,17 @@ public class StockService {
         int quantity = request.getQuantityChange() != null ? request.getQuantityChange() : 0;
         if (quantity <= 0) {
             throw new RuntimeException("Quantity received must be greater than zero");
+        }
+
+        // A delivery brings its own expiry date, so receiving stock updates the
+        // shelf date to the batch just delivered. Receiving stock that has
+        // already expired is refused outright — it should never reach the shelf.
+        if (request.getExpiryDate() != null) {
+            if (request.getExpiryDate().isBefore(LocalDate.now())) {
+                throw new RuntimeException("Cannot receive stock that expired on " + request.getExpiryDate()
+                        + " — check the batch and return it to the supplier");
+            }
+            item.setExpiryDate(request.getExpiryDate());
         }
         return applyTransaction(item, StockTransaction.Type.RECEIVED, quantity, staff, request.getNotes());
     }
@@ -120,6 +135,15 @@ public class StockService {
                 .sorted(Comparator.comparing(StockItem::getMedicationName))
                 .collect(Collectors.toList());
 
+        List<StockItem> expired = items.stream()
+                .filter(StockItem::isExpired)
+                .sorted(Comparator.comparing(StockItem::getExpiryDate))
+                .collect(Collectors.toList());
+        List<StockItem> expiringSoon = items.stream()
+                .filter(StockItem::isExpiringSoon)
+                .sorted(Comparator.comparing(StockItem::getExpiryDate))
+                .collect(Collectors.toList());
+
         List<StockTransaction> transactions = getFilteredTransactions(facility, startDate, endDate);
         int totalReceived = transactions.stream()
                 .filter(t -> t.getType() == StockTransaction.Type.RECEIVED)
@@ -140,6 +164,10 @@ public class StockService {
                 items.size(),
                 lowStock.size(),
                 lowStock,
+                expired.size(),
+                expired,
+                expiringSoon.size(),
+                expiringSoon,
                 totalReceived,
                 totalDispensed,
                 totalWrittenOff,
@@ -156,12 +184,13 @@ public class StockService {
 
         List<StockTransaction> transactions = getFilteredTransactions(facility, startDate, endDate);
 
-        List<String> headers = List.of("Date", "Type", "Medication", "Quantity Change", "Unit", "Staff", "Notes");
+        List<String> headers = List.of("Date", "Type", "Medication", "Expiry Date", "Quantity Change", "Unit", "Staff", "Notes");
         List<List<String>> rows = transactions.stream()
                 .map(t -> List.of(
                         t.getCreatedAt().toString(),
                         t.getType().name(),
                         t.getStockItem().getMedicationName(),
+                        t.getStockItem().getExpiryDate() != null ? t.getStockItem().getExpiryDate().toString() : "Not recorded",
                         String.valueOf(t.getQuantityChange()),
                         t.getStockItem().getUnit(),
                         t.getStaff().getFirstName() + " " + t.getStaff().getLastName(),
@@ -191,6 +220,15 @@ public class StockService {
             return;
         }
 
+        // Expired stock is never dispensed, whatever the quantity on hand says.
+        // This is checked before the quantity parse on purpose: an item whose
+        // dispensed quantity can't be parsed still must not be issued expired.
+        if (item.isExpired()) {
+            throw new RuntimeException("Cannot dispense " + item.getMedicationName()
+                    + " — this stock expired on " + item.getExpiryDate()
+                    + ". Write it off and dispense from a current batch.");
+        }
+
         Matcher matcher = LEADING_INT.matcher(quantityDispensedText == null ? "" : quantityDispensedText);
         if (!matcher.find()) {
             return;
@@ -206,6 +244,11 @@ public class StockService {
     }
 
     private StockItem applyTransaction(StockItem item, StockTransaction.Type type, int quantityChange, Staff staff, String notes) {
+        // Captured before the change so the audit entry can show both sides —
+        // "what was changed", not just that a change happened.
+        String previousState = item.getQuantityOnHand() + " " + item.getUnit()
+                + (item.getExpiryDate() != null ? ", expires " + item.getExpiryDate() : ", expiry not recorded");
+
         item.setQuantityOnHand(item.getQuantityOnHand() + quantityChange);
         item.setUpdatedAt(LocalDateTime.now());
 
@@ -222,6 +265,17 @@ public class StockService {
         tx.setStaff(staff);
         tx.setNotes(notes);
         stockTransactionRepository.save(tx);
+
+        auditService.recordChange(staff, null, "STOCK_" + type.name(),
+                String.format("%s %s of %s at %s%s",
+                        quantityChange >= 0 ? "Added" : "Removed",
+                        Math.abs(quantityChange) + " " + savedItem.getUnit(),
+                        savedItem.getMedicationName(),
+                        savedItem.getFacility().getName(),
+                        notes != null && !notes.isBlank() ? " — " + notes : ""),
+                previousState,
+                savedItem.getQuantityOnHand() + " " + savedItem.getUnit()
+                        + (savedItem.getExpiryDate() != null ? ", expires " + savedItem.getExpiryDate() : ", expiry not recorded"));
 
         // Fires once per dip below the reorder level, not on every
         // transaction while it stays low — resets above, via lowStockNotified,

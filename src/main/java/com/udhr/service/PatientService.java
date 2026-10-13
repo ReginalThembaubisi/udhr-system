@@ -36,7 +36,7 @@ public class PatientService {
     private LabResultRepository labResultRepository;
 
     @Autowired
-    private AuditLogRepository auditLogRepository;
+    private AuditService auditService;
 
     @Autowired
     private StaffRepository staffRepository;
@@ -120,16 +120,11 @@ public class PatientService {
 
         Patient savedPatient = patientRepository.save(patient);
 
-        // Log the register action in AuditLog
         Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
-        if (staff != null) {
-            AuditLog auditLog = new AuditLog();
-            auditLog.setStaff(staff);
-            auditLog.setPatient(savedPatient);
-            auditLog.setAction("REGISTER_PATIENT");
-            auditLog.setDescription("Registered new patient: " + savedPatient.getMrn());
-            auditLogRepository.save(auditLog);
-        }
+        auditService.recordCreate(staff, savedPatient, "REGISTER_PATIENT",
+                "Registered new patient: " + savedPatient.getMrn(),
+                savedPatient.getFirstName() + " " + savedPatient.getLastName()
+                        + (savedPatient.getDateOfBirth() != null ? ", born " + savedPatient.getDateOfBirth() : ""));
 
         return savedPatient;
     }
@@ -146,16 +141,11 @@ public class PatientService {
         List<Vitals> vitals = vitalsRepository.findByPatientIdOrderByRecordedAtDesc(patient.getId());
         Visit currentVisit = visits.isEmpty() ? null : visits.get(0);
 
-        // Log the view action in AuditLog
+        // Viewing a full clinical record is itself worth recording: the trail has
+        // to answer who *looked at* a patient's data, not only who changed it.
         Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
-        if (staff != null) {
-            AuditLog auditLog = new AuditLog();
-            auditLog.setStaff(staff);
-            auditLog.setPatient(patient);
-            auditLog.setAction("VIEW_RECORD");
-            auditLog.setDescription("Viewed full record of patient: " + patient.getMrn());
-            auditLogRepository.save(auditLog);
-        }
+        auditService.recordView(staff, patient, "VIEW_RECORD",
+                "Viewed full record of patient: " + patient.getMrn());
 
         return new PatientRecordResponse(
                 patient,

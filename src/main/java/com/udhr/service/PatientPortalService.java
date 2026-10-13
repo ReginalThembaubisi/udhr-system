@@ -42,7 +42,7 @@ public class PatientPortalService {
     private LabResultRepository labResultRepository;
 
     @Autowired
-    private AuditLogRepository auditLogRepository;
+    private AuditService auditService;
 
     @Autowired
     private VitalsRepository vitalsRepository;
@@ -90,12 +90,10 @@ public class PatientPortalService {
         List<Vitals> vitals = vitalsRepository.findByPatientIdOrderByRecordedAtDesc(patient.getId());
         Visit currentVisit = visits.isEmpty() ? null : visits.get(0);
 
-        // Log the view action in AuditLog
-        AuditLog auditLog = new AuditLog();
-        auditLog.setPatient(patient);
-        auditLog.setAction("PATIENT_VIEW_RECORD");
-        auditLog.setDescription("Patient viewed their own full digital health record");
-        auditLogRepository.save(auditLog);
+        // No staff actor: the patient is reading their own record, so the trail
+        // attributes this to the patient rather than to a staff member.
+        auditService.recordView(null, patient, "PATIENT_VIEW_RECORD",
+                "Patient viewed their own full digital health record");
 
         return new PatientRecordResponse(
                 patient,

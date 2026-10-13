@@ -37,6 +37,20 @@ public class AuditLog {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    // What the record held before this change, and what it holds after. The
+    // audit trail has to answer "what was changed", not only "something was
+    // changed" — without these, an administrator investigating an incident can
+    // see that a record was edited but not what the edit did.
+    //
+    // Null on actions that only read a record: a view changes nothing. Stored as
+    // readable text rather than a full snapshot, so reviewing the trail doesn't
+    // become a second copy of the clinical record.
+    @Column(name = "previous_value", columnDefinition = "TEXT")
+    private String previousValue;
+
+    @Column(name = "new_value", columnDefinition = "TEXT")
+    private String newValue;
+
     @Column(name = "ip_address")
     private String ipAddress;
 

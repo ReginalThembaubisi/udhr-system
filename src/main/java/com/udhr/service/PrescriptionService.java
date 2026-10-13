@@ -39,6 +39,9 @@ public class PrescriptionService {
     @Autowired
     private ReminderService reminderService;
 
+    @Autowired
+    private AuditService auditService;
+
     public Prescription addPrescription(PrescriptionRequest request) {
         Patient patient = patientRepository.findById(request.getPatientId())
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
@@ -131,6 +134,14 @@ public class PrescriptionService {
             v.setStatus("SELF".equals(dispenseMethod) ? "SELF_DISPENSED" : "SENT_TO_PHARMACY");
             visitRepository.save(v);
         });
+
+        // Prescribing is a controlled clinical act — the trail records which
+        // prescriber issued what, for whom, and on which date.
+        auditService.recordCreate(doctor, patient, "ADD_PRESCRIPTION",
+                "Prescribed medication for patient " + patient.getMrn(),
+                String.format("%s — %s, %s, %s to %s (%s)",
+                        saved.getMedication(), saved.getDosage(), saved.getFrequency(),
+                        saved.getStartDate(), saved.getEndDate(), dispenseMethod));
 
         return saved;
     }

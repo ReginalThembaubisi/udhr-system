@@ -8,7 +8,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtUtil {
@@ -28,7 +32,11 @@ public class JwtUtil {
     }
 
     public String generateToken(String staffNumber, String role, boolean mustChangePassword) {
+        // Every token gets a unique id (`jti`) so an individual token can be
+        // named and revoked later — without it, a stolen token could only be
+        // waited out, never killed.
         return Jwts.builder()
+                .setId(UUID.randomUUID().toString())
                 .setSubject(staffNumber)
                 .claim("role", role)
                 .claim("mustChangePassword", mustChangePassword)
@@ -52,6 +60,29 @@ public class JwtUtil {
 
     public String extractRole(String token) {
         return getClaims(token).get("role", String.class);
+    }
+
+    // The token's unique id, used to look it up on the revocation list.
+    public String extractTokenId(String token) {
+        return getClaims(token).getId();
+    }
+
+    // When the token was issued. Compared against the account's
+    // sessionsValidFrom to reject tokens minted before a mass revocation.
+    public LocalDateTime extractIssuedAt(String token) {
+        Date issuedAt = getClaims(token).getIssuedAt();
+        return issuedAt == null
+                ? null
+                : LocalDateTime.ofInstant(Instant.ofEpochMilli(issuedAt.getTime()), ZoneId.systemDefault());
+    }
+
+    // When the token would expire on its own — stored alongside a revocation
+    // so the revocation row can be cleaned up once it stops mattering.
+    public LocalDateTime extractExpiration(String token) {
+        Date expiresAt = getClaims(token).getExpiration();
+        return expiresAt == null
+                ? null
+                : LocalDateTime.ofInstant(Instant.ofEpochMilli(expiresAt.getTime()), ZoneId.systemDefault());
     }
 
     // Baked into the token at issue time so it can be enforced by the filter

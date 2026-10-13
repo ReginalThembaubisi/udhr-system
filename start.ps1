@@ -3,6 +3,14 @@
 # in fresh terminals every time.
 $root = $PSScriptRoot
 
+# The app refuses to start without a JWT secret, on purpose — a default baked
+# into the committed code would let anyone who reads this public repository mint
+# a valid token for any role. This is a throwaway value for local development
+# only; production sets its own via the JWT_SECRET environment variable.
+if (-not $env:JWT_SECRET) {
+    $env:JWT_SECRET = "local-development-only-secret-not-for-production-use"
+}
+
 function Test-PortOpen($port) {
     (Test-NetConnection -ComputerName "127.0.0.1" -Port $port -WarningAction SilentlyContinue).TcpTestSucceeded
 }
@@ -19,7 +27,9 @@ if (Test-PortOpen 8085) {
     Write-Host "Run stop.bat first if you want a clean restart." -ForegroundColor Yellow
 } else {
     Write-Host "==> Starting backend in a new window..."
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root'; mvn spring-boot:run"
+    # The secret is passed into the new window explicitly — environment
+    # variables set here don't carry into a separately started process.
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$root'; `$env:JWT_SECRET='$($env:JWT_SECRET)'; mvn spring-boot:run"
 }
 
 Write-Host "==> Checking frontend port 3000..."
@@ -37,7 +47,8 @@ Write-Host "  Frontend:  http://localhost:3000"
 Write-Host "  Backend:   http://localhost:8085"
 Write-Host ""
 Write-Host "  Test logins:"
-Write-Host "    Admin:      ADMIN001 / Admin@123"
+Write-Host "    Front desk:   ADMIN001    / Admin@123"
+Write-Host "    System admin: SYSADMIN001 / SysAdmin@123"
 Write-Host "    Doctor:     DOC001   / Doctor@123"
 Write-Host "    Nurse:      NUR001   / Nurse@123"
 Write-Host "    Pharmacist: PHARM001 / Pharmacist@123"

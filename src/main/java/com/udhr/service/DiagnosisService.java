@@ -26,6 +26,9 @@ public class DiagnosisService {
     @Autowired
     private VisitRepository visitRepository;
 
+    @Autowired
+    private AuditService auditService;
+
     public Diagnosis addDiagnosis(DiagnosisRequest request) {
         Patient patient = patientRepository.findById(request.getPatientId())
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
@@ -99,7 +102,17 @@ public class DiagnosisService {
             }
         }
 
-        return diagnosisRepository.save(diagnosis);
+        Diagnosis saved = diagnosisRepository.save(diagnosis);
+
+        // A diagnosis is added to someone's permanent medical record, so it is
+        // one of the actions the audit trail most needs to attribute.
+        auditService.recordCreate(doctor, patient, "ADD_DIAGNOSIS",
+                "Recorded a diagnosis for patient " + patient.getMrn(),
+                saved.getDiagnosis()
+                        + (saved.getIcd10Code() != null ? " (ICD-10 " + saved.getIcd10Code() + ")" : "")
+                        + (saved.getNotes() != null && !saved.getNotes().isBlank() ? " — notes: " + saved.getNotes() : ""));
+
+        return saved;
     }
 
     public List<Diagnosis> getDiagnosesByPatient(Long patientId) {

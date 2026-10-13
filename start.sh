@@ -11,6 +11,12 @@ until docker compose exec -T db mysqladmin ping -h 127.0.0.1 --silent >/dev/null
   sleep 2
 done
 
+# The app refuses to start without a JWT secret, on purpose — a default baked
+# into the committed code would let anyone who reads this public repository mint
+# a valid token for any role. This is a throwaway value for local development
+# only; production sets its own via the JWT_SECRET environment variable.
+export JWT_SECRET="${JWT_SECRET:-local-development-only-secret-not-for-production-use}"
+
 echo "==> Starting backend (Spring Boot) on http://localhost:8085 ..."
 mvn -q spring-boot:run > backend.log 2>&1 &
 BACKEND_PID=$!
@@ -39,7 +45,8 @@ echo "  Frontend:  http://localhost:3000"
 echo "  Backend:   http://localhost:8085"
 echo ""
 echo "  Test logins:"
-echo "    Admin:      ADMIN001 / Admin@123"
+echo "    Front desk:  ADMIN001    / Admin@123"
+echo "    System admin: SYSADMIN001 / SysAdmin@123"
 echo "    Doctor:     DOC001   / Doctor@123"
 echo "    Nurse:      NUR001   / Nurse@123"
 echo "    Pharmacist: PHARM001 / Pharmacist@123"

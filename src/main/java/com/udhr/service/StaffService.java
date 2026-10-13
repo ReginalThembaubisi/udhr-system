@@ -14,7 +14,10 @@ import java.util.Set;
 @Service
 public class StaffService {
 
-    private static final Set<String> VALID_ROLES = Set.of("ADMIN", "DOCTOR", "NURSE", "PHARMACIST");
+    // ADMIN is the clinic's front desk — the person a patient walks up to on
+    // arrival. SYSTEM_ADMIN is the separate oversight role that manages accounts
+    // and reviews the audit trail; the two are not interchangeable.
+    private static final Set<String> VALID_ROLES = Set.of("ADMIN", "DOCTOR", "NURSE", "PHARMACIST", "SYSTEM_ADMIN");
 
     @Autowired
     private StaffRepository staffRepository;
@@ -24,6 +27,9 @@ public class StaffService {
 
     @Autowired
     private BCryptPasswordEncoder passwordEncoder;
+
+    @Autowired
+    private AuditService auditService;
 
     public Staff registerStaff(StaffRequest request) {
         if (staffRepository.existsByStaffNumber(request.getStaffNumber())) {
@@ -48,7 +54,16 @@ public class StaffService {
         staff.setPassword(passwordEncoder.encode(request.getPassword()));
         staff.setActive(true);
 
-        return staffRepository.save(staff);
+        Staff saved = staffRepository.save(staff);
+
+        // Creating an account grants someone access to patient data, so who
+        // granted it, to whom, and at what level all belong in the trail.
+        auditService.recordCreate(auditService.currentStaff(), null, "CREATE_STAFF_ACCOUNT",
+                "Created an account for " + saved.getFirstName() + " " + saved.getLastName()
+                        + " (" + saved.getStaffNumber() + ")",
+                "Role " + saved.getRole() + " at " + (facility.getName() != null ? facility.getName() : "facility #" + facility.getId()));
+
+        return saved;
     }
 
     public Staff deactivateStaff(Long id) {
@@ -56,7 +71,14 @@ public class StaffService {
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
 
         staff.setActive(false);
-        return staffRepository.save(staff);
+        Staff saved = staffRepository.save(staff);
+
+        auditService.recordChange(auditService.currentStaff(), null, "DEACTIVATE_STAFF_ACCOUNT",
+                "Deactivated the account for " + saved.getFirstName() + " " + saved.getLastName()
+                        + " (" + saved.getStaffNumber() + ")",
+                "Active", "Inactive");
+
+        return saved;
     }
 
     public List<Staff> getAllStaff() {

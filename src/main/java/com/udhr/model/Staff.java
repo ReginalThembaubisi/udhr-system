@@ -59,6 +59,16 @@ public class Staff {
     @Column(name = "must_change_password")
     private Boolean mustChangePassword = true;
 
+    // Every access token issued before this moment is refused, whatever its own
+    // expiry says. This is how one action kills every session an account has at
+    // once — a password change, or a system administrator forcing a compromised
+    // account out — without the server having to track which tokens are
+    // currently in circulation. Nullable so the column can be added to a table
+    // that already has rows: null means "nothing has been revoked", and those
+    // existing sessions stay valid.
+    @Column(name = "sessions_valid_from")
+    private LocalDateTime sessionsValidFrom;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

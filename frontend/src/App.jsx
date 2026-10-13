@@ -184,8 +184,17 @@ function App() {
   // Restored feature: Pharmacist stock/inventory tracking and a dispense event log
   const [pharmacistTab, setPharmacistTab] = useState('dispense'); // 'dispense' or 'stock'
   const [stockItems, setStockItems] = useState([]);
-  const [newStockItemForm, setNewStockItemForm] = useState({ medicationName: '', unit: 'tablets', quantityOnHand: 0, reorderLevel: 10 });
+  const [newStockItemForm, setNewStockItemForm] = useState({ medicationName: '', unit: 'tablets', quantityOnHand: 0, reorderLevel: 10, expiryDate: '' });
   const [stockAdjustAmount, setStockAdjustAmount] = useState({});
+
+  // System administrator screen — account oversight and the audit trail.
+  const [systemAdminTab, setSystemAdminTab] = useState('accounts');
+  const [systemAdminStaff, setSystemAdminStaff] = useState([]);
+  const [auditEntries, setAuditEntries] = useState([]);
+  const [auditFilters, setAuditFilters] = useState({ startDate: '', endDate: '', action: '' });
+  // Shown once, after a reset, so the administrator can hand the temporary
+  // password over. Never fetched again — the server only ever returns it here.
+  const [resetResult, setResetResult] = useState(null);
   const [dispenseHistory, setDispenseHistory] = useState([]);
   const [dispenseLogForm, setDispenseLogForm] = useState({ prescriptionId: '', quantityDispensed: '', daysSupply: '', pharmacyNotes: '' });
 
@@ -231,6 +240,11 @@ function App() {
 
       // Save credentials
       localStorage.setItem('token', data.token);
+      // Access tokens now last 30 minutes rather than a day, so the refresh
+      // token is what keeps someone signed in across a shift.
+      if (data.refreshToken) {
+        localStorage.setItem('refreshToken', data.refreshToken);
+      }
       localStorage.setItem('role', data.role);
       localStorage.setItem('idNumber', data.idNumber || data.staffNumber);
       localStorage.setItem('userName', data.fullName);
@@ -249,9 +263,24 @@ function App() {
     }
   };
 
-  // Logout
+  // Logout. Tells the server first so the token is actually revoked — clearing
+  // localStorage alone would leave the token working for anyone else holding a
+  // copy until it expired on its own.
   const handleLogout = () => {
+    const currentToken = localStorage.getItem('token');
+    const currentRefreshToken = localStorage.getItem('refreshToken');
+    if (currentToken) {
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${currentToken}` },
+        body: JSON.stringify({ refreshToken: currentRefreshToken })
+      }).catch(() => {
+        // Signing out locally must succeed even if the server can't be reached.
+      });
+    }
+
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('role');
     localStorage.removeItem('idNumber');
     localStorage.removeItem('userName');
@@ -304,7 +333,12 @@ function App() {
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to change password');
 
+      // Changing the password ends every other session, so the tokens issued
+      // here are the only ones that still work — swap both over.
       localStorage.setItem('token', data.token);
+      if (data.refreshToken) {
+        localStorage.setItem('refreshToken', data.refreshToken);
+      }
       localStorage.setItem('mustChangePassword', 'false');
       setToken(data.token);
       setMustChangePassword(false);
@@ -337,6 +371,8 @@ function App() {
         fetchFacilityList();
         fetchRecentCheckIns();
         fetchAnnouncements();
+      } else if (userRole === 'SYSTEM_ADMIN') {
+        fetchSystemAdminStaff();
       }
     }
   }, [token, userRole]);
@@ -1519,12 +1555,14 @@ function App() {
       const response = await fetch('/api/stock', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify(newStockItemForm)
+        // An empty date input sends '' — send null instead so the backend
+        // records "no expiry captured" rather than failing to parse it.
+        body: JSON.stringify({ ...newStockItemForm, expiryDate: newStockItemForm.expiryDate || null })
       });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to add stock item');
       setSuccessMessage(`${data.medicationName} added to stock.`);
-      setNewStockItemForm({ medicationName: '', unit: 'tablets', quantityOnHand: 0, reorderLevel: 10 });
+      setNewStockItemForm({ medicationName: '', unit: 'tablets', quantityOnHand: 0, reorderLevel: 10, expiryDate: '' });
       fetchStockItems();
     } catch (err) {
       setErrorMessage(err.message);
@@ -1582,11 +1620,107 @@ function App() {
     }
   };
 
+  // ---- System administrator ----------------------------------------------------
+
+  const fetchSystemAdminStaff = async () => {
+    try {
+      const response = await fetch('/api/system-admin/staff', { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (response.ok) setSystemAdminStaff(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const fetchAuditLog = async () => {
+    setErrorMessage('');
+    try {
+      const params = new URLSearchParams();
+      if (auditFilters.startDate) params.append('startDate', auditFilters.startDate);
+      if (auditFilters.endDate) params.append('endDate', auditFilters.endDate);
+      if (auditFilters.action) params.append('action', auditFilters.action);
+      const response = await fetch(`/api/system-admin/audit-log?${params.toString()}`, { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to load the audit trail');
+      setAuditEntries(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const fetchAuditLogForStaff = async (staffId) => {
+    setErrorMessage('');
+    try {
+      const response = await fetch(`/api/system-admin/audit-log/staff/${staffId}`, { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to load the audit trail');
+      setAuditEntries(data);
+      setSystemAdminTab('audit');
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleResetStaffPassword = async (staffMember) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    setResetResult(null);
+    try {
+      const response = await fetch(`/api/system-admin/staff/${staffMember.id}/reset-password`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to reset the password');
+      setResetResult(data);
+      fetchSystemAdminStaff();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleForceLogout = async (staffMember) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/system-admin/staff/${staffMember.id}/force-logout`, {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to end the sessions');
+      setSuccessMessage(`All sessions ended for ${staffMember.firstName} ${staffMember.lastName}. Any stolen token for this account stops working immediately.`);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleToggleStaffActive = async (staffMember) => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch(`/api/system-admin/staff/${staffMember.id}/active`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ active: !staffMember.active })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to update the account');
+      setSuccessMessage(`${staffMember.firstName} ${staffMember.lastName} is now ${staffMember.active ? 'deactivated' : 'active'}.`);
+      fetchSystemAdminStaff();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
   // Role helpers — each staff role gets a purpose-built screen instead of one shared dashboard
   const isNurse = userRole === 'NURSE';
   const isPharmacist = userRole === 'PHARMACIST';
   const isDoctor = userRole === 'DOCTOR';
   const isAdmin = userRole === 'ADMIN';
+  // The oversight role: manages accounts and reviews the audit trail, and never
+  // sees a clinical record.
+  const isSystemAdmin = userRole === 'SYSTEM_ADMIN';
 
   // 1. Login — light clinical redesign. Rendered on its own, ahead of the
   // shared app shell below, since it uses a full-viewport two-pane layout
@@ -3276,6 +3410,244 @@ function App() {
     );
   }
 
+  // 3b. System administrator dashboard — oversight of the system itself, not of
+  // patients. Two jobs: keeping accounts under control (resetting passwords,
+  // ending sessions, deactivating people who have left) and reading the audit
+  // trail. Deliberately has no patient screens: this role manages access, it
+  // does not get clinical data along with it.
+  if (token && isSystemAdmin && !mustChangePassword) {
+    const sysAdminNavItems = [
+      { key: 'accounts', label: 'Accounts', icon: <Users size={17} /> },
+      { key: 'audit', label: 'Audit trail', icon: <Clipboard size={17} /> },
+    ];
+
+    const selectSysAdminTab = (key) => {
+      setSystemAdminTab(key);
+      setIsMobileNavOpen(false);
+      if (key === 'accounts') fetchSystemAdminStaff();
+      if (key === 'audit') fetchAuditLog();
+    };
+
+    const renderAccountsPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Accounts</h1>
+        <p className="udhr-page-subtitle">
+          Every account on the system. Reset a password for someone locked out, or end all of an
+          account's sessions immediately if you believe it has been compromised.
+        </p>
+
+        {resetResult && (
+          <div className="udhr-record-card" style={{ marginBottom: '20px', maxWidth: '640px' }}>
+            <div className="udhr-record-body">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 8px' }}>
+                Temporary password for {resetResult.fullName}
+              </h3>
+              <p style={{ fontFamily: 'monospace', fontSize: '18px', fontWeight: 700, margin: '0 0 8px' }}>
+                {resetResult.temporaryPassword}
+              </p>
+              <p className="udhr-row-subtitle" style={{ margin: 0 }}>{resetResult.instructions}</p>
+              <p className="udhr-row-subtitle" style={{ margin: '8px 0 0' }}>
+                This is shown once and is not stored anywhere in readable form.
+              </p>
+              <button
+                type="button"
+                className="udhr-btn-neutral"
+                style={{ marginTop: '12px' }}
+                onClick={() => setResetResult(null)}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="udhr-record-card">
+          <div className="udhr-record-body">
+            {systemAdminStaff.length === 0 ? (
+              <p className="udhr-empty-note">No staff accounts found.</p>
+            ) : (
+              systemAdminStaff.map(member => (
+                <div key={member.id} className="udhr-list-row">
+                  <div>
+                    <p className="udhr-row-title">
+                      {member.firstName} {member.lastName}{' '}
+                      <span className="udhr-tag neutral" style={{ marginLeft: '6px' }}>{member.role}</span>
+                      {!member.active && (
+                        <span className="udhr-tag danger" style={{ marginLeft: '6px' }}>INACTIVE</span>
+                      )}
+                      {member.mustChangePassword && (
+                        <span className="udhr-tag warning" style={{ marginLeft: '6px' }}>MUST RESET</span>
+                      )}
+                    </p>
+                    <p className="udhr-row-subtitle">{member.staffNumber} — {member.email}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button type="button" className="udhr-btn-neutral" onClick={() => handleResetStaffPassword(member)}>
+                      Reset password
+                    </button>
+                    <button type="button" className="udhr-btn-neutral" onClick={() => handleForceLogout(member)}>
+                      End sessions
+                    </button>
+                    <button type="button" className="udhr-btn-neutral" onClick={() => fetchAuditLogForStaff(member.id)}>
+                      View activity
+                    </button>
+                    <button type="button" className="udhr-btn-neutral" onClick={() => handleToggleStaffActive(member)}>
+                      {member.active ? 'Deactivate' : 'Reactivate'}
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </>
+    );
+
+    const renderAuditPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Audit trail</h1>
+        <p className="udhr-page-subtitle">
+          Who viewed or changed a record, what changed, when, and from which address.
+        </p>
+
+        <div className="udhr-record-card" style={{ marginBottom: '20px', maxWidth: '720px' }}>
+          <div className="udhr-record-body">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '10px', alignItems: 'flex-end' }}>
+              <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                <label className="udhr-label">From</label>
+                <input
+                  type="date"
+                  className="udhr-input"
+                  value={auditFilters.startDate}
+                  onChange={(e) => setAuditFilters({ ...auditFilters, startDate: e.target.value })}
+                />
+              </div>
+              <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                <label className="udhr-label">To</label>
+                <input
+                  type="date"
+                  className="udhr-input"
+                  value={auditFilters.endDate}
+                  onChange={(e) => setAuditFilters({ ...auditFilters, endDate: e.target.value })}
+                />
+              </div>
+              <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                <label className="udhr-label">Action</label>
+                <input
+                  type="text"
+                  className="udhr-input"
+                  placeholder="e.g. VIEW_RECORD"
+                  value={auditFilters.action}
+                  onChange={(e) => setAuditFilters({ ...auditFilters, action: e.target.value })}
+                />
+              </div>
+              <button type="button" className="udhr-btn-neutral" onClick={fetchAuditLog}>Search</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="udhr-record-card">
+          <div className="udhr-record-body">
+            {auditEntries.length === 0 ? (
+              <p className="udhr-empty-note">No audit entries for this search. Press Search to load the trail.</p>
+            ) : (
+              auditEntries.map(entry => (
+                <div key={entry.id} className="udhr-list-row">
+                  <div style={{ minWidth: 0 }}>
+                    <p className="udhr-row-title">
+                      {entry.action}{' '}
+                      <span className="udhr-tag neutral" style={{ marginLeft: '6px' }}>{entry.staffRole}</span>
+                    </p>
+                    <p className="udhr-row-subtitle">
+                      {entry.staffName}
+                      {entry.staffNumber ? ` (${entry.staffNumber})` : ''}
+                      {entry.patientMrn ? ` — patient ${entry.patientMrn}` : ''}
+                    </p>
+                    <p className="udhr-row-subtitle">{entry.description}</p>
+                    {(entry.previousValue || entry.newValue) && (
+                      <p className="udhr-row-subtitle">
+                        {entry.previousValue ? `Before: ${entry.previousValue}` : 'Created'}
+                        {entry.newValue ? ` → After: ${entry.newValue}` : ''}
+                      </p>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <p className="udhr-row-subtitle" style={{ margin: 0 }}>
+                      {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ''}
+                    </p>
+                    {entry.ipAddress && (
+                      <p className="udhr-row-subtitle" style={{ margin: 0 }}>{entry.ipAddress}</p>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </>
+    );
+
+    return (
+      <div className="udhr-shell">
+        {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
+        <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
+          <div className="udhr-sidebar-header">
+            <div className="udhr-page-logo">
+              <div className="udhr-page-logo-chip"><Shield size={16} color="#fff" /></div>
+              UDHR
+            </div>
+            <button type="button" className="udhr-sidebar-close" onClick={() => setIsMobileNavOpen(false)}><XCircle size={18} /></button>
+          </div>
+          <nav className="udhr-sidebar-nav">
+            {sysAdminNavItems.map(item => (
+              <button
+                key={item.key}
+                type="button"
+                className={`udhr-nav-item ${systemAdminTab === item.key ? 'active' : ''}`}
+                onClick={() => selectSysAdminTab(item.key)}
+              >
+                {item.icon} {item.label}
+              </button>
+            ))}
+          </nav>
+          <div className="udhr-sidebar-footer">
+            <div className="udhr-user-row">
+              <div className="udhr-user-avatar">{userName ? userName.charAt(0) : <User size={14} />}</div>
+              <div style={{ minWidth: 0 }}>
+                <p className="udhr-user-name">{userName}</p>
+                <p className="udhr-user-role">SYSTEM ADMIN</p>
+              </div>
+            </div>
+            <button type="button" className="udhr-logout-link" onClick={handleLogout}><LogOut size={15} /> Log out</button>
+          </div>
+        </aside>
+
+        <main className="udhr-shell-main">
+          <button type="button" className="udhr-mobile-menu-btn" onClick={() => setIsMobileNavOpen(true)}>
+            <Menu size={16} /> Menu
+          </button>
+
+          {errorMessage && (
+            <div className="udhr-alert-banner error">
+              <AlertCircle size={16} />
+              <span style={{ flex: 1 }}>{errorMessage}</span>
+              <button type="button" onClick={() => setErrorMessage('')}>×</button>
+            </div>
+          )}
+          {successMessage && (
+            <div className="udhr-alert-banner success">
+              <CheckCircle size={16} />
+              <span style={{ flex: 1 }}>{successMessage}</span>
+              <button type="button" onClick={() => setSuccessMessage('')}>×</button>
+            </div>
+          )}
+
+          {systemAdminTab === 'accounts' ? renderAccountsPanel() : renderAuditPanel()}
+        </main>
+      </div>
+    );
+  }
+
   // 4. Pharmacist dashboard — light clinical redesign, same sidebar shell as
   // Clinical (Dispense/Stock nav). Reuses all existing state and handlers.
   if (token && isPharmacist && !mustChangePassword) {
@@ -3437,6 +3809,16 @@ function App() {
                 <label className="udhr-label">Reorder level</label>
                 <input type="number" className="udhr-input" value={newStockItemForm.reorderLevel} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, reorderLevel: parseInt(e.target.value, 10) || 0 })} />
               </div>
+              <div className="udhr-form-group" style={{ marginBottom: 0, gridColumn: '1 / 3' }}>
+                <label className="udhr-label">Expiry date</label>
+                <input
+                  type="date"
+                  className="udhr-input"
+                  value={newStockItemForm.expiryDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setNewStockItemForm({ ...newStockItemForm, expiryDate: e.target.value })}
+                />
+              </div>
               <button type="submit" className="udhr-btn-neutral" style={{ gridColumn: '1 / -1' }}>Add item</button>
             </form>
           </div>
@@ -3455,8 +3837,21 @@ function App() {
                       {item.quantityOnHand <= item.reorderLevel && (
                         <span className="udhr-tag danger" style={{ marginLeft: '6px' }}>LOW STOCK</span>
                       )}
+                      {item.expired && (
+                        <span className="udhr-tag danger" style={{ marginLeft: '6px' }}>EXPIRED</span>
+                      )}
+                      {item.expiringSoon && (
+                        <span className="udhr-tag warning" style={{ marginLeft: '6px' }}>EXPIRES SOON</span>
+                      )}
                     </p>
                     <p className="udhr-row-subtitle">{item.quantityOnHand} {item.unit} on hand — reorder below {item.reorderLevel}</p>
+                    <p className="udhr-row-subtitle">
+                      {item.expiryDate
+                        ? (item.expired
+                            ? `Expired ${item.expiryDate} — do not dispense`
+                            : `Expires ${item.expiryDate}`)
+                        : 'Expiry date not recorded'}
+                    </p>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                     <input

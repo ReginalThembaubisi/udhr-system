@@ -1,12 +1,10 @@
 package com.udhr.service;
 
 import com.udhr.dto.PharmacyLookupResponse;
-import com.udhr.model.AuditLog;
 import com.udhr.model.Patient;
 import com.udhr.model.Prescription;
 import com.udhr.model.Staff;
 import com.udhr.model.Visit;
-import com.udhr.repository.AuditLogRepository;
 import com.udhr.repository.PrescriptionRepository;
 import com.udhr.repository.StaffRepository;
 import com.udhr.repository.VisitRepository;
@@ -35,7 +33,7 @@ public class PharmacyService {
     private StaffRepository staffRepository;
 
     @Autowired
-    private AuditLogRepository auditLogRepository;
+    private AuditService auditService;
 
     /**
      * Pharmacist looks the patient up by ID number or MRN — no need to ask
@@ -52,14 +50,8 @@ public class PharmacyService {
                 .findByPatientIdAndDispenseMethodAndDispensedFalseOrderByCreatedAtDesc(patient.getId(), "PHARMACY");
 
         Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
-        if (staff != null) {
-            AuditLog auditLog = new AuditLog();
-            auditLog.setStaff(staff);
-            auditLog.setPatient(patient);
-            auditLog.setAction("PHARMACY_LOOKUP");
-            auditLog.setDescription("Pharmacy looked up patient: " + patient.getMrn());
-            auditLogRepository.save(auditLog);
-        }
+        auditService.recordView(staff, patient, "PHARMACY_LOOKUP",
+                "Pharmacy looked up patient: " + patient.getMrn());
 
         return new PharmacyLookupResponse(patient, currentVisit, pending);
     }
@@ -123,12 +115,10 @@ public class PharmacyService {
             }
         }
 
-        AuditLog auditLog = new AuditLog();
-        auditLog.setStaff(pharmacist);
-        auditLog.setPatient(saved.getPatient());
-        auditLog.setAction("DISPENSE_PRESCRIPTION");
-        auditLog.setDescription("Dispensed " + saved.getMedication() + " (prescription #" + saved.getId() + ")");
-        auditLogRepository.save(auditLog);
+        auditService.recordChange(pharmacist, saved.getPatient(), "DISPENSE_PRESCRIPTION",
+                "Dispensed " + saved.getMedication() + " (prescription #" + saved.getId() + ")",
+                "Pending dispensing",
+                "Dispensed on " + saved.getDispensedAt());
 
         return saved;
     }

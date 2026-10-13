@@ -77,11 +77,14 @@ public class DataSeeder implements CommandLineRunner {
             facility.setAddress("Nelspruit, Mpumalanga");
             facility = facilityRepository.save(facility);
 
-            // Staff 1: ADMIN001
+            // Staff 1: ADMIN001 — the clinic's front desk. This is the person a
+            // patient walks up to on arrival: they register patients and check
+            // them in, and have no clinical access. Distinct from SYSADMIN001
+            // below, who runs the system itself.
             Staff admin = new Staff();
             admin.setStaffNumber("ADMIN001");
-            admin.setFirstName("System");
-            admin.setLastName("Admin");
+            admin.setFirstName("Front Desk");
+            admin.setLastName("Clerk");
             admin.setRole("ADMIN");
             admin.setFacility(facility);
             admin.setEmail("admin@udhr.gov.za");
@@ -128,6 +131,25 @@ public class DataSeeder implements CommandLineRunner {
             pharmacist.setActive(true);
             pharmacist.setMustChangePassword(false); // documented demo login, not a real temp password
             staffRepository.save(pharmacist);
+
+            // Staff 5: SYSADMIN001 — the system administrator. Not a clinical
+            // role and not the front desk: this is the person who oversees the
+            // system itself. They reset passwords when a doctor is locked out,
+            // help the front-desk clerk who can't sign in, end sessions on a
+            // compromised account, pull reports, and review the audit trail to
+            // see who did what. A system holding patient, doctor and nurse
+            // records needs someone accountable for access at this level.
+            Staff systemAdmin = new Staff();
+            systemAdmin.setStaffNumber("SYSADMIN001");
+            systemAdmin.setFirstName("System");
+            systemAdmin.setLastName("Administrator");
+            systemAdmin.setRole("SYSTEM_ADMIN");
+            systemAdmin.setFacility(facility);
+            systemAdmin.setEmail("sysadmin@udhr.gov.za");
+            systemAdmin.setPassword(passwordEncoder.encode("SysAdmin@123"));
+            systemAdmin.setActive(true);
+            systemAdmin.setMustChangePassword(false); // documented demo login, not a real temp password
+            staffRepository.save(systemAdmin);
 
             System.out.println("Facility and Staff seeded successfully.");
         } else {

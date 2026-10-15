@@ -17,4 +17,8 @@ public class PrescriptionRequest {
     private Integer durationDays; // Added for frontend mapping compatibility
     private String notes;
     private String dispenseMethod; // "PHARMACY" (default) or "SELF" — doctor's choice at the point of prescribing
+    // Required only when the medication conflicts with a recorded allergy: the
+    // prescriber's reason for going ahead anyway. Saved on the prescription and
+    // in the audit trail.
+    private String allergyOverrideReason;
 }

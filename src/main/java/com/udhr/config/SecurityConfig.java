@@ -81,6 +81,9 @@ public class SecurityConfig {
                 // reads visits to see where a patient came from.
                 .requestMatchers(HttpMethod.POST, "/api/visits").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/visits/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
+                // Allergies had no rule at all, so any signed-in user (a patient, the
+                // front desk) could read or add them for any patient.
+                .requestMatchers("/api/allergies/**").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/vitals/**").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/pharmacy/**").hasRole("PHARMACIST")
                 .requestMatchers("/api/immunizations/**").hasAnyRole("DOCTOR", "NURSE")

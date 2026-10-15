@@ -98,6 +98,11 @@ function App() {
   const [addPrescriptionForm, setAddPrescriptionForm] = useState({
     patientId: '', medicationName: '', dosage: '', frequency: 'Once daily', durationDays: 7, notes: '', dispenseMethod: 'PHARMACY'
   });
+  // Set when the server refuses a prescription because of a recorded allergy:
+  // the warnings to show, and the prescriber's reason if they go ahead anyway.
+  const [prescriptionAllergyConflicts, setPrescriptionAllergyConflicts] = useState(null);
+  const [allergyOverrideReason, setAllergyOverrideReason] = useState('');
+  const [newAllergyForm, setNewAllergyForm] = useState({ allergen: '', severity: 'MODERATE', notes: '' });
   const [addAlertForm, setAddAlertForm] = useState({
     patientId: '', severity: 'HIGH', message: ''
   });
@@ -802,21 +807,52 @@ function App() {
     setSuccessMessage('');
 
     try {
+      const payload = prescriptionAllergyConflicts
+        ? { ...addPrescriptionForm, allergyOverrideReason }
+        : addPrescriptionForm;
       const response = await fetch('/api/prescriptions', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify(addPrescriptionForm)
+        body: JSON.stringify(payload)
       });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to add prescription');
+      const data = await parseResponseBody(response);
+      if (response.status === 409 && data && data.allergyConflicts) {
+        // Not an error to dismiss: show the warnings in the form and ask for a
+        // reason before it can be sent.
+        setPrescriptionAllergyConflicts(data.allergyConflicts);
+        return;
       }
+      if (!response.ok) {
+        throw new Error(typeof data === 'string' ? data : data.message || 'Failed to add prescription');
+      }
+      setPrescriptionAllergyConflicts(null);
+      setAllergyOverrideReason('');
       setSuccessMessage(
         addPrescriptionForm.dispenseMethod === 'SELF'
           ? 'Prescription saved and marked as dispensed to the patient.'
           : "Sent to the pharmacy. You stay on this patient's record in case you need to add another diagnosis or prescription — click \"← Back to queue\" above when you're done."
       );
       setAddPrescriptionForm(prev => ({ ...prev, medicationName: '', dosage: '', frequency: 'Once daily', durationDays: 7, notes: '', dispenseMethod: 'PHARMACY' }));
+      handleSearchPatient(); // Refresh record
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleAddAllergy = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch('/api/allergies', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ ...newAllergyForm, patientId: searchedPatientRecord.patient.id })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to record allergy');
+      setSuccessMessage(`Allergy to ${data.allergen} recorded. It will now be checked on every prescription and shown at the pharmacy.`);
+      setNewAllergyForm({ allergen: '', severity: 'MODERATE', notes: '' });
       handleSearchPatient(); // Refresh record
     } catch (err) {
       setErrorMessage(err.message);
@@ -913,6 +949,10 @@ function App() {
   const handleDispense = async (prescriptionId) => {
     setErrorMessage('');
     setSuccessMessage('');
+    const warnings = pharmacyRecord?.allergyWarnings?.[prescriptionId];
+    if (warnings && !window.confirm(`ALLERGY WARNING\n\n${warnings.join('\n')}\n\nHave you confirmed with the prescriber and the patient that it is safe to dispense?`)) {
+      return;
+    }
     try {
       const response = await fetch(`/api/pharmacy/dispense/${prescriptionId}`, {
         method: 'POST',
@@ -2804,7 +2844,7 @@ function App() {
       ['prescriptions', 'Prescriptions'],
       ['labs', 'Labs'],
       ['vitals', 'Vitals'],
-      ['conditions', 'Conditions'],
+      ['conditions', 'Conditions & allergies'],
       ['immunizations', 'Immunizations'],
       ['timeline', 'Timeline'],
     ];
@@ -3052,10 +3092,32 @@ function App() {
                       searchedPatientRecord.allergies.map(a => (
                         <div key={a.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                           <p className="udhr-row-title">{a.allergen}</p>
-                          <p className="udhr-row-subtitle">Severity: {a.severity} · {a.notes}</p>
+                          <p className="udhr-row-subtitle">Severity: {a.severity}{a.notes ? ` · ${a.notes}` : ''}</p>
                         </div>
                       ))
                     )}
+                    <form onSubmit={handleAddAllergy} style={{ marginTop: '14px', maxWidth: '520px' }}>
+                      <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Record an allergy</h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
+                        <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                          <label className="udhr-label">Allergen</label>
+                          <input type="text" className="udhr-input" placeholder="e.g. Penicillin, Sulfa, Peanuts" value={newAllergyForm.allergen} onChange={(e) => setNewAllergyForm({ ...newAllergyForm, allergen: e.target.value })} required />
+                        </div>
+                        <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                          <label className="udhr-label">Severity</label>
+                          <select className="udhr-input" value={newAllergyForm.severity} onChange={(e) => setNewAllergyForm({ ...newAllergyForm, severity: e.target.value })}>
+                            <option value="MILD">Mild</option>
+                            <option value="MODERATE">Moderate</option>
+                            <option value="SEVERE">Severe</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="udhr-form-group" style={{ marginTop: '10px' }}>
+                        <label className="udhr-label">Reaction / notes (optional)</label>
+                        <input type="text" className="udhr-input" placeholder="e.g. Hives and swelling" value={newAllergyForm.notes} onChange={(e) => setNewAllergyForm({ ...newAllergyForm, notes: e.target.value })} />
+                      </div>
+                      <button type="submit" className="udhr-btn-neutral">Save allergy</button>
+                    </form>
                   </>
                 )}
 
@@ -3168,7 +3230,7 @@ function App() {
                       <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Issue prescription</h4>
                       <div className="udhr-form-group">
                         <label className="udhr-label">Medication</label>
-                        <input type="text" className="udhr-input" placeholder="e.g. Amoxicillin 250mg" value={addPrescriptionForm.medicationName} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value })} required />
+                        <input type="text" className="udhr-input" placeholder="e.g. Amoxicillin 250mg" value={addPrescriptionForm.medicationName} onChange={(e) => { setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value }); setPrescriptionAllergyConflicts(null); setAllergyOverrideReason(''); }} required />
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
                         <div className="udhr-form-group" style={{ marginBottom: 0 }}>
@@ -3196,7 +3258,24 @@ function App() {
                           <option value="SELF">Give to patient myself</option>
                         </select>
                       </div>
-                      <button type="submit" className="udhr-btn-neutral">{addPrescriptionForm.dispenseMethod === 'SELF' ? 'Issue & dispense now' : 'Send to pharmacy'}</button>
+                      {prescriptionAllergyConflicts && (
+                        <div className="udhr-allergy-alert" role="alert">
+                          <strong>Allergy warning — not sent</strong>
+                          <ul>
+                            {prescriptionAllergyConflicts.map((w, i) => <li key={i}>{w}</li>)}
+                          </ul>
+                          <div className="udhr-form-group" style={{ margin: '10px 0 0' }}>
+                            <label className="udhr-label">To prescribe anyway, give your clinical reason (saved and audited)</label>
+                            <textarea className="udhr-input" rows={2} value={allergyOverrideReason} onChange={(e) => setAllergyOverrideReason(e.target.value)} placeholder="e.g. Allergy history checked with patient: rash only as a child, tolerated amoxicillin in 2024" />
+                          </div>
+                          <button type="button" className="udhr-btn-neutral" style={{ marginTop: '8px' }} onClick={() => { setPrescriptionAllergyConflicts(null); setAllergyOverrideReason(''); }}>
+                            Cancel — choose another medicine
+                          </button>
+                        </div>
+                      )}
+                      <button type="submit" className="udhr-btn-neutral" disabled={!!prescriptionAllergyConflicts && allergyOverrideReason.trim().length < 10}>
+                        {prescriptionAllergyConflicts ? 'Prescribe anyway' : addPrescriptionForm.dispenseMethod === 'SELF' ? 'Issue & dispense now' : 'Send to pharmacy'}
+                      </button>
                     </form>
 
                     <form onSubmit={handleAddAlert}>
@@ -3741,6 +3820,15 @@ function App() {
               <div className="udhr-record-body">
                 <p className="udhr-row-title" style={{ fontSize: '15px' }}>{pharmacyRecord.patient.firstName} {pharmacyRecord.patient.lastName}</p>
                 <p className="udhr-row-subtitle">{pharmacyRecord.patient.idNumber ? `ID: ${pharmacyRecord.patient.idNumber} · ` : ''}MRN: {pharmacyRecord.patient.mrn}</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                  {pharmacyRecord.allergies && pharmacyRecord.allergies.length > 0 ? (
+                    pharmacyRecord.allergies.map(a => (
+                      <span key={a.id} className="udhr-tag danger">{a.allergen} allergy{a.severity ? ` (${a.severity.toLowerCase()})` : ''}</span>
+                    ))
+                  ) : (
+                    <span className="udhr-tag neutral">No recorded allergies</span>
+                  )}
+                </div>
                 {pharmacyRecord.currentVisit ? (
                   <p className="udhr-row-subtitle" style={{ marginTop: '8px' }}>
                     Coming from: {pharmacyRecord.currentVisit.staff ? `${pharmacyRecord.currentVisit.staff.firstName} ${pharmacyRecord.currentVisit.staff.lastName} (${pharmacyRecord.currentVisit.staff.role})` : 'Unknown staff member'} — {pharmacyRecord.currentVisit.reason}
@@ -3768,6 +3856,17 @@ function App() {
                         <p className="udhr-row-subtitle">{p.dosage} · {p.frequency}</p>
                         <p className="udhr-row-subtitle">Prescribed by {p.doctor ? `${p.doctor.firstName} ${p.doctor.lastName}` : 'doctor'} on {new Date(p.createdAt).toLocaleDateString()}</p>
                         {p.notes && <p className="udhr-row-subtitle" style={{ fontStyle: 'italic' }}>{p.notes}</p>}
+                        {pharmacyRecord.allergyWarnings?.[p.id] && (
+                          <div className="udhr-allergy-alert" role="alert">
+                            <strong>Allergy warning</strong>
+                            <ul>
+                              {pharmacyRecord.allergyWarnings[p.id].map((w, i) => <li key={i}>{w}</li>)}
+                            </ul>
+                            {p.allergyOverrideReason
+                              ? <p style={{ margin: '6px 0 0', color: 'inherit' }}>Prescriber's reason for going ahead: {p.allergyOverrideReason}</p>
+                              : <p style={{ margin: '6px 0 0', color: 'inherit', fontWeight: 600 }}>No override reason on file — check with the prescriber before dispensing.</p>}
+                          </div>
+                        )}
                       </div>
                       <button
                         type="button"

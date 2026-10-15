@@ -4,6 +4,7 @@ import com.udhr.dto.MedicationPrescriptionTally;
 import com.udhr.dto.PrescriberTally;
 import com.udhr.dto.PrescriptionReportResponse;
 import com.udhr.dto.PrescriptionRequest;
+import com.udhr.exception.AllergyConflictException;
 import com.udhr.model.*;
 import com.udhr.repository.*;
 import com.udhr.util.CsvUtil;
@@ -42,9 +43,28 @@ public class PrescriptionService {
     @Autowired
     private AuditService auditService;
 
+    @Autowired
+    private AllergyRepository allergyRepository;
+
+    @Autowired
+    private AllergyCheckService allergyCheckService;
+
     public Prescription addPrescription(PrescriptionRequest request) {
         Patient patient = patientRepository.findById(request.getPatientId())
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+        String medName = request.getMedicationName() != null ? request.getMedicationName() : request.getMedication();
+        if (medName == null || medName.isBlank()) {
+            throw new RuntimeException("Medication is required");
+        }
+
+        // Checked before anything is saved: a medication that conflicts with a
+        // recorded allergy is refused unless the prescriber gives a reason.
+        List<String> allergyConflicts = allergyCheckService.findConflicts(medName, allergyRepository.findByPatientId(patient.getId()));
+        String overrideReason = request.getAllergyOverrideReason() != null ? request.getAllergyOverrideReason().trim() : "";
+        if (!allergyConflicts.isEmpty() && overrideReason.length() < 10) {
+            throw new AllergyConflictException(allergyConflicts);
+        }
 
         Staff doctor = null;
         if (request.getDoctorId() != null) {
@@ -88,8 +108,10 @@ public class PrescriptionService {
         prescription.setDoctor(doctor);
         prescription.setFacility(facility);
         prescription.setVisit(visit);
-        String medName = request.getMedicationName() != null ? request.getMedicationName() : request.getMedication();
         prescription.setMedication(medName);
+        if (!allergyConflicts.isEmpty()) {
+            prescription.setAllergyOverrideReason(overrideReason);
+        }
 
         // Robust date handling
         LocalDate start = LocalDate.now();
@@ -123,6 +145,11 @@ public class PrescriptionService {
         }
 
         Prescription saved = prescriptionRepository.save(prescription);
+        if (!allergyConflicts.isEmpty()) {
+            auditService.recordCreate(doctor, patient, "ALLERGY_OVERRIDE",
+                    "Prescribed " + medName + " despite allergy warning: " + String.join("; ", allergyConflicts),
+                    "Reason given: " + overrideReason);
+        }
         try {
             reminderService.createRemindersForPrescription(saved);
         } catch (Exception e) {

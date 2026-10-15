@@ -1,10 +1,12 @@
 package com.udhr.service;
 
 import com.udhr.dto.PharmacyLookupResponse;
+import com.udhr.model.Allergy;
 import com.udhr.model.Patient;
 import com.udhr.model.Prescription;
 import com.udhr.model.Staff;
 import com.udhr.model.Visit;
+import com.udhr.repository.AllergyRepository;
 import com.udhr.repository.PrescriptionRepository;
 import com.udhr.repository.StaffRepository;
 import com.udhr.repository.VisitRepository;
@@ -36,6 +38,12 @@ public class PharmacyService {
     @Autowired
     private AuditService auditService;
 
+    @Autowired
+    private AllergyRepository allergyRepository;
+
+    @Autowired
+    private AllergyCheckService allergyCheckService;
+
     /**
      * Pharmacist looks the patient up by ID number or MRN — no need to ask
      * which doctor sent them or chase a paper script. This shows exactly
@@ -61,7 +69,7 @@ public class PharmacyService {
         auditService.recordView(staff, patient, "PHARMACY_LOOKUP",
                 "Pharmacy looked up patient: " + patient.getMrn());
 
-        return new PharmacyLookupResponse(patient, currentVisit, pending);
+        return withAllergies(patient, currentVisit, pending);
     }
 
     /**
@@ -88,7 +96,7 @@ public class PharmacyService {
         return byVisit.values().stream()
                 .map(prescriptions -> {
                     Visit visit = prescriptions.get(0).getVisit();
-                    return new PharmacyLookupResponse(visit.getPatient(), visit, prescriptions);
+                    return withAllergies(visit.getPatient(), visit, prescriptions);
                 })
                 .sorted(Comparator.comparing(r -> r.getCurrentVisit().getVisitDate()))
                 .collect(Collectors.toList());
@@ -140,5 +148,17 @@ public class PharmacyService {
     private boolean isAtFacility(Prescription prescription, Staff staff) {
         return prescription.getFacility() != null
                 && prescription.getFacility().getId().equals(staff.getFacility().getId());
+    }
+
+    private PharmacyLookupResponse withAllergies(Patient patient, Visit visit, List<Prescription> prescriptions) {
+        List<Allergy> allergies = allergyRepository.findByPatientId(patient.getId());
+        Map<Long, List<String>> warnings = new LinkedHashMap<>();
+        for (Prescription p : prescriptions) {
+            List<String> conflicts = allergyCheckService.findConflicts(p.getMedication(), allergies);
+            if (!conflicts.isEmpty()) {
+                warnings.put(p.getId(), conflicts);
+            }
+        }
+        return new PharmacyLookupResponse(patient, visit, prescriptions, allergies, warnings);
     }
 }

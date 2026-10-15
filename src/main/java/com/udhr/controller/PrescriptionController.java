@@ -2,6 +2,7 @@ package com.udhr.controller;
 
 import com.udhr.dto.PrescriptionReportResponse;
 import com.udhr.dto.PrescriptionRequest;
+import com.udhr.exception.AllergyConflictException;
 import com.udhr.model.Prescription;
 import com.udhr.service.PrescriptionService;
 import com.udhr.security.JwtUtil;
@@ -48,6 +49,12 @@ public class PrescriptionController {
         try {
             Prescription prescription = prescriptionService.addPrescription(prescriptionRequest);
             return ResponseEntity.status(HttpStatus.CREATED).body(prescription);
+        } catch (AllergyConflictException e) {
+            // 409 with the individual warnings, so the screen can list them and
+            // ask the prescriber for an override reason.
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(java.util.Map.of(
+                    "message", e.getMessage(),
+                    "allergyConflicts", e.getConflicts()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }

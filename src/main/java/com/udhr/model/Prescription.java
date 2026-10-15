@@ -60,6 +60,11 @@ public class Prescription {
     private String notes;
 
     // PHARMACY (patient must collect from the pharmacy) or SELF (doctor dispensed it directly)
+    // Set only when the prescriber went ahead despite an allergy warning: why
+    // they judged it safe. Shown to the pharmacist next to the warning.
+    @Column(name = "allergy_override_reason", columnDefinition = "TEXT")
+    private String allergyOverrideReason;
+
     @Column(name = "dispense_method", nullable = false)
     private String dispenseMethod = "PHARMACY";
 

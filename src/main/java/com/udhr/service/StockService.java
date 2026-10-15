@@ -8,6 +8,7 @@ import com.udhr.repository.*;
 import com.udhr.util.CsvUtil;
 import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
@@ -70,6 +71,7 @@ public class StockService {
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
         StockItem item = stockItemRepository.findById(request.getStockItemId())
                 .orElseThrow(() -> new RuntimeException("Stock item not found"));
+        requireSameFacility(item, staff);
 
         int quantity = request.getQuantityChange() != null ? request.getQuantityChange() : 0;
         if (quantity <= 0) {
@@ -95,6 +97,7 @@ public class StockService {
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
         StockItem item = stockItemRepository.findById(request.getStockItemId())
                 .orElseThrow(() -> new RuntimeException("Stock item not found"));
+        requireSameFacility(item, staff);
 
         int change = request.getQuantityChange() != null ? request.getQuantityChange() : 0;
         if (change == 0) {
@@ -115,8 +118,21 @@ public class StockService {
         return stockItemRepository.findByFacilityIdOrderByMedicationNameAsc(staff.getFacility().getId());
     }
 
-    public List<StockTransaction> getTransactionHistory(Long stockItemId) {
+    public List<StockTransaction> getTransactionHistory(Long stockItemId, String staffNumber) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        StockItem item = stockItemRepository.findById(stockItemId)
+                .orElseThrow(() -> new RuntimeException("Stock item not found"));
+        requireSameFacility(item, staff);
         return stockTransactionRepository.findByStockItemIdOrderByCreatedAtDesc(stockItemId);
+    }
+
+    // Stock item ids are sequential, so without this a pharmacist at one
+    // facility could adjust or read another facility's shelf just by trying ids.
+    private void requireSameFacility(StockItem item, Staff staff) {
+        if (!item.getFacility().getId().equals(staff.getFacility().getId())) {
+            throw new AccessDeniedException("This stock item belongs to another facility");
+        }
     }
 
     public StockReportResponse getReport(String staffNumber, String startDateStr, String endDateStr) {

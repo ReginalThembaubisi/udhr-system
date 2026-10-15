@@ -1,6 +1,5 @@
 package com.udhr.dto;
 
-import com.udhr.model.Referral;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -17,5 +16,5 @@ public class ReferralReportResponse {
     private int emergencyReferrals;
     private List<FacilityReferralTally> topDestinations;
     private List<FacilityReferralTally> topSources;
-    private List<Referral> recentActivity;
+    private List<ReferralActivityItem> recentActivity;
 }

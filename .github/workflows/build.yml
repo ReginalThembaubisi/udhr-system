@@ -23,10 +23,10 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Compile
-        # Tests are skipped because the project has none yet; this verifies the
-        # whole backend compiles and packages.
-        run: mvn -B -DskipTests package
+      - name: Build and test
+        # Runs the test suite (an in-memory H2 database, see
+        # src/test/resources/application.properties) and packages the backend.
+        run: mvn -B package
 
   frontend:
     name: Frontend (React)

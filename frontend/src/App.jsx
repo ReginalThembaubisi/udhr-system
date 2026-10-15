@@ -98,6 +98,11 @@ function App() {
   const [addPrescriptionForm, setAddPrescriptionForm] = useState({
     patientId: '', medicationName: '', dosage: '', frequency: 'Once daily', durationDays: 7, notes: '', dispenseMethod: 'PHARMACY'
   });
+  // Set when the server refuses a prescription because of a recorded allergy:
+  // the warnings to show, and the prescriber's reason if they go ahead anyway.
+  const [prescriptionAllergyConflicts, setPrescriptionAllergyConflicts] = useState(null);
+  const [allergyOverrideReason, setAllergyOverrideReason] = useState('');
+  const [newAllergyForm, setNewAllergyForm] = useState({ allergen: '', severity: 'MODERATE', notes: '' });
   const [addAlertForm, setAddAlertForm] = useState({
     patientId: '', severity: 'HIGH', message: ''
   });
@@ -129,8 +134,7 @@ function App() {
   // Nurse: collapsed-by-default section for registering a brand new patient
   const [showNurseRegister, setShowNurseRegister] = useState(false);
 
-  // Admin: staff & facility management (no patient data — admin isn't clinical staff)
-  const [staffList, setStaffList] = useState([]);
+  // Admin: facility management (no patient data — admin isn't clinical staff)
   const [facilityList, setFacilityList] = useState([]);
   const [adminTab, setAdminTab] = useState('frontdesk'); // 'frontdesk', 'staff', 'facilities', or 'announcements'
   const [newStaffForm, setNewStaffForm] = useState({
@@ -189,6 +193,7 @@ function App() {
 
   // System administrator screen — account oversight and the audit trail.
   const [systemAdminTab, setSystemAdminTab] = useState('accounts');
+  const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [systemAdminStaff, setSystemAdminStaff] = useState([]);
   const [auditEntries, setAuditEntries] = useState([]);
   const [auditFilters, setAuditFilters] = useState({ startDate: '', endDate: '', action: '' });
@@ -305,7 +310,6 @@ function App() {
     setActiveTabStaff('patients');
     setVitalsPatient(null);
     setPharmacyRecord(null);
-    setStaffList([]);
     setFacilityList([]);
     setAdminTab('frontdesk');
     setRecentCheckIns([]);
@@ -367,12 +371,13 @@ function App() {
       } else if (userRole === 'PHARMACIST') {
         fetchPharmacyQueue();
       } else if (userRole === 'ADMIN') {
-        fetchStaffList();
         fetchFacilityList();
         fetchRecentCheckIns();
         fetchAnnouncements();
       } else if (userRole === 'SYSTEM_ADMIN') {
         fetchSystemAdminStaff();
+        // The create-account form needs the facility dropdown.
+        fetchFacilityList();
       }
     }
   }, [token, userRole]);
@@ -802,21 +807,52 @@ function App() {
     setSuccessMessage('');
 
     try {
+      const payload = prescriptionAllergyConflicts
+        ? { ...addPrescriptionForm, allergyOverrideReason }
+        : addPrescriptionForm;
       const response = await fetch('/api/prescriptions', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify(addPrescriptionForm)
+        body: JSON.stringify(payload)
       });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to add prescription');
+      const data = await parseResponseBody(response);
+      if (response.status === 409 && data && data.allergyConflicts) {
+        // Not an error to dismiss: show the warnings in the form and ask for a
+        // reason before it can be sent.
+        setPrescriptionAllergyConflicts(data.allergyConflicts);
+        return;
       }
+      if (!response.ok) {
+        throw new Error(typeof data === 'string' ? data : data.message || 'Failed to add prescription');
+      }
+      setPrescriptionAllergyConflicts(null);
+      setAllergyOverrideReason('');
       setSuccessMessage(
         addPrescriptionForm.dispenseMethod === 'SELF'
           ? 'Prescription saved and marked as dispensed to the patient.'
           : "Sent to the pharmacy. You stay on this patient's record in case you need to add another diagnosis or prescription — click \"← Back to queue\" above when you're done."
       );
       setAddPrescriptionForm(prev => ({ ...prev, medicationName: '', dosage: '', frequency: 'Once daily', durationDays: 7, notes: '', dispenseMethod: 'PHARMACY' }));
+      handleSearchPatient(); // Refresh record
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleAddAllergy = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch('/api/allergies', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ ...newAllergyForm, patientId: searchedPatientRecord.patient.id })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to record allergy');
+      setSuccessMessage(`Allergy to ${data.allergen} recorded. It will now be checked on every prescription and shown at the pharmacy.`);
+      setNewAllergyForm({ allergen: '', severity: 'MODERATE', notes: '' });
       handleSearchPatient(); // Refresh record
     } catch (err) {
       setErrorMessage(err.message);
@@ -913,6 +949,10 @@ function App() {
   const handleDispense = async (prescriptionId) => {
     setErrorMessage('');
     setSuccessMessage('');
+    const warnings = pharmacyRecord?.allergyWarnings?.[prescriptionId];
+    if (warnings && !window.confirm(`ALLERGY WARNING\n\n${warnings.join('\n')}\n\nHave you confirmed with the prescriber and the patient that it is safe to dispense?`)) {
+      return;
+    }
     try {
       const response = await fetch(`/api/pharmacy/dispense/${prescriptionId}`, {
         method: 'POST',
@@ -953,22 +993,7 @@ function App() {
     }
   };
 
-  // Admin: staff & facility management
-  const fetchStaffList = async () => {
-    setErrorMessage('');
-    setLoading(true);
-    try {
-      const response = await fetch('/api/staff', { headers: getAuthHeaders() });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to load staff');
-      setStaffList(data);
-    } catch (err) {
-      setErrorMessage(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Facility list (admin Facilities tab, system admin create-account form)
   const fetchFacilityList = async () => {
     setErrorMessage('');
     setLoading(true);
@@ -994,28 +1019,12 @@ function App() {
         headers: getAuthHeaders(),
         body: JSON.stringify(newStaffForm)
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to register staff member');
-      setSuccessMessage(`Staff member '${data.firstName} ${data.lastName}' (${data.role}) created.`);
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to create account');
+      setSuccessMessage(`Account for '${data.firstName} ${data.lastName}' (${data.role}) created. They must change the temporary password at first sign-in.`);
       setNewStaffForm({ staffNumber: '', firstName: '', lastName: '', role: 'NURSE', facilityId: newStaffForm.facilityId, email: '', password: '' });
-      fetchStaffList();
-    } catch (err) {
-      setErrorMessage(err.message);
-    }
-  };
-
-  const handleDeactivateStaff = async (staffId) => {
-    setErrorMessage('');
-    setSuccessMessage('');
-    try {
-      const response = await fetch(`/api/staff/${staffId}/deactivate`, {
-        method: 'PUT',
-        headers: getAuthHeaders()
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to deactivate staff member');
-      setSuccessMessage('Staff member deactivated.');
-      fetchStaffList();
+      setShowCreateAccount(false);
+      fetchSystemAdminStaff();
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -2835,7 +2844,7 @@ function App() {
       ['prescriptions', 'Prescriptions'],
       ['labs', 'Labs'],
       ['vitals', 'Vitals'],
-      ['conditions', 'Conditions'],
+      ['conditions', 'Conditions & allergies'],
       ['immunizations', 'Immunizations'],
       ['timeline', 'Timeline'],
     ];
@@ -3083,10 +3092,32 @@ function App() {
                       searchedPatientRecord.allergies.map(a => (
                         <div key={a.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                           <p className="udhr-row-title">{a.allergen}</p>
-                          <p className="udhr-row-subtitle">Severity: {a.severity} · {a.notes}</p>
+                          <p className="udhr-row-subtitle">Severity: {a.severity}{a.notes ? ` · ${a.notes}` : ''}</p>
                         </div>
                       ))
                     )}
+                    <form onSubmit={handleAddAllergy} style={{ marginTop: '14px', maxWidth: '520px' }}>
+                      <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Record an allergy</h4>
+                      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
+                        <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                          <label className="udhr-label">Allergen</label>
+                          <input type="text" className="udhr-input" placeholder="e.g. Penicillin, Sulfa, Peanuts" value={newAllergyForm.allergen} onChange={(e) => setNewAllergyForm({ ...newAllergyForm, allergen: e.target.value })} required />
+                        </div>
+                        <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                          <label className="udhr-label">Severity</label>
+                          <select className="udhr-input" value={newAllergyForm.severity} onChange={(e) => setNewAllergyForm({ ...newAllergyForm, severity: e.target.value })}>
+                            <option value="MILD">Mild</option>
+                            <option value="MODERATE">Moderate</option>
+                            <option value="SEVERE">Severe</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="udhr-form-group" style={{ marginTop: '10px' }}>
+                        <label className="udhr-label">Reaction / notes (optional)</label>
+                        <input type="text" className="udhr-input" placeholder="e.g. Hives and swelling" value={newAllergyForm.notes} onChange={(e) => setNewAllergyForm({ ...newAllergyForm, notes: e.target.value })} />
+                      </div>
+                      <button type="submit" className="udhr-btn-neutral">Save allergy</button>
+                    </form>
                   </>
                 )}
 
@@ -3199,7 +3230,7 @@ function App() {
                       <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Issue prescription</h4>
                       <div className="udhr-form-group">
                         <label className="udhr-label">Medication</label>
-                        <input type="text" className="udhr-input" placeholder="e.g. Amoxicillin 250mg" value={addPrescriptionForm.medicationName} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value })} required />
+                        <input type="text" className="udhr-input" placeholder="e.g. Amoxicillin 250mg" value={addPrescriptionForm.medicationName} onChange={(e) => { setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value }); setPrescriptionAllergyConflicts(null); setAllergyOverrideReason(''); }} required />
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
                         <div className="udhr-form-group" style={{ marginBottom: 0 }}>
@@ -3227,7 +3258,24 @@ function App() {
                           <option value="SELF">Give to patient myself</option>
                         </select>
                       </div>
-                      <button type="submit" className="udhr-btn-neutral">{addPrescriptionForm.dispenseMethod === 'SELF' ? 'Issue & dispense now' : 'Send to pharmacy'}</button>
+                      {prescriptionAllergyConflicts && (
+                        <div className="udhr-allergy-alert" role="alert">
+                          <strong>Allergy warning — not sent</strong>
+                          <ul>
+                            {prescriptionAllergyConflicts.map((w, i) => <li key={i}>{w}</li>)}
+                          </ul>
+                          <div className="udhr-form-group" style={{ margin: '10px 0 0' }}>
+                            <label className="udhr-label">To prescribe anyway, give your clinical reason (saved and audited)</label>
+                            <textarea className="udhr-input" rows={2} value={allergyOverrideReason} onChange={(e) => setAllergyOverrideReason(e.target.value)} placeholder="e.g. Allergy history checked with patient: rash only as a child, tolerated amoxicillin in 2024" />
+                          </div>
+                          <button type="button" className="udhr-btn-neutral" style={{ marginTop: '8px' }} onClick={() => { setPrescriptionAllergyConflicts(null); setAllergyOverrideReason(''); }}>
+                            Cancel — choose another medicine
+                          </button>
+                        </div>
+                      )}
+                      <button type="submit" className="udhr-btn-neutral" disabled={!!prescriptionAllergyConflicts && allergyOverrideReason.trim().length < 10}>
+                        {prescriptionAllergyConflicts ? 'Prescribe anyway' : addPrescriptionForm.dispenseMethod === 'SELF' ? 'Issue & dispense now' : 'Send to pharmacy'}
+                      </button>
                     </form>
 
                     <form onSubmit={handleAddAlert}>
@@ -3459,6 +3507,64 @@ function App() {
               </button>
             </div>
           </div>
+        )}
+
+        {showCreateAccount ? (
+          <div className="udhr-record-card" style={{ marginBottom: '20px', maxWidth: '640px' }}>
+            <div className="udhr-record-body">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Create account</h3>
+              <form onSubmit={handleRegisterStaff}>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Staff Number</label>
+                  <input type="text" className="udhr-input" value={newStaffForm.staffNumber} onChange={(e) => setNewStaffForm({ ...newStaffForm, staffNumber: e.target.value })} placeholder="e.g. NUR002" required />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                  <input type="text" className="udhr-input" placeholder="First name" value={newStaffForm.firstName} onChange={(e) => setNewStaffForm({ ...newStaffForm, firstName: e.target.value })} required />
+                  <input type="text" className="udhr-input" placeholder="Last name" value={newStaffForm.lastName} onChange={(e) => setNewStaffForm({ ...newStaffForm, lastName: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Role</label>
+                  <select className="udhr-input" value={newStaffForm.role} onChange={(e) => setNewStaffForm({ ...newStaffForm, role: e.target.value })} required>
+                    <option value="DOCTOR">Doctor</option>
+                    <option value="NURSE">Nurse</option>
+                    <option value="PHARMACIST">Pharmacist</option>
+                    <option value="ADMIN">Front desk (Admin)</option>
+                    <option value="SYSTEM_ADMIN">System administrator</option>
+                  </select>
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Facility</label>
+                  <select className="udhr-input" value={newStaffForm.facilityId} onChange={(e) => setNewStaffForm({ ...newStaffForm, facilityId: e.target.value })} required>
+                    <option value="">Select a facility...</option>
+                    {facilityList.map(f => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Email</label>
+                  <input type="email" className="udhr-input" value={newStaffForm.email} onChange={(e) => setNewStaffForm({ ...newStaffForm, email: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Temporary Password</label>
+                  <div className="udhr-password-field">
+                    <input type={showNewStaffPassword ? 'text' : 'password'} className="udhr-input" value={newStaffForm.password} onChange={(e) => setNewStaffForm({ ...newStaffForm, password: e.target.value })} required />
+                    <button type="button" className="udhr-password-toggle" onClick={() => setShowNewStaffPassword(!showNewStaffPassword)} aria-label={showNewStaffPassword ? 'Hide password' : 'Show password'}>
+                      {showNewStaffPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="submit" className="udhr-btn-primary">Create account</button>
+                  <button type="button" className="udhr-btn-neutral" onClick={() => setShowCreateAccount(false)}>Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="udhr-btn-primary" style={{ marginBottom: '20px', width: 'auto' }} onClick={() => setShowCreateAccount(true)}>
+            + New account
+          </button>
         )}
 
         <div className="udhr-record-card">
@@ -3714,6 +3820,15 @@ function App() {
               <div className="udhr-record-body">
                 <p className="udhr-row-title" style={{ fontSize: '15px' }}>{pharmacyRecord.patient.firstName} {pharmacyRecord.patient.lastName}</p>
                 <p className="udhr-row-subtitle">{pharmacyRecord.patient.idNumber ? `ID: ${pharmacyRecord.patient.idNumber} · ` : ''}MRN: {pharmacyRecord.patient.mrn}</p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                  {pharmacyRecord.allergies && pharmacyRecord.allergies.length > 0 ? (
+                    pharmacyRecord.allergies.map(a => (
+                      <span key={a.id} className="udhr-tag danger">{a.allergen} allergy{a.severity ? ` (${a.severity.toLowerCase()})` : ''}</span>
+                    ))
+                  ) : (
+                    <span className="udhr-tag neutral">No recorded allergies</span>
+                  )}
+                </div>
                 {pharmacyRecord.currentVisit ? (
                   <p className="udhr-row-subtitle" style={{ marginTop: '8px' }}>
                     Coming from: {pharmacyRecord.currentVisit.staff ? `${pharmacyRecord.currentVisit.staff.firstName} ${pharmacyRecord.currentVisit.staff.lastName} (${pharmacyRecord.currentVisit.staff.role})` : 'Unknown staff member'} — {pharmacyRecord.currentVisit.reason}
@@ -3741,6 +3856,17 @@ function App() {
                         <p className="udhr-row-subtitle">{p.dosage} · {p.frequency}</p>
                         <p className="udhr-row-subtitle">Prescribed by {p.doctor ? `${p.doctor.firstName} ${p.doctor.lastName}` : 'doctor'} on {new Date(p.createdAt).toLocaleDateString()}</p>
                         {p.notes && <p className="udhr-row-subtitle" style={{ fontStyle: 'italic' }}>{p.notes}</p>}
+                        {pharmacyRecord.allergyWarnings?.[p.id] && (
+                          <div className="udhr-allergy-alert" role="alert">
+                            <strong>Allergy warning</strong>
+                            <ul>
+                              {pharmacyRecord.allergyWarnings[p.id].map((w, i) => <li key={i}>{w}</li>)}
+                            </ul>
+                            {p.allergyOverrideReason
+                              ? <p style={{ margin: '6px 0 0', color: 'inherit' }}>Prescriber's reason for going ahead: {p.allergyOverrideReason}</p>
+                              : <p style={{ margin: '6px 0 0', color: 'inherit', fontWeight: 600 }}>No override reason on file — check with the prescriber before dispensing.</p>}
+                          </div>
+                        )}
                       </div>
                       <button
                         type="button"
@@ -3938,7 +4064,6 @@ function App() {
     const adminNavItems = [
       { key: 'frontdesk', label: 'Front Desk', icon: <Clipboard size={17} /> },
       { key: 'visitors', label: 'Visitors', icon: <Clock size={17} /> },
-      { key: 'staff', label: 'Staff', icon: <Users size={17} /> },
       { key: 'facilities', label: 'Facilities', icon: <Building2 size={17} /> },
       { key: 'referrals', label: 'Referrals', icon: <CornerUpRight size={17} /> },
       { key: 'announcements', label: 'Announcements', icon: <Megaphone size={17} /> },
@@ -3948,7 +4073,6 @@ function App() {
       setAdminTab(key);
       setIsMobileNavOpen(false);
       if (key === 'visitors') fetchRecentCheckIns();
-      if (key === 'staff') fetchStaffList();
       if (key === 'facilities') fetchFacilityList();
       if (key === 'referrals') fetchReferralReport();
       if (key === 'announcements') fetchAnnouncements();
@@ -4164,86 +4288,6 @@ function App() {
                 );
               })
             )}
-          </div>
-        </div>
-      </>
-    );
-
-    const renderStaffPanel = () => (
-      <>
-        <h1 className="udhr-page-title">Staff</h1>
-        <p className="udhr-page-subtitle">Everyone with access to this facility.</p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px' }}>
-          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
-            <div className="udhr-record-body">
-              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Register staff member</h3>
-              <form onSubmit={handleRegisterStaff}>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Staff Number</label>
-                  <input type="text" className="udhr-input" value={newStaffForm.staffNumber} onChange={(e) => setNewStaffForm({ ...newStaffForm, staffNumber: e.target.value })} placeholder="e.g. NUR002" required />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-                  <input type="text" className="udhr-input" placeholder="First name" value={newStaffForm.firstName} onChange={(e) => setNewStaffForm({ ...newStaffForm, firstName: e.target.value })} required />
-                  <input type="text" className="udhr-input" placeholder="Last name" value={newStaffForm.lastName} onChange={(e) => setNewStaffForm({ ...newStaffForm, lastName: e.target.value })} required />
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Role</label>
-                  <select className="udhr-input" value={newStaffForm.role} onChange={(e) => setNewStaffForm({ ...newStaffForm, role: e.target.value })} required>
-                    <option value="DOCTOR">Doctor</option>
-                    <option value="NURSE">Nurse</option>
-                    <option value="PHARMACIST">Pharmacist</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Facility</label>
-                  <select className="udhr-input" value={newStaffForm.facilityId} onChange={(e) => setNewStaffForm({ ...newStaffForm, facilityId: e.target.value })} required>
-                    <option value="">Select a facility...</option>
-                    {facilityList.map(f => (
-                      <option key={f.id} value={f.id}>{f.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Email</label>
-                  <input type="email" className="udhr-input" value={newStaffForm.email} onChange={(e) => setNewStaffForm({ ...newStaffForm, email: e.target.value })} required />
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Temporary Password</label>
-                  <div className="udhr-password-field">
-                    <input type={showNewStaffPassword ? 'text' : 'password'} className="udhr-input" value={newStaffForm.password} onChange={(e) => setNewStaffForm({ ...newStaffForm, password: e.target.value })} required />
-                    <button type="button" className="udhr-password-toggle" onClick={() => setShowNewStaffPassword(!showNewStaffPassword)} aria-label={showNewStaffPassword ? 'Hide password' : 'Show password'}>
-                      {showNewStaffPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-                <button type="submit" className="udhr-btn-primary">Create staff account</button>
-              </form>
-            </div>
-          </div>
-
-          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
-            <div className="udhr-record-body">
-              {staffList.length === 0 ? (
-                <p className="udhr-empty-note">{loading ? 'Loading...' : 'No staff members yet.'}</p>
-              ) : (
-                staffList.map(s => (
-                  <div key={s.id} className="udhr-list-row">
-                    <div>
-                      <p className="udhr-row-title">{s.firstName} {s.lastName} <span className="udhr-row-subtitle">({s.role})</span></p>
-                      <p className="udhr-row-subtitle">{s.staffNumber} · {s.email}</p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span className={`udhr-tag ${s.active ? 'info' : 'danger'}`}>{s.active ? 'Active' : 'Inactive'}</span>
-                      {s.active && (
-                        <button type="button" className="udhr-btn-neutral" onClick={() => handleDeactivateStaff(s.id)}>Deactivate</button>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
         </div>
       </>
@@ -4497,7 +4541,6 @@ function App() {
 
           {adminTab === 'frontdesk' && renderFrontDeskPanel()}
           {adminTab === 'visitors' && renderVisitorsPanel()}
-          {adminTab === 'staff' && renderStaffPanel()}
           {adminTab === 'facilities' && renderFacilitiesPanel()}
           {adminTab === 'referrals' && renderReferralsPanel()}
           {adminTab === 'announcements' && renderAnnouncementsPanel()}

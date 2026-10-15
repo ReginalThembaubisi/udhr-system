@@ -1,5 +1,7 @@
 package com.udhr.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -90,11 +92,34 @@ public class Patient {
     @Column(name = "apgar_score_5min")
     private Integer apgarScore5Min;
 
+    // Patient portal sign-in. An SA ID number already contains the date of
+    // birth, so ID + date of birth alone let anyone who knew someone's ID number
+    // open their record. The portal now also needs a PIN the front desk sets
+    // after checking the patient's identity in person. Only the hash is stored.
+    @JsonIgnore
+    @Column(name = "portal_pin_hash")
+    private String portalPinHash;
+
+    @JsonIgnore
+    @Column(name = "failed_login_attempts")
+    private Integer failedLoginAttempts;
+
+    @JsonIgnore
+    @Column(name = "login_locked_until")
+    private LocalDateTime loginLockedUntil;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
+    }
+
+    // Lets the front desk see whether the patient can sign in to the portal yet,
+    // without ever exposing the PIN or its hash.
+    @JsonProperty("portalPinSet")
+    public boolean isPortalPinSet() {
+        return portalPinHash != null;
     }
 }

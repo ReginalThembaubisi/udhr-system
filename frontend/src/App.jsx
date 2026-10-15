@@ -21,6 +21,7 @@ function App() {
   const [staffPassword, setStaffPassword] = useState('');
   const [patientIdNumber, setPatientIdNumber] = useState('');
   const [patientDob, setPatientDob] = useState('');
+  const [patientPin, setPatientPin] = useState('');
   const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [showNewStaffPassword, setShowNewStaffPassword] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
@@ -86,7 +87,7 @@ function App() {
   const [patientRegForm, setPatientRegForm] = useState({
     idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: '', contactNumber: '', address: '', email: '',
     nextOfKinFirstName: '', nextOfKinLastName: '', nextOfKinRelationship: '', nextOfKinPhone: '',
-    motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: ''
+    motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: '', portalPin: ''
   });
   const [showRegExtras, setShowRegExtras] = useState(false);
   // Admin's registration form only: reason for visit, so a brand-new patient
@@ -166,6 +167,7 @@ function App() {
   // today) by ID/MRN — demographics + visit history only, no clinical data.
   const [adminLookupId, setAdminLookupId] = useState('');
   const [adminLookupRecord, setAdminLookupRecord] = useState(null);
+  const [portalPinInput, setPortalPinInput] = useState('');
 
   // "Today's Queue" board — everyone still in progress at this facility
   // today, across the whole admin -> nurse -> doctor -> pharmacy pipeline.
@@ -224,7 +226,7 @@ function App() {
         response = await fetch('/api/auth/patient/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idNumber: patientIdNumber, dateOfBirth: patientDob })
+          body: JSON.stringify({ idNumber: patientIdNumber, dateOfBirth: patientDob, pin: patientPin })
         });
       } else {
         response = await fetch('/api/auth/login', {
@@ -290,6 +292,11 @@ function App() {
     localStorage.removeItem('idNumber');
     localStorage.removeItem('userName');
     localStorage.removeItem('mustChangePassword');
+    sessionStorage.clear();
+    // Start the next user from a clean page. Resetting state by hand missed
+    // things (one patient saw the previous patient's chat on a shared computer),
+    // and every new piece of state would be another thing to remember here.
+    window.location.replace('/');
     setToken('');
     setUserRole('');
     setUserIdNumber('');
@@ -755,7 +762,7 @@ function App() {
       setPatientRegForm({
         idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: '', contactNumber: '', address: '', email: '',
         nextOfKinFirstName: '', nextOfKinLastName: '', nextOfKinRelationship: '', nextOfKinPhone: '',
-        motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: ''
+        motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: '', portalPin: ''
       });
       setRegReasonForVisit('');
       setShowRegExtras(false);
@@ -1103,6 +1110,27 @@ function App() {
       setErrorMessage(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Front desk sets or resets a patient's portal PIN after checking their ID.
+  const handleSetPortalPin = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await fetch('/api/checkin/portal-pin', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ identifier: adminLookupRecord.patient.idNumber || adminLookupRecord.patient.mrn, pin: portalPinInput })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to set portal PIN');
+      setSuccessMessage(data.message);
+      setPortalPinInput('');
+      setAdminLookupRecord(prev => ({ ...prev, patient: { ...prev.patient, portalPinSet: true } }));
+    } catch (err) {
+      setErrorMessage(err.message);
     }
   };
 
@@ -1850,6 +1878,21 @@ function App() {
                       onChange={(e) => setPatientDob(e.target.value)}
                       required
                     />
+                  </div>
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="patientPin">Portal PIN</label>
+                    <input
+                      type="password"
+                      id="patientPin"
+                      className="udhr-input"
+                      value={patientPin}
+                      onChange={(e) => setPatientPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      inputMode="numeric"
+                      autoComplete="current-password"
+                      placeholder="6-digit PIN from your clinic"
+                      required
+                    />
+                    <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>No PIN yet, or forgot it? Ask the front desk at your clinic.</p>
                   </div>
                 </>
               ) : (
@@ -2662,6 +2705,11 @@ function App() {
         <div className="udhr-form-group">
           <label className="udhr-label">Email Address</label>
           <input type="email" className="udhr-input" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@gmail.com" />
+        </div>
+        <div className="udhr-form-group">
+          <label className="udhr-label">Patient portal PIN (optional)</label>
+          <input type="password" className="udhr-input" value={patientRegForm.portalPin} onChange={(e) => setPatientRegForm({ ...patientRegForm, portalPin: e.target.value.replace(/\D/g, '').slice(0, 6) })} inputMode="numeric" autoComplete="new-password" placeholder="6 digits, chosen by the patient" />
+          <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>Lets the patient sign in to view their record. Can also be set later under Visitors.</p>
         </div>
         <div className="udhr-form-group">
           <label className="udhr-label">Address</label>
@@ -4129,6 +4177,11 @@ function App() {
                   <input type="email" className="udhr-input" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@gmail.com" />
                 </div>
                 <div className="udhr-form-group">
+                  <label className="udhr-label">Patient portal PIN (optional)</label>
+                  <input type="password" className="udhr-input" value={patientRegForm.portalPin} onChange={(e) => setPatientRegForm({ ...patientRegForm, portalPin: e.target.value.replace(/\D/g, '').slice(0, 6) })} inputMode="numeric" autoComplete="new-password" placeholder="6 digits, chosen by the patient" />
+                  <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>Lets the patient sign in to view their record. Can also be set later under Visitors.</p>
+                </div>
+                <div className="udhr-form-group">
                   <label className="udhr-label">Address</label>
                   <textarea className="udhr-textarea" value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} />
                 </div>
@@ -4240,6 +4293,18 @@ function App() {
                 <p className="udhr-row-subtitle" style={{ marginBottom: '12px' }}>
                   Contact: {adminLookupRecord.patient.contactNumber || 'N/A'} · Email: {adminLookupRecord.patient.email || 'N/A'}
                 </p>
+
+                <form onSubmit={handleSetPortalPin} style={{ marginBottom: '16px', padding: '12px', border: '1px solid var(--udhr-border)', borderRadius: '8px' }}>
+                  <p className="udhr-row-title" style={{ marginBottom: '4px' }}>
+                    Patient portal PIN{' '}
+                    <span className={`udhr-tag ${adminLookupRecord.patient.portalPinSet ? 'info' : 'warning'}`}>{adminLookupRecord.patient.portalPinSet ? 'Set' : 'Not set'}</span>
+                  </p>
+                  <p className="udhr-row-subtitle" style={{ marginBottom: '8px' }}>Check the patient's ID first. Let them type the PIN themselves; it is never shown again.</p>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input type="password" className="udhr-input" value={portalPinInput} onChange={(e) => setPortalPinInput(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="new-password" placeholder="New 6-digit PIN" required style={{ maxWidth: '200px' }} />
+                    <button type="submit" className="udhr-btn-compact">{adminLookupRecord.patient.portalPinSet ? 'Reset PIN' : 'Set PIN'}</button>
+                  </div>
+                </form>
 
                 <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 8px' }}>Visit history</p>
                 {adminLookupRecord.visits.length === 0 ? (

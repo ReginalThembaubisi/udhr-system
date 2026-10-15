@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.HexFormat;
 
@@ -97,7 +98,11 @@ public class TokenService {
      */
     @Transactional
     public void revokeAllSessions(Staff staff, String reason) {
-        staff.setSessionsValidFrom(LocalDateTime.now());
+        // Whole seconds, because a JWT's issued-at time is whole seconds: with
+        // the fraction kept, the fresh token handed back after a password
+        // change (issued in the same second) counted as "before" the cut-off
+        // and was rejected immediately.
+        staff.setSessionsValidFrom(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
         staffRepository.save(staff);
         refreshTokenRepository.revokeAllForStaff(staff.getId());
     }
@@ -112,7 +117,7 @@ public class TokenService {
         }
         return staffRepository.findByStaffNumber(staffNumber)
                 .map(Staff::getSessionsValidFrom)
-                .map(issuedAt::isBefore)
+                .map(validFrom -> issuedAt.isBefore(validFrom.truncatedTo(ChronoUnit.SECONDS)))
                 .orElse(false);
     }
 

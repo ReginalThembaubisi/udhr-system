@@ -155,6 +155,7 @@ public class DataSeeder implements CommandLineRunner {
         } else {
             facility = facilityRepository.findAll().get(0);
         }
+        ensureSystemAdministrator(facility);
 
         // 2. Seed Master Guidelines & Tips (South African context)
         seedGuidelinesAndTips();
@@ -549,5 +550,38 @@ public class DataSeeder implements CommandLineRunner {
         warning.setSeverity(severity);
         warning.setReason(reason);
         ingredientWarningRepository.save(warning);
+    }
+
+    /**
+     * Databases created before the SYSTEM_ADMIN role existed never got the
+     * seeded system administrator (staff are only seeded into an empty
+     * database), which leaves nobody able to create or deactivate accounts.
+     * Creates one if the database has none. Its password comes from
+     * SYSADMIN_INITIAL_PASSWORD when set, otherwise the documented demo
+     * password; either way it must be changed at first sign-in, because this
+     * runs against databases that may already hold real data.
+     */
+    private void ensureSystemAdministrator(Facility facility) {
+        if (!staffRepository.findByRole("SYSTEM_ADMIN").isEmpty()
+                || staffRepository.findByStaffNumber("SYSADMIN001").isPresent()) {
+            return;
+        }
+        String initialPassword = System.getenv("SYSADMIN_INITIAL_PASSWORD");
+        if (initialPassword == null || initialPassword.isBlank()) {
+            initialPassword = "SysAdmin@123";
+        }
+
+        Staff systemAdmin = new Staff();
+        systemAdmin.setStaffNumber("SYSADMIN001");
+        systemAdmin.setFirstName("System");
+        systemAdmin.setLastName("Administrator");
+        systemAdmin.setRole("SYSTEM_ADMIN");
+        systemAdmin.setFacility(facility);
+        systemAdmin.setEmail("sysadmin@udhr.gov.za");
+        systemAdmin.setPassword(passwordEncoder.encode(initialPassword));
+        systemAdmin.setActive(true);
+        systemAdmin.setMustChangePassword(true);
+        staffRepository.save(systemAdmin);
+        System.out.println("No system administrator found; created SYSADMIN001 (password change required at first sign-in).");
     }
 }

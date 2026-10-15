@@ -84,9 +84,16 @@ class FrontDeskAndVitalsTest {
 
     @Test
     void portalWithoutAReferralGetsNoContent() throws Exception {
+        // A patient of its own: other tests refer the seeded patient.
+        String admin = login("ADMIN001", "Admin@123");
+        mvc.perform(post("/api/patients").header("Authorization", bearer(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("idNumber", "6606065000084", "firstName", "Thandi",
+                                "lastName", "Zulu", "dateOfBirth", "1966-06-06", "gender", "FEMALE", "portalPin", "583920"))))
+                .andExpect(status().isCreated());
         String body = mvc.perform(post("/api/auth/patient/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsString(Map.of("idNumber", "9001015000083", "dateOfBirth", "1990-01-01", "pin", "246810"))))
+                        .content(json.writeValueAsString(Map.of("idNumber", "6606065000084", "dateOfBirth", "1966-06-06", "pin", "583920"))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         String token = json.readTree(body).get("token").asText();

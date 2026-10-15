@@ -16,6 +16,9 @@ public class PatientRequest {
     private String address;
     // Optional: portal PIN chosen by the patient at registration (6 digits).
     private String portalPin;
+    // Set by the front desk after being warned that a patient with the same
+    // name and date of birth already exists, to register them anyway.
+    private Boolean confirmNotDuplicate;
 
     // Next of kin, all optional
     private String nextOfKinFirstName;

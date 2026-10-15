@@ -7,6 +7,33 @@ import {
 } from 'lucide-react';
 import './App.css';
 
+// Adult reference ranges used to flag a vital sign as high or low on screen.
+// The server refuses impossible values; these only highlight abnormal ones.
+function vitalFlag(key, value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (key === 'bloodPressure') {
+    const m = String(value).match(/^\s*(\d{2,3})\s*\/\s*(\d{2,3})\s*$/);
+    if (!m) return null;
+    const sys = Number(m[1]), dia = Number(m[2]);
+    if (sys >= 140 || dia >= 90) return 'high';
+    if (sys < 90 || dia < 60) return 'low';
+    return null;
+  }
+  const v = Number(value);
+  if (Number.isNaN(v)) return null;
+  const ranges = {
+    temperatureCelsius: [35.5, 37.9],
+    pulseBpm: [50, 100],
+    respirationRate: [10, 24],
+    oxygenSaturation: [94, 100],
+  };
+  const r = ranges[key];
+  if (!r) return null;
+  if (v > r[1]) return 'high';
+  if (v < r[0]) return 'low';
+  return null;
+}
+
 function App() {
   // Authentication State
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -117,6 +144,9 @@ function App() {
     bloodPressure: '', temperatureCelsius: '', pulseBpm: '', respirationRate: '', oxygenSaturation: '', weightKg: '', heightCm: '', notes: ''
   });
   const [nurseVitalsQueue, setNurseVitalsQueue] = useState([]);
+  // Shown above the vitals form: why the patient is here and what they're allergic to.
+  const [vitalsVisitReason, setVitalsVisitReason] = useState('');
+  const [vitalsAllergies, setVitalsAllergies] = useState([]);
 
   // Doctor: automatic queue of patients the nurse has just taken vitals for
   const [doctorConsultQueue, setDoctorConsultQueue] = useState([]);
@@ -182,6 +212,11 @@ function App() {
   const [referralInbox, setReferralInbox] = useState([]);
   const [referralOutgoing, setReferralOutgoing] = useState([]);
   const [facilitiesForReferral, setFacilitiesForReferral] = useState([]);
+  // Patient picked inside the Referrals tab itself (nurses have no Patients
+  // tab to load one from; doctors can use it to refer someone else).
+  const [referralLookupId, setReferralLookupId] = useState('');
+  const [referralLookupPatient, setReferralLookupPatient] = useState(null);
+  const [referralSearchOpen, setReferralSearchOpen] = useState(false);
   const [referralForm, setReferralForm] = useState({ toFacilityId: '', urgency: 'ROUTINE', reason: '', clinicalSummary: '' });
 
   // Restored feature: Immunizations (EPI schedule) — shown against a loaded patient record
@@ -389,6 +424,34 @@ function App() {
     }
   }, [token, userRole]);
 
+  // Keep the hand-off queues current without anyone clicking a tab: a patient
+  // checked in at the front desk shows up on the nurse's screen within ~30 s,
+  // and so on down the line. Quiet on purpose: a failed refresh leaves the
+  // list as it was rather than flashing an error at someone mid-task, and it
+  // pauses while the tab is hidden.
+  useEffect(() => {
+    if (!token || mustChangePassword) return;
+    const sources = {
+      NURSE: ['/api/visits/queue/WAITING_VITALS', setNurseVitalsQueue],
+      DOCTOR: ['/api/visits/queue/VITALS_DONE', setDoctorConsultQueue],
+      PHARMACIST: ['/api/pharmacy/queue', setPharmacyQueue],
+      ADMIN: ['/api/checkin/recent', setRecentCheckIns],
+    };
+    const source = sources[userRole];
+    if (!source) return;
+    const [url, setList] = source;
+    const interval = setInterval(async () => {
+      if (document.hidden) return;
+      try {
+        const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        if (response.ok) setList(await response.json());
+      } catch {
+        // keep the current list; the next tick tries again
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [token, userRole, mustChangePassword]);
+
   // A success banner (e.g. "Logged in successfully!") clears itself after a
   // few seconds instead of sitting there until someone dismisses it by hand.
   useEffect(() => {
@@ -589,9 +652,12 @@ function App() {
 
       // 10. Fetch my active referral letter, if any
       const referralRes = await fetch('/api/patient/me/referral', { headers: getAuthHeaders() });
-      if (referralRes.ok) {
+      // 204 = no active referral, which is the usual case.
+      if (referralRes.ok && referralRes.status !== 204) {
         const referralData = await referralRes.json();
         setPatientReferral(referralData);
+      } else {
+        setPatientReferral(null);
       }
     } catch (err) {
       console.error("Error fetching patient portal data", err);
@@ -725,14 +791,32 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/patients', {
+      let response = await fetch('/api/patients', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(patientRegForm)
       });
-      const data = await response.json();
+      let data = await parseResponseBody(response);
+      if (response.status === 409 && data && data.possibleDuplicate) {
+        // Same name and date of birth as an existing patient: most likely the
+        // same person, so check them in instead of creating a second record.
+        const d = data.possibleDuplicate;
+        const registerAnyway = window.confirm(
+          `${data.message}\n\nIf this is the same person, press Cancel and check them in with ${d.idNumber || d.mrn} instead.\n\nPress OK only if this is a different person with the same name and birthday.`);
+        if (!registerAnyway) {
+          setCheckinSearchId(d.idNumber || d.mrn);
+          setErrorMessage(`Not registered: ${d.name} is already on file (${d.mrn}). Use "Check in patient" for returning patients.`);
+          return;
+        }
+        response = await fetch('/api/patients', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ ...patientRegForm, confirmNotDuplicate: true })
+        });
+        data = await parseResponseBody(response);
+      }
       if (!response.ok) {
-        throw new Error(data.message || 'Registration failed');
+        throw new Error(typeof data === 'string' ? data : data.message || 'Registration failed');
       }
       let message = `Patient '${data.firstName} ${data.lastName}' registered successfully! MRN: ${data.mrn}`;
 
@@ -875,11 +959,13 @@ function App() {
     setLoading(true);
     try {
       const response = await fetch(`/api/patients/${vitalsSearchId}`, { headers: getAuthHeaders() });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) {
-        throw new Error(data.message || 'Patient not found');
+        throw new Error(typeof data === 'string' ? data : data.message || 'Patient not found');
       }
       setVitalsPatient(data);
+      setVitalsVisitReason('');
+      loadVitalsAllergies(data.id);
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -910,9 +996,9 @@ function App() {
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to record vitals');
+        throw new Error(typeof data === 'string' ? data : data.message || 'Failed to record vitals');
       }
       setSuccessMessage(`Vitals recorded for ${vitalsPatient.firstName} ${vitalsPatient.lastName}. They now appear automatically on the doctor's queue.`);
       setVitalsForm({ bloodPressure: '', temperatureCelsius: '', pulseBpm: '', respirationRate: '', oxygenSaturation: '', weightKg: '', heightCm: '', notes: '' });
@@ -1082,9 +1168,12 @@ function App() {
         headers: getAuthHeaders(),
         body: JSON.stringify({ idNumber: checkinSearchId, reason: checkinReason })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to check patient in');
-      setSuccessMessage(`Checked in ${data.patient.firstName} ${data.patient.lastName}. They now appear automatically on the nurse's vitals queue.`);
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to check patient in');
+      const name = `${data.patient.firstName} ${data.patient.lastName}`;
+      setSuccessMessage(data.alreadyWaiting
+        ? `${name} is already in today's queue (${data.visit.status.replaceAll('_', ' ').toLowerCase()}).${checkinReason.trim() ? ' Reason for visit updated.' : ''} No second visit was opened.`
+        : `Checked in ${name}. They now appear automatically on the nurse's vitals queue.`);
       setCheckinSearchId('');
       setCheckinReason('');
       fetchRecentCheckIns();
@@ -1397,6 +1486,18 @@ function App() {
     setSuccessMessage('');
     setVitalsSearchId(visit.patient.idNumber || visit.patient.mrn);
     setVitalsPatient(visit.patient);
+    setVitalsVisitReason(visit.reason || '');
+    loadVitalsAllergies(visit.patient.id);
+  };
+
+  const loadVitalsAllergies = async (patientId) => {
+    setVitalsAllergies([]);
+    try {
+      const response = await fetch(`/api/allergies/patient/${patientId}`, { headers: getAuthHeaders() });
+      if (response.ok) setVitalsAllergies(await response.json());
+    } catch {
+      // Non-blocking: vitals can still be recorded without the allergy list.
+    }
   };
 
   // Doctor picks a patient straight off the consultation queue — loads the
@@ -1416,6 +1517,29 @@ function App() {
   const handleBackToVitalsQueue = () => {
     setVitalsPatient(null);
     setVitalsSearchId('');
+  };
+
+  // Doctor closes a visit that needs nothing from the pharmacy.
+  const handleFinishConsultation = async () => {
+    if (!window.confirm(`Discharge ${searchedPatientRecord.patient.firstName} ${searchedPatientRecord.patient.lastName} and close this visit?`)) return;
+    setErrorMessage('');
+    setSuccessMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch('/api/visits/discharge', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ patientId: searchedPatientRecord.patient.id, dischargeOutcome: 'HOME' })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Could not close the visit');
+      setSuccessMessage(`${searchedPatientRecord.patient.firstName} ${searchedPatientRecord.patient.lastName} discharged. Visit closed.`);
+      handleBackToDoctorQueue();
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleBackToDoctorQueue = () => {
@@ -1488,10 +1612,26 @@ function App() {
     }
   };
 
+  const handleReferralLookup = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    try {
+      const response = await fetch(`/api/patients/${referralLookupId.trim()}`, { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Patient not found');
+      setReferralLookupPatient(data);
+      setReferralSearchOpen(false);
+      setReferralLookupId('');
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
   const handleCreateReferral = async (e) => {
     e.preventDefault();
-    if (!searchedPatientRecord) {
-      setErrorMessage('Locate a patient first, then refer them to another facility.');
+    const referralPatient = referralLookupPatient || (referralSearchOpen ? null : searchedPatientRecord?.patient);
+    if (!referralPatient) {
+      setErrorMessage('Find the patient first, then refer them to another facility.');
       return;
     }
     setErrorMessage('');
@@ -1501,12 +1641,13 @@ function App() {
       const response = await fetch('/api/referrals', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ patientId: searchedPatientRecord.patient.id, ...referralForm })
+        body: JSON.stringify({ patientId: referralPatient.id, ...referralForm })
       });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Referral failed');
       setSuccessMessage('Referral sent.');
       setReferralForm({ toFacilityId: '', urgency: 'ROUTINE', reason: '', clinicalSummary: '' });
+      setReferralLookupPatient(null);
       fetchReferrals();
     } catch (err) {
       setErrorMessage(err.message);
@@ -2591,10 +2732,13 @@ function App() {
         <div className="udhr-record-card" style={{ maxWidth: 'clamp(280px, 60%, 480px)', marginBottom: '20px' }}>
           <div className="udhr-record-body">
             <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px' }}>Refer to another facility</h3>
-            {searchedPatientRecord ? (
+            {(() => {
+              const rp = referralLookupPatient || (referralSearchOpen ? null : searchedPatientRecord?.patient);
+              return rp ? (
               <>
                 <p className="udhr-empty-note" style={{ marginBottom: '14px' }}>
-                  For {searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}. Load a different patient under "Patients" to refer someone else.
+                  For {rp.firstName} {rp.lastName} (MRN {rp.mrn}).{' '}
+                  <button type="button" className="udhr-link-button" onClick={() => { setReferralLookupPatient(null); setReferralSearchOpen(true); }}>Refer someone else</button>
                 </p>
                 <form onSubmit={handleCreateReferral}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -2609,15 +2753,19 @@ function App() {
                       <option value="URGENT">Urgent</option>
                       <option value="EMERGENCY">Emergency</option>
                     </select>
-                    <input type="text" className="udhr-input" placeholder="Reason for referral" value={referralForm.reason} onChange={(e) => setReferralForm({ ...referralForm, reason: e.target.value })} required />
+                    <input type="text" className="udhr-input" aria-label="Reason for referral" placeholder="Reason for referral" value={referralForm.reason} onChange={(e) => setReferralForm({ ...referralForm, reason: e.target.value })} required />
                     <textarea className="udhr-textarea" placeholder="Clinical summary" value={referralForm.clinicalSummary} onChange={(e) => setReferralForm({ ...referralForm, clinicalSummary: e.target.value })} rows={2} />
                     <button type="submit" className="udhr-btn-primary" disabled={loading}>Send referral</button>
                   </div>
                 </form>
               </>
             ) : (
-              <p className="udhr-empty-note">Load a patient under "Patients" first, then come back here to refer them.</p>
-            )}
+              <form onSubmit={handleReferralLookup} className="udhr-search-bar">
+                <input type="text" className="udhr-input" value={referralLookupId} onChange={(e) => setReferralLookupId(e.target.value)} placeholder="Patient ID number or MRN" aria-label="Patient ID number or MRN" required />
+                <button type="submit" className="udhr-btn-compact">Find patient</button>
+              </form>
+            );
+            })()}
           </div>
         </div>
 
@@ -2808,25 +2956,49 @@ function App() {
             <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)', marginBottom: '16px' }}>
               <div className="udhr-record-body">
                 <p className="udhr-row-title" style={{ fontSize: '14px', marginBottom: '2px' }}>{vitalsPatient.firstName} {vitalsPatient.lastName}</p>
-                <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>
+                <p className="udhr-row-subtitle" style={{ marginBottom: '10px' }}>
                   {vitalsPatient.idNumber ? `ID: ${vitalsPatient.idNumber} · ` : ''}MRN: {vitalsPatient.mrn} · {vitalsPatient.gender} · DOB {vitalsPatient.dateOfBirth}
                 </p>
+                {vitalsVisitReason && (
+                  <p className="udhr-row-subtitle" style={{ marginBottom: '8px' }}><strong>Reason for visit:</strong> {vitalsVisitReason}</p>
+                )}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
+                  {vitalsAllergies.length > 0 ? vitalsAllergies.map(a => (
+                    <span key={a.id} className="udhr-tag danger">{a.allergen} allergy{a.severity ? ` (${a.severity.toLowerCase()})` : ''}</span>
+                  )) : <span className="udhr-tag neutral">No recorded allergies</span>}
+                </div>
                 <form onSubmit={handleRecordVitals}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                    <input type="text" className="udhr-input" placeholder="Blood pressure (e.g. 120/80)" value={vitalsForm.bloodPressure} onChange={(e) => setVitalsForm({ ...vitalsForm, bloodPressure: e.target.value })} />
-                    <input type="number" step="0.1" className="udhr-input" placeholder="Temp (°C)" value={vitalsForm.temperatureCelsius} onChange={(e) => setVitalsForm({ ...vitalsForm, temperatureCelsius: e.target.value })} />
+                  <div className="udhr-vitals-grid">
+                    {[
+                      ['bloodPressure', 'Blood pressure', 'text', null, 'e.g. 120/80', 'mmHg'],
+                      ['temperatureCelsius', 'Temperature', 'number', '0.1', 'e.g. 36.8', '°C'],
+                      ['pulseBpm', 'Pulse', 'number', '1', 'e.g. 72', 'bpm'],
+                      ['respirationRate', 'Respiration rate', 'number', '1', 'e.g. 16', 'breaths/min'],
+                      ['oxygenSaturation', 'SpO2', 'number', '1', 'e.g. 98', '%'],
+                      ['weightKg', 'Weight', 'number', '0.1', 'e.g. 70', 'kg'],
+                      ['heightCm', 'Height', 'number', '0.1', 'e.g. 170', 'cm'],
+                    ].map(([key, label, type, step, placeholder, unit]) => {
+                      const flag = vitalFlag(key, vitalsForm[key]);
+                      return (
+                        <div key={key} className="udhr-form-group" style={{ marginBottom: 0 }}>
+                          <label className="udhr-label" htmlFor={`vital-${key}`}>{label} <span style={{ fontWeight: 400 }}>({unit})</span></label>
+                          <input
+                            id={`vital-${key}`}
+                            type={type}
+                            step={step || undefined}
+                            className={`udhr-input ${flag ? 'udhr-input-flagged' : ''}`}
+                            placeholder={placeholder}
+                            value={vitalsForm[key]}
+                            onChange={(e) => setVitalsForm({ ...vitalsForm, [key]: e.target.value })}
+                          />
+                          {flag && <p className="udhr-vital-flag">{flag === 'high' ? 'High' : 'Low'}: check before sending</p>}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                    <input type="number" className="udhr-input" placeholder="Pulse (bpm)" value={vitalsForm.pulseBpm} onChange={(e) => setVitalsForm({ ...vitalsForm, pulseBpm: e.target.value })} />
-                    <input type="number" className="udhr-input" placeholder="Respiration rate" value={vitalsForm.respirationRate} onChange={(e) => setVitalsForm({ ...vitalsForm, respirationRate: e.target.value })} />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                    <input type="number" className="udhr-input" placeholder="SpO2 (%)" value={vitalsForm.oxygenSaturation} onChange={(e) => setVitalsForm({ ...vitalsForm, oxygenSaturation: e.target.value })} />
-                    <input type="number" step="0.1" className="udhr-input" placeholder="Weight (kg)" value={vitalsForm.weightKg} onChange={(e) => setVitalsForm({ ...vitalsForm, weightKg: e.target.value })} />
-                    <input type="number" step="0.1" className="udhr-input" placeholder="Height (cm)" value={vitalsForm.heightCm} onChange={(e) => setVitalsForm({ ...vitalsForm, heightCm: e.target.value })} />
-                  </div>
-                  <div className="udhr-form-group">
-                    <textarea className="udhr-textarea" rows={2} placeholder="Anything the doctor should know before seeing the patient..." value={vitalsForm.notes} onChange={(e) => setVitalsForm({ ...vitalsForm, notes: e.target.value })} />
+                  <div className="udhr-form-group" style={{ marginTop: '12px' }}>
+                    <label className="udhr-label" htmlFor="vital-notes">Notes for the doctor (optional)</label>
+                    <textarea id="vital-notes" className="udhr-textarea" rows={2} placeholder="Anything the doctor should know before seeing the patient..." value={vitalsForm.notes} onChange={(e) => setVitalsForm({ ...vitalsForm, notes: e.target.value })} />
                   </div>
                   <button type="submit" className="udhr-btn-primary" disabled={loading}>{loading ? 'Saving...' : 'Save vitals & send to doctor'}</button>
                 </form>
@@ -2964,6 +3136,32 @@ function App() {
                       <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>
                         Last visit: {lastVisit ? `${new Date(lastVisit.visitDate).toLocaleDateString()} — ${lastVisit.reason}${lastVisit.notes ? ` (${lastVisit.notes})` : ''}` : 'No recorded visits'}
                       </p>
+                    );
+                  })()}
+                  {searchedPatientRecord.vitals && searchedPatientRecord.vitals.length > 0 && (() => {
+                    // The vitals the nurse just took, up front instead of behind a tab.
+                    const v = searchedPatientRecord.vitals[0];
+                    const items = [
+                      ['bloodPressure', 'BP', v.bloodPressure, ''],
+                      ['temperatureCelsius', 'Temp', v.temperatureCelsius, '°C'],
+                      ['pulseBpm', 'Pulse', v.pulseBpm, ' bpm'],
+                      ['respirationRate', 'Resp', v.respirationRate, '/min'],
+                      ['oxygenSaturation', 'SpO2', v.oxygenSaturation, '%'],
+                      ['weightKg', 'Weight', v.weightKg, ' kg'],
+                    ].filter(([, , value]) => value !== null && value !== undefined && value !== '');
+                    return (
+                      <div className="udhr-vitals-strip">
+                        <span className="udhr-row-subtitle">Vitals {new Date(v.recordedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}:</span>
+                        {items.map(([key, label, value, unit]) => {
+                          const flag = vitalFlag(key, value);
+                          return (
+                            <span key={key} className={`udhr-vital-chip ${flag ? 'flagged' : ''}`}>
+                              {label} {value}{unit}{flag ? (flag === 'high' ? ' ↑' : ' ↓') : ''}
+                            </span>
+                          );
+                        })}
+                        {v.notes && <span className="udhr-row-subtitle" style={{ width: '100%' }}>Nurse: {v.notes}</span>}
+                      </div>
                     );
                   })()}
                 </div>
@@ -3266,7 +3464,7 @@ function App() {
                     <form onSubmit={handleAddDiagnosis}>
                       <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Add clinical diagnosis</h4>
                       <div className="udhr-form-group">
-                        <input type="text" className="udhr-input" placeholder="Condition or diagnosis (e.g. Influenza)" value={addDiagnosisForm.conditionName} onChange={(e) => setAddDiagnosisForm({ ...addDiagnosisForm, conditionName: e.target.value })} required />
+                        <input type="text" className="udhr-input" aria-label="Condition or diagnosis" placeholder="Condition or diagnosis (e.g. Influenza)" value={addDiagnosisForm.conditionName} onChange={(e) => setAddDiagnosisForm({ ...addDiagnosisForm, conditionName: e.target.value })} required />
                       </div>
                       <div className="udhr-form-group">
                         <textarea className="udhr-textarea" rows={3} placeholder="Clinical notes" value={addDiagnosisForm.notes} onChange={(e) => setAddDiagnosisForm({ ...addDiagnosisForm, notes: e.target.value })} />
@@ -3326,8 +3524,9 @@ function App() {
                       </button>
                     </form>
 
-                    <form onSubmit={handleAddAlert}>
-                      <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Add clinical alert</h4>
+                    <details className="udhr-secondary-action">
+                    <summary>Add a clinical alert (optional)</summary>
+                    <form onSubmit={handleAddAlert} style={{ marginTop: '10px' }}>
                       <div className="udhr-form-group">
                         <select className="udhr-input" value={addAlertForm.severity} onChange={(e) => setAddAlertForm({ ...addAlertForm, severity: e.target.value })} required>
                           <option value="LOW">Low</option>
@@ -3341,6 +3540,27 @@ function App() {
                       </div>
                       <button type="submit" className="udhr-btn-neutral">Save clinical alert</button>
                     </form>
+                    </details>
+                  </div>
+                )}
+                {activeRecordTab === 'add' && searchedPatientRecord.currentVisit && (
+                  <div className="udhr-finish-bar">
+                    {searchedPatientRecord.currentVisit.status === 'SENT_TO_PHARMACY' ? (
+                      <>
+                        <span>Prescriptions are with the pharmacy; the visit closes when they're dispensed.</span>
+                        <button type="button" className="udhr-btn-primary" onClick={handleBackToDoctorQueue}>Finish consultation</button>
+                      </>
+                    ) : ['DISCHARGED', 'COMPLETE', 'REFERRED'].includes(searchedPatientRecord.currentVisit.status) ? (
+                      <>
+                        <span>This visit is closed ({searchedPatientRecord.currentVisit.status.replaceAll('_', ' ').toLowerCase()}).</span>
+                        <button type="button" className="udhr-btn-neutral" onClick={handleBackToDoctorQueue}>Back to queue</button>
+                      </>
+                    ) : (
+                      <>
+                        <span>{searchedPatientRecord.currentVisit.status === 'SELF_DISPENSED' ? 'Medicine given in the room. Close the visit when you are done.' : 'No medicine needed? Close the visit so the patient leaves the queue.'}</span>
+                        <button type="button" className="udhr-btn-primary" onClick={handleFinishConsultation} disabled={loading}>Finish & discharge</button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -3933,10 +4153,22 @@ function App() {
               <div className="udhr-record-body">
                 <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Log dispense event</h3>
                 <form onSubmit={handleLogDispense} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <input type="number" className="udhr-input" placeholder="Prescription ID" value={dispenseLogForm.prescriptionId} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, prescriptionId: e.target.value })} required />
-                  <input type="text" className="udhr-input" placeholder="Quantity dispensed (e.g. 30 tablets)" value={dispenseLogForm.quantityDispensed} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, quantityDispensed: e.target.value })} required />
-                  <input type="number" className="udhr-input" placeholder="Days supply" value={dispenseLogForm.daysSupply} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, daysSupply: e.target.value })} />
-                  <input type="text" className="udhr-input" placeholder="Pharmacy notes" value={dispenseLogForm.pharmacyNotes} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, pharmacyNotes: e.target.value })} />
+                  <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                    <label className="udhr-label">Prescription ID</label>
+                    <input type="number" className="udhr-input" placeholder="Prescription ID" value={dispenseLogForm.prescriptionId} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, prescriptionId: e.target.value })} required />
+                  </div>
+                  <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                    <label className="udhr-label">Quantity dispensed</label>
+                    <input type="text" className="udhr-input" placeholder="Quantity dispensed (e.g. 30 tablets)" value={dispenseLogForm.quantityDispensed} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, quantityDispensed: e.target.value })} required />
+                  </div>
+                  <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                    <label className="udhr-label">Days supply</label>
+                    <input type="number" className="udhr-input" placeholder="Days supply" value={dispenseLogForm.daysSupply} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, daysSupply: e.target.value })} />
+                  </div>
+                  <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                    <label className="udhr-label">Pharmacy notes (optional)</label>
+                    <input type="text" className="udhr-input" placeholder="Pharmacy notes" value={dispenseLogForm.pharmacyNotes} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, pharmacyNotes: e.target.value })} />
+                  </div>
                   <button type="submit" className="udhr-btn-neutral" style={{ gridColumn: '1 / -1' }}>Log dispense</button>
                 </form>
 
@@ -4031,7 +4263,7 @@ function App() {
                     <input
                       type="number"
                       className="udhr-input"
-                      placeholder="±qty"
+                      placeholder="±qty" aria-label="Quantity to add (+) or write off (−)" title="Quantity to add (+) or write off (−)"
                       value={stockAdjustAmount[item.id] || ''}
                       onChange={(e) => setStockAdjustAmount(prev => ({ ...prev, [item.id]: e.target.value }))}
                       style={{ width: '90px' }}

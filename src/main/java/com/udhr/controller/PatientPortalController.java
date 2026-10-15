@@ -52,7 +52,10 @@ public class PatientPortalController {
     public ResponseEntity<?> getReferral() {
         try {
             String idNumber = getLoggedInPatientId();
-            return ResponseEntity.ok(referralService.getActiveReferralForPatient(idNumber));
+            // No active referral is the normal case: 204, rather than a 200 with an
+            // empty body that the portal then failed to parse on every load.
+            var referral = referralService.getActiveReferralForPatient(idNumber);
+            return referral == null ? ResponseEntity.noContent().build() : ResponseEntity.ok(referral);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }

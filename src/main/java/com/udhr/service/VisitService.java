@@ -71,6 +71,15 @@ public class VisitService {
      * or pharmacist all land on the same visit just by looking the patient up
      * by ID number, with no queue ticket needed.
      */
+    /** The patient's latest visit if it's still in progress, else null. */
+    public Visit findOpenVisit(Patient patient) {
+        List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
+        if (!visits.isEmpty() && !TERMINAL_STATUSES.contains(visits.get(0).getStatus())) {
+            return visits.get(0);
+        }
+        return null;
+    }
+
     public Visit findOrCreateOpenVisit(Patient patient, Staff staff, String reason) {
         List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
         if (!visits.isEmpty()) {

@@ -1,6 +1,7 @@
 package com.udhr.controller;
 
 import com.udhr.dto.PatientRequest;
+import com.udhr.exception.PossibleDuplicatePatientException;
 import com.udhr.dto.PatientRecordResponse;
 import com.udhr.model.Patient;
 import com.udhr.service.PatientService;
@@ -59,6 +60,14 @@ public class PatientController {
         try {
             Patient patient = patientService.registerPatient(patientRequest, staffNumber);
             return ResponseEntity.status(HttpStatus.CREATED).body(patient);
+        } catch (PossibleDuplicatePatientException e) {
+            Patient existing = e.getExisting();
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(java.util.Map.of(
+                    "message", e.getMessage(),
+                    "possibleDuplicate", java.util.Map.of(
+                            "mrn", existing.getMrn(),
+                            "idNumber", existing.getIdNumber() != null ? existing.getIdNumber() : "",
+                            "name", existing.getFirstName() + " " + existing.getLastName())));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
         }

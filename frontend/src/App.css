@@ -1328,3 +1328,117 @@
   margin: 0 0 0 16px;
   padding: 0;
 }
+
+/* Nurse vitals form: labelled fields in a responsive grid, with abnormal
+   readings outlined so they are double-checked before going to the doctor. */
+.udhr-vitals-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.udhr-input.udhr-input-flagged {
+  border-color: var(--udhr-danger);
+  background: var(--udhr-danger-tint);
+}
+
+.udhr-vital-flag {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--udhr-danger-text);
+}
+
+.udhr-link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--udhr-primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Doctor: latest vitals strip under the patient header. */
+.udhr-vitals-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.udhr-vital-chip {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--udhr-border-subtle);
+  color: var(--udhr-text-secondary);
+}
+
+.udhr-vital-chip.flagged {
+  background: var(--udhr-danger-tint);
+  color: var(--udhr-danger-text);
+}
+
+/* Secondary actions tucked away so the main task stays in front. */
+.udhr-secondary-action summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--udhr-text-secondary);
+}
+
+.udhr-finish-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--udhr-border);
+  font-size: 13px;
+  color: var(--udhr-text-secondary);
+}
+
+.udhr-finish-bar .udhr-btn-primary,
+.udhr-finish-bar .udhr-btn-neutral {
+  width: auto;
+}
+
+/* ===== Small screens (P2-11) ===== */
+@media (max-width: 640px) {
+  /* Patient portal tabs wrap onto a second row instead of scrolling off the
+     edge with no hint that more tabs exist. */
+  .udhr-tab-bar {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  /* Room under the last card so the floating chat button never sits on top
+     of something the patient needs to tap. */
+  .udhr-page {
+    padding-bottom: 96px;
+  }
+
+  .udhr-chat-fab {
+    bottom: 16px;
+    right: 16px;
+  }
+
+  .udhr-chat-widget {
+    right: 16px;
+    left: 16px;
+    width: auto;
+    bottom: 84px;
+  }
+}
+
+@media (max-width: 860px) {
+  /* Sign-in first on phones; the welcome text and public notices follow. */
+  .udhr-login-form-pane {
+    order: -1;
+  }
+}

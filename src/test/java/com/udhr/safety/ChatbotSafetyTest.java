@@ -75,7 +75,8 @@ class ChatbotSafetyTest {
 
     @Test
     void realQuestionsContainingHiAreNotTreatedAsGreetings() throws Exception {
-        assertThat(ask("Which medication should I avoid?").get("reply").asText()).doesNotContain(GREETING).containsIgnoringCase("allerg");
+        assertThat(ask("Which medication should I avoid?").get("reply").asText())
+                .doesNotContain(GREETING).contains("Amoxicillin").doesNotContain("Unknown");
         assertThat(ask("I am HIV positive and on ARVs, what food should I avoid?").get("reply").asText()).doesNotContain(GREETING);
 
         JsonNode rash = ask("My child has a rash");

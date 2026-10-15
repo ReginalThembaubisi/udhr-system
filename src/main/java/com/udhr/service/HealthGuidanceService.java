@@ -27,7 +27,7 @@ public class HealthGuidanceService {
     private DietaryGuidelineRepository dietaryGuidelineRepository;
 
     @Autowired
-    private OpenFdaService openFdaService;
+    private MedicationWarningService medicationWarningService;
 
     public HealthGuidanceResponse getPersonalGuidance(String patientIdNumber) {
         Patient patient = patientRepository.findByIdNumber(patientIdNumber)
@@ -54,10 +54,10 @@ public class HealthGuidanceService {
             dietaryGuidelines = dietaryGuidelineRepository.findByConditionNameIn(conditions);
         }
 
-        // Retrieve FDA medication warnings for each allergy
+        // Medicines to avoid for each allergy (curated, see MedicationWarningService)
         Map<String, List<Map<String, Object>>> medicationWarnings = new HashMap<>();
         for (String allergen : allergies) {
-            List<Map<String, Object>> warnings = openFdaService.getMedicationWarnings(allergen);
+            List<Map<String, Object>> warnings = medicationWarningService.getMedicationWarnings(allergen);
             medicationWarnings.put(allergen, warnings);
         }
 

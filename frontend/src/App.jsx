@@ -2086,7 +2086,7 @@ function App() {
                     <div key={allergen} className="udhr-card">
                       <p className="udhr-row-title">Allergen: {allergen.toUpperCase()}</p>
                       {warnings.length === 0 ? (
-                        <p className="udhr-empty-note">No FDA alerts found for this allergen. Consult your doctor.</p>
+                        <p className="udhr-empty-note">No specific medicines on file for this allergy. Tell your doctor or pharmacist about it before starting anything new.</p>
                       ) : (
                         warnings.map((w, idx) => (
                           <p key={idx} className="udhr-row-subtitle" style={{ marginTop: '8px' }}>

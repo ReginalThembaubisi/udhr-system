@@ -9,6 +9,7 @@ import com.udhr.repository.PrescriptionRepository;
 import com.udhr.repository.StaffRepository;
 import com.udhr.repository.VisitRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -46,10 +47,17 @@ public class PharmacyService {
         List<Visit> visits = visitRepository.findByPatientIdOrderByVisitDateDesc(patient.getId());
         Visit currentVisit = visits.isEmpty() ? null : visits.get(0);
 
-        List<Prescription> pending = prescriptionRepository
-                .findByPatientIdAndDispenseMethodAndDispensedFalseOrderByCreatedAtDesc(patient.getId(), "PHARMACY");
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Logged in staff not found"));
 
-        Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
+        // Only this facility's prescriptions can be dispensed here (see
+        // dispense below), so only those are listed.
+        List<Prescription> pending = prescriptionRepository
+                .findByPatientIdAndDispenseMethodAndDispensedFalseOrderByCreatedAtDesc(patient.getId(), "PHARMACY")
+                .stream()
+                .filter(p -> isAtFacility(p, staff))
+                .collect(Collectors.toList());
+
         auditService.recordView(staff, patient, "PHARMACY_LOOKUP",
                 "Pharmacy looked up patient: " + patient.getMrn());
 
@@ -97,6 +105,12 @@ public class PharmacyService {
         Staff pharmacist = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Logged in staff not found"));
 
+        // Prescription ids are sequential; without this a pharmacist anywhere
+        // could close out another facility's prescriptions by trying ids.
+        if (!isAtFacility(prescription, pharmacist)) {
+            throw new AccessDeniedException("This prescription was issued at another facility");
+        }
+
         prescription.setDispensed(true);
         prescription.setDispensedAt(LocalDateTime.now());
         prescription.setDispensedBy(pharmacist);
@@ -121,5 +135,10 @@ public class PharmacyService {
                 "Dispensed on " + saved.getDispensedAt());
 
         return saved;
+    }
+
+    private boolean isAtFacility(Prescription prescription, Staff staff) {
+        return prescription.getFacility() != null
+                && prescription.getFacility().getId().equals(staff.getFacility().getId());
     }
 }

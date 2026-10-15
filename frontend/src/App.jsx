@@ -129,8 +129,7 @@ function App() {
   // Nurse: collapsed-by-default section for registering a brand new patient
   const [showNurseRegister, setShowNurseRegister] = useState(false);
 
-  // Admin: staff & facility management (no patient data — admin isn't clinical staff)
-  const [staffList, setStaffList] = useState([]);
+  // Admin: facility management (no patient data — admin isn't clinical staff)
   const [facilityList, setFacilityList] = useState([]);
   const [adminTab, setAdminTab] = useState('frontdesk'); // 'frontdesk', 'staff', 'facilities', or 'announcements'
   const [newStaffForm, setNewStaffForm] = useState({
@@ -189,6 +188,7 @@ function App() {
 
   // System administrator screen — account oversight and the audit trail.
   const [systemAdminTab, setSystemAdminTab] = useState('accounts');
+  const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [systemAdminStaff, setSystemAdminStaff] = useState([]);
   const [auditEntries, setAuditEntries] = useState([]);
   const [auditFilters, setAuditFilters] = useState({ startDate: '', endDate: '', action: '' });
@@ -305,7 +305,6 @@ function App() {
     setActiveTabStaff('patients');
     setVitalsPatient(null);
     setPharmacyRecord(null);
-    setStaffList([]);
     setFacilityList([]);
     setAdminTab('frontdesk');
     setRecentCheckIns([]);
@@ -367,12 +366,13 @@ function App() {
       } else if (userRole === 'PHARMACIST') {
         fetchPharmacyQueue();
       } else if (userRole === 'ADMIN') {
-        fetchStaffList();
         fetchFacilityList();
         fetchRecentCheckIns();
         fetchAnnouncements();
       } else if (userRole === 'SYSTEM_ADMIN') {
         fetchSystemAdminStaff();
+        // The create-account form needs the facility dropdown.
+        fetchFacilityList();
       }
     }
   }, [token, userRole]);
@@ -953,22 +953,7 @@ function App() {
     }
   };
 
-  // Admin: staff & facility management
-  const fetchStaffList = async () => {
-    setErrorMessage('');
-    setLoading(true);
-    try {
-      const response = await fetch('/api/staff', { headers: getAuthHeaders() });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to load staff');
-      setStaffList(data);
-    } catch (err) {
-      setErrorMessage(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Facility list (admin Facilities tab, system admin create-account form)
   const fetchFacilityList = async () => {
     setErrorMessage('');
     setLoading(true);
@@ -994,28 +979,12 @@ function App() {
         headers: getAuthHeaders(),
         body: JSON.stringify(newStaffForm)
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to register staff member');
-      setSuccessMessage(`Staff member '${data.firstName} ${data.lastName}' (${data.role}) created.`);
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to create account');
+      setSuccessMessage(`Account for '${data.firstName} ${data.lastName}' (${data.role}) created. They must change the temporary password at first sign-in.`);
       setNewStaffForm({ staffNumber: '', firstName: '', lastName: '', role: 'NURSE', facilityId: newStaffForm.facilityId, email: '', password: '' });
-      fetchStaffList();
-    } catch (err) {
-      setErrorMessage(err.message);
-    }
-  };
-
-  const handleDeactivateStaff = async (staffId) => {
-    setErrorMessage('');
-    setSuccessMessage('');
-    try {
-      const response = await fetch(`/api/staff/${staffId}/deactivate`, {
-        method: 'PUT',
-        headers: getAuthHeaders()
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'Failed to deactivate staff member');
-      setSuccessMessage('Staff member deactivated.');
-      fetchStaffList();
+      setShowCreateAccount(false);
+      fetchSystemAdminStaff();
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -3461,6 +3430,64 @@ function App() {
           </div>
         )}
 
+        {showCreateAccount ? (
+          <div className="udhr-record-card" style={{ marginBottom: '20px', maxWidth: '640px' }}>
+            <div className="udhr-record-body">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Create account</h3>
+              <form onSubmit={handleRegisterStaff}>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Staff Number</label>
+                  <input type="text" className="udhr-input" value={newStaffForm.staffNumber} onChange={(e) => setNewStaffForm({ ...newStaffForm, staffNumber: e.target.value })} placeholder="e.g. NUR002" required />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                  <input type="text" className="udhr-input" placeholder="First name" value={newStaffForm.firstName} onChange={(e) => setNewStaffForm({ ...newStaffForm, firstName: e.target.value })} required />
+                  <input type="text" className="udhr-input" placeholder="Last name" value={newStaffForm.lastName} onChange={(e) => setNewStaffForm({ ...newStaffForm, lastName: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Role</label>
+                  <select className="udhr-input" value={newStaffForm.role} onChange={(e) => setNewStaffForm({ ...newStaffForm, role: e.target.value })} required>
+                    <option value="DOCTOR">Doctor</option>
+                    <option value="NURSE">Nurse</option>
+                    <option value="PHARMACIST">Pharmacist</option>
+                    <option value="ADMIN">Front desk (Admin)</option>
+                    <option value="SYSTEM_ADMIN">System administrator</option>
+                  </select>
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Facility</label>
+                  <select className="udhr-input" value={newStaffForm.facilityId} onChange={(e) => setNewStaffForm({ ...newStaffForm, facilityId: e.target.value })} required>
+                    <option value="">Select a facility...</option>
+                    {facilityList.map(f => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Email</label>
+                  <input type="email" className="udhr-input" value={newStaffForm.email} onChange={(e) => setNewStaffForm({ ...newStaffForm, email: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Temporary Password</label>
+                  <div className="udhr-password-field">
+                    <input type={showNewStaffPassword ? 'text' : 'password'} className="udhr-input" value={newStaffForm.password} onChange={(e) => setNewStaffForm({ ...newStaffForm, password: e.target.value })} required />
+                    <button type="button" className="udhr-password-toggle" onClick={() => setShowNewStaffPassword(!showNewStaffPassword)} aria-label={showNewStaffPassword ? 'Hide password' : 'Show password'}>
+                      {showNewStaffPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="submit" className="udhr-btn-primary">Create account</button>
+                  <button type="button" className="udhr-btn-neutral" onClick={() => setShowCreateAccount(false)}>Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <button type="button" className="udhr-btn-primary" style={{ marginBottom: '20px', width: 'auto' }} onClick={() => setShowCreateAccount(true)}>
+            + New account
+          </button>
+        )}
+
         <div className="udhr-record-card">
           <div className="udhr-record-body">
             {systemAdminStaff.length === 0 ? (
@@ -3938,7 +3965,6 @@ function App() {
     const adminNavItems = [
       { key: 'frontdesk', label: 'Front Desk', icon: <Clipboard size={17} /> },
       { key: 'visitors', label: 'Visitors', icon: <Clock size={17} /> },
-      { key: 'staff', label: 'Staff', icon: <Users size={17} /> },
       { key: 'facilities', label: 'Facilities', icon: <Building2 size={17} /> },
       { key: 'referrals', label: 'Referrals', icon: <CornerUpRight size={17} /> },
       { key: 'announcements', label: 'Announcements', icon: <Megaphone size={17} /> },
@@ -3948,7 +3974,6 @@ function App() {
       setAdminTab(key);
       setIsMobileNavOpen(false);
       if (key === 'visitors') fetchRecentCheckIns();
-      if (key === 'staff') fetchStaffList();
       if (key === 'facilities') fetchFacilityList();
       if (key === 'referrals') fetchReferralReport();
       if (key === 'announcements') fetchAnnouncements();
@@ -4164,86 +4189,6 @@ function App() {
                 );
               })
             )}
-          </div>
-        </div>
-      </>
-    );
-
-    const renderStaffPanel = () => (
-      <>
-        <h1 className="udhr-page-title">Staff</h1>
-        <p className="udhr-page-subtitle">Everyone with access to this facility.</p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px' }}>
-          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
-            <div className="udhr-record-body">
-              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Register staff member</h3>
-              <form onSubmit={handleRegisterStaff}>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Staff Number</label>
-                  <input type="text" className="udhr-input" value={newStaffForm.staffNumber} onChange={(e) => setNewStaffForm({ ...newStaffForm, staffNumber: e.target.value })} placeholder="e.g. NUR002" required />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-                  <input type="text" className="udhr-input" placeholder="First name" value={newStaffForm.firstName} onChange={(e) => setNewStaffForm({ ...newStaffForm, firstName: e.target.value })} required />
-                  <input type="text" className="udhr-input" placeholder="Last name" value={newStaffForm.lastName} onChange={(e) => setNewStaffForm({ ...newStaffForm, lastName: e.target.value })} required />
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Role</label>
-                  <select className="udhr-input" value={newStaffForm.role} onChange={(e) => setNewStaffForm({ ...newStaffForm, role: e.target.value })} required>
-                    <option value="DOCTOR">Doctor</option>
-                    <option value="NURSE">Nurse</option>
-                    <option value="PHARMACIST">Pharmacist</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Facility</label>
-                  <select className="udhr-input" value={newStaffForm.facilityId} onChange={(e) => setNewStaffForm({ ...newStaffForm, facilityId: e.target.value })} required>
-                    <option value="">Select a facility...</option>
-                    {facilityList.map(f => (
-                      <option key={f.id} value={f.id}>{f.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Email</label>
-                  <input type="email" className="udhr-input" value={newStaffForm.email} onChange={(e) => setNewStaffForm({ ...newStaffForm, email: e.target.value })} required />
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Temporary Password</label>
-                  <div className="udhr-password-field">
-                    <input type={showNewStaffPassword ? 'text' : 'password'} className="udhr-input" value={newStaffForm.password} onChange={(e) => setNewStaffForm({ ...newStaffForm, password: e.target.value })} required />
-                    <button type="button" className="udhr-password-toggle" onClick={() => setShowNewStaffPassword(!showNewStaffPassword)} aria-label={showNewStaffPassword ? 'Hide password' : 'Show password'}>
-                      {showNewStaffPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                </div>
-                <button type="submit" className="udhr-btn-primary">Create staff account</button>
-              </form>
-            </div>
-          </div>
-
-          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
-            <div className="udhr-record-body">
-              {staffList.length === 0 ? (
-                <p className="udhr-empty-note">{loading ? 'Loading...' : 'No staff members yet.'}</p>
-              ) : (
-                staffList.map(s => (
-                  <div key={s.id} className="udhr-list-row">
-                    <div>
-                      <p className="udhr-row-title">{s.firstName} {s.lastName} <span className="udhr-row-subtitle">({s.role})</span></p>
-                      <p className="udhr-row-subtitle">{s.staffNumber} · {s.email}</p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span className={`udhr-tag ${s.active ? 'info' : 'danger'}`}>{s.active ? 'Active' : 'Inactive'}</span>
-                      {s.active && (
-                        <button type="button" className="udhr-btn-neutral" onClick={() => handleDeactivateStaff(s.id)}>Deactivate</button>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
           </div>
         </div>
       </>
@@ -4497,7 +4442,6 @@ function App() {
 
           {adminTab === 'frontdesk' && renderFrontDeskPanel()}
           {adminTab === 'visitors' && renderVisitorsPanel()}
-          {adminTab === 'staff' && renderStaffPanel()}
           {adminTab === 'facilities' && renderFacilitiesPanel()}
           {adminTab === 'referrals' && renderReferralsPanel()}
           {adminTab === 'announcements' && renderAnnouncementsPanel()}

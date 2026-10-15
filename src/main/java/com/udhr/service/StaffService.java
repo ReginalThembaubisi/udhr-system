@@ -40,6 +40,12 @@ public class StaffService {
         if (role == null || !VALID_ROLES.contains(role)) {
             throw new RuntimeException("Role must be one of: " + VALID_ROLES);
         }
+        if (isBlank(request.getFirstName()) || isBlank(request.getLastName()) || isBlank(request.getEmail())) {
+            throw new RuntimeException("First name, last name and email are required");
+        }
+        if (request.getPassword() == null || request.getPassword().length() < 8) {
+            throw new RuntimeException("Temporary password must be at least 8 characters");
+        }
 
         Facility facility = facilityRepository.findById(request.getFacilityId())
                 .orElseThrow(() -> new RuntimeException("Facility not found"));
@@ -83,5 +89,9 @@ public class StaffService {
 
     public List<Staff> getAllStaff() {
         return staffRepository.findAll();
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

@@ -77,6 +77,9 @@ public class SecurityConfig {
                 // referral creation, never PHARMACIST. The rest of /api/visits/** stays open
                 // to PHARMACIST as shared/read (e.g. seeing where a patient came from).
                 .requestMatchers("/api/visits/discharge").hasAnyRole("DOCTOR", "NURSE")
+                // Opening a visit is a clinical intake step; the pharmacist only
+                // reads visits to see where a patient came from.
+                .requestMatchers(HttpMethod.POST, "/api/visits").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/visits/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
                 .requestMatchers("/api/vitals/**").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/pharmacy/**").hasRole("PHARMACIST")
@@ -94,7 +97,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/referrals/report/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
                 .requestMatchers(HttpMethod.POST, "/api/referrals").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers(HttpMethod.POST, "/api/referrals/*/respond").hasAnyRole("DOCTOR", "NURSE")
-                .requestMatchers("/api/referrals/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
+                // Front desk only ever sees the report above, which leaves out the
+                // clinical summary; the referrals themselves are clinical records.
+                .requestMatchers("/api/referrals/**").hasAnyRole("DOCTOR", "NURSE")
 
                 // ---- Dispensing/stock: DOCTOR + NURSE + PHARMACIST, never ADMIN ----
                 .requestMatchers("/api/dispensing/report/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
@@ -105,8 +110,12 @@ public class SecurityConfig {
                 // Facility creation is administrative; listing facilities (needed for the
                 // referral-destination dropdown) is shared/read with DOCTOR/NURSE too.
                 .requestMatchers(HttpMethod.POST, "/api/facilities").hasRole("ADMIN")
-                .requestMatchers("/api/facilities/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
-                .requestMatchers("/api/staff/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
+                .requestMatchers("/api/facilities/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN", "SYSTEM_ADMIN")
+                // Creating and deactivating accounts decides who can see patient
+                // data, so it belongs to the system administrator alone. The front
+                // desk (ADMIN) used to have this too, which let a clerk create a
+                // SYSTEM_ADMIN account for themselves.
+                .requestMatchers("/api/staff/**").hasRole("SYSTEM_ADMIN")
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

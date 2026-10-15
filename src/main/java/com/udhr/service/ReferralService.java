@@ -1,6 +1,7 @@
 package com.udhr.service;
 
 import com.udhr.dto.FacilityReferralTally;
+import com.udhr.dto.ReferralActivityItem;
 import com.udhr.dto.ReferralReportResponse;
 import com.udhr.dto.ReferralRequest;
 import com.udhr.dto.ReferralResponseRequest;
@@ -167,9 +168,10 @@ public class ReferralService {
         List<FacilityReferralTally> topDestinations = tallyByFacility(outgoing, Referral::getToFacility);
         List<FacilityReferralTally> topSources = tallyByFacility(incoming, Referral::getFromFacility);
 
-        List<Referral> recentActivity = Stream.concat(outgoing.stream(), incoming.stream())
+        List<ReferralActivityItem> recentActivity = Stream.concat(outgoing.stream(), incoming.stream())
                 .sorted(Comparator.comparing(Referral::getReferredAt).reversed())
                 .limit(10)
+                .map(ReferralActivityItem::from)
                 .collect(Collectors.toList());
 
         return new ReferralReportResponse(
@@ -204,7 +206,7 @@ public class ReferralService {
                 .sorted(Comparator.comparing(Referral::getReferredAt).reversed())
                 .collect(Collectors.toList());
 
-        List<String> headers = List.of("Date", "Direction", "Patient", "From Facility", "To Facility", "Urgency", "Status", "Reason", "Referred By", "Responded By", "Response Notes");
+        List<String> headers = List.of("Date", "Direction", "Patient", "From Facility", "To Facility", "Urgency", "Status", "Reason", "Referred By", "Responded By");
         List<List<String>> rows = combined.stream()
                 .map(r -> {
                     boolean isOutgoing = r.getFromFacility().getId().equals(facility.getId());
@@ -218,8 +220,9 @@ public class ReferralService {
                             r.getStatus().name(),
                             r.getReason() != null ? r.getReason() : "",
                             r.getReferredBy().getFirstName() + " " + r.getReferredBy().getLastName(),
-                            r.getRespondedBy() != null ? r.getRespondedBy().getFirstName() + " " + r.getRespondedBy().getLastName() : "",
-                            r.getResponseNotes() != null ? r.getResponseNotes() : ""
+                            // Response notes are the receiving clinician's clinical
+                            // reply; this export is for the front desk, so they stay out.
+                            r.getRespondedBy() != null ? r.getRespondedBy().getFirstName() + " " + r.getRespondedBy().getLastName() : ""
                     );
                 })
                 .collect(Collectors.toList());

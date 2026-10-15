@@ -8,6 +8,7 @@ import com.udhr.repository.*;
 import com.udhr.util.CsvUtil;
 import com.udhr.util.DateRangeUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
@@ -46,6 +47,10 @@ public class DispenseService {
 
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
+        if (prescription.getFacility() == null
+                || !prescription.getFacility().getId().equals(staff.getFacility().getId())) {
+            throw new AccessDeniedException("This prescription was issued at another facility");
+        }
 
         // Best-effort: draws down facility stock for this medication if it's
         // being tracked there. Throws (before any Dispense record is

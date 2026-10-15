@@ -12,4 +12,6 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
     Optional<Patient> findByMrn(String mrn);
     boolean existsByMrn(String mrn);
     Optional<Patient> findByPassportNumber(String passportNumber);
+
+    java.util.List<Patient> findByFirstNameIgnoreCaseAndLastNameIgnoreCaseAndDateOfBirth(String firstName, String lastName, java.time.LocalDate dateOfBirth);
 }

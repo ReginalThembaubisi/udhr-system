@@ -50,10 +50,13 @@ public class CheckInController {
         }
 
         try {
-            Visit visit = checkInService.checkIn(checkInRequest, staffNumber);
-            return ResponseEntity.status(HttpStatus.CREATED).body(visit);
+            CheckInService.CheckInResult result = checkInService.checkIn(checkInRequest, staffNumber);
+            return ResponseEntity.status(result.alreadyWaiting() ? HttpStatus.OK : HttpStatus.CREATED).body(java.util.Map.of(
+                    "visit", result.visit(),
+                    "patient", result.visit().getPatient(),
+                    "alreadyWaiting", result.alreadyWaiting()));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
         }
     }
 

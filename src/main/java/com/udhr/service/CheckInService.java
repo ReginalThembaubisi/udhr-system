@@ -37,16 +37,29 @@ public class CheckInService {
      * needed on either side. No vitals, diagnosis, or prescriptions happen
      * here or anywhere else Admin touches.
      */
-    public Visit checkIn(CheckInRequest request, String staffNumber) {
+    /** The visit the patient is now queued under, and whether they were already waiting. */
+    public record CheckInResult(Visit visit, boolean alreadyWaiting) {}
+
+    public CheckInResult checkIn(CheckInRequest request, String staffNumber) {
         Patient patient = patientService.findByIdentifier(request.getIdNumber());
 
         Staff admin = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Logged in staff not found"));
 
-        return visitService.findOrCreateOpenVisit(patient, admin,
-                (request.getReason() != null && !request.getReason().isBlank())
-                        ? request.getReason()
-                        : "Front desk check-in");
+        String reason = request.getReason() != null ? request.getReason().trim() : "";
+        Visit open = visitService.findOpenVisit(patient);
+        if (open != null) {
+            // Already in the queue. Before, this silently kept the old visit and
+            // threw the new reason away while still saying "Checked in". Now the
+            // clerk is told, and a new reason replaces the old one.
+            if (!reason.isEmpty() && !reason.equals(open.getReason())) {
+                open.setReason(reason);
+                open = visitRepository.save(open);
+            }
+            return new CheckInResult(open, true);
+        }
+        return new CheckInResult(visitService.findOrCreateOpenVisit(patient, admin,
+                reason.isEmpty() ? "Front desk check-in" : reason), false);
     }
 
     /**

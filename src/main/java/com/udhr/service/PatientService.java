@@ -1,6 +1,7 @@
 package com.udhr.service;
 
 import com.udhr.dto.PatientRequest;
+import com.udhr.exception.PossibleDuplicatePatientException;
 import com.udhr.dto.PatientRecordResponse;
 import com.udhr.model.*;
 import com.udhr.repository.*;
@@ -92,6 +93,19 @@ public class PatientService {
         if (request.getPassportNumber() != null && !request.getPassportNumber().isBlank()
                 && patientRepository.findByPassportNumber(request.getPassportNumber()).isPresent()) {
             throw new RuntimeException("Patient already registered");
+        }
+
+        if (!Boolean.TRUE.equals(request.getConfirmNotDuplicate())
+                && request.getFirstName() != null && request.getLastName() != null && request.getDateOfBirth() != null) {
+            try {
+                java.util.List<Patient> sameNameAndBirth = patientRepository.findByFirstNameIgnoreCaseAndLastNameIgnoreCaseAndDateOfBirth(
+                        request.getFirstName().trim(), request.getLastName().trim(), LocalDate.parse(request.getDateOfBirth()));
+                if (!sameNameAndBirth.isEmpty()) {
+                    throw new PossibleDuplicatePatientException(sameNameAndBirth.get(0));
+                }
+            } catch (java.time.format.DateTimeParseException ignored) {
+                // a bad date is reported by the normal validation below
+            }
         }
 
         Patient patient = new Patient();

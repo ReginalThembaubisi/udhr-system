@@ -14,6 +14,8 @@ public class PatientRequest {
     private String contactNumber;
     private String email;
     private String address;
+    // Optional: portal PIN chosen by the patient at registration (6 digits).
+    private String portalPin;
 
     // Next of kin, all optional
     private String nextOfKinFirstName;

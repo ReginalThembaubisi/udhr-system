@@ -1,10 +1,13 @@
 package com.udhr.controller;
 
+import com.udhr.dto.PortalPinRequest;
 import com.udhr.dto.AdminPatientLookupResponse;
 import com.udhr.dto.CheckInRequest;
 import com.udhr.dto.CheckInSummaryResponse;
+import com.udhr.model.Patient;
 import com.udhr.model.Visit;
 import com.udhr.service.CheckInService;
+import com.udhr.service.PatientService;
 import com.udhr.security.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +22,9 @@ public class CheckInController {
 
     @Autowired
     private CheckInService checkInService;
+
+    @Autowired
+    private PatientService patientService;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -80,6 +86,24 @@ public class CheckInController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+        }
+    }
+
+    // Front desk sets or resets a patient's portal PIN after checking ID in person.
+    @PostMapping("/portal-pin")
+    public ResponseEntity<?> setPortalPin(@RequestBody PortalPinRequest pinRequest, HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+
+        try {
+            Patient patient = patientService.setPortalPin(pinRequest.getIdentifier(), pinRequest.getPin(), staffNumber);
+            return ResponseEntity.ok(java.util.Map.of(
+                    "message", "Portal PIN set for " + patient.getFirstName() + " " + patient.getLastName(),
+                    "portalPinSet", true));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
         }
     }
 }

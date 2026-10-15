@@ -37,7 +37,7 @@ class ChatbotSafetyTest {
     void loginAsSeededPatient() throws Exception {
         String body = mvc.perform(post("/api/auth/patient/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsString(Map.of("idNumber", "9001015000083", "dateOfBirth", "1990-01-01"))))
+                        .content(json.writeValueAsString(Map.of("idNumber", "9001015000083", "dateOfBirth", "1990-01-01", "pin", "246810"))))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         patientToken = json.readTree(body).get("token").asText();

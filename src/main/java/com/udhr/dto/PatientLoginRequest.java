@@ -6,4 +6,5 @@ import lombok.Data;
 public class PatientLoginRequest {
     private String idNumber;
     private String dateOfBirth; // Format: YYYY-MM-DD
+    private String pin;         // portal PIN set at the clinic
 }

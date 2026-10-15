@@ -5,6 +5,7 @@ import com.udhr.dto.PatientRecordResponse;
 import com.udhr.model.*;
 import com.udhr.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.Year;
@@ -46,6 +47,9 @@ public class PatientService {
 
     @Autowired
     private FacilityRepository facilityRepository;
+
+    @Autowired
+    private BCryptPasswordEncoder passwordEncoder;
 
     /**
      * The one lookup every staff-facing service should use going forward:
@@ -118,6 +122,10 @@ public class PatientService {
         patient.setApgarScore1Min(request.getApgarScore1Min());
         patient.setApgarScore5Min(request.getApgarScore5Min());
 
+        if (request.getPortalPin() != null && !request.getPortalPin().isBlank()) {
+            patient.setPortalPinHash(passwordEncoder.encode(validatePortalPin(request.getPortalPin())));
+        }
+
         Patient savedPatient = patientRepository.save(patient);
 
         Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
@@ -158,5 +166,35 @@ public class PatientService {
                 vitals,
                 currentVisit
         );
+    }
+
+    /**
+     * Front desk sets or resets a patient's portal PIN after checking their
+     * identity in person (e.g. the patient forgot it). Also clears any lockout.
+     */
+    public Patient setPortalPin(String identifier, String pin, String staffNumber) {
+        Patient patient = findByIdentifier(identifier);
+        boolean hadPin = patient.getPortalPinHash() != null;
+        patient.setPortalPinHash(passwordEncoder.encode(validatePortalPin(pin)));
+        patient.setFailedLoginAttempts(0);
+        patient.setLoginLockedUntil(null);
+        Patient saved = patientRepository.save(patient);
+
+        Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
+        auditService.recordChange(staff, saved, hadPin ? "RESET_PORTAL_PIN" : "SET_PORTAL_PIN",
+                (hadPin ? "Reset" : "Set") + " the patient portal PIN for " + saved.getMrn(),
+                hadPin ? "PIN set" : "No PIN", "PIN set");
+        return saved;
+    }
+
+    private String validatePortalPin(String pin) {
+        String trimmed = pin == null ? "" : pin.trim();
+        if (!trimmed.matches("\\d{6}")) {
+            throw new RuntimeException("Portal PIN must be exactly 6 digits");
+        }
+        if (trimmed.chars().distinct().count() == 1 || "123456".equals(trimmed) || "654321".equals(trimmed)) {
+            throw new RuntimeException("Choose a PIN that isn't easy to guess (not 123456 or the same digit six times)");
+        }
+        return trimmed;
     }
 }

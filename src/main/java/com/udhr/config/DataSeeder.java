@@ -196,6 +196,9 @@ public class DataSeeder implements CommandLineRunner {
             patient.setGender("MALE");
             patient.setContactNumber("0821234567");
             patient.setEmail("reginal@udhr.gov.za");
+            // Documented demo PIN for the portal. Only set on a brand-new
+            // database: on an existing one the front desk sets PINs in person.
+            patient.setPortalPinHash(passwordEncoder.encode("246810"));
             patient.setAddress("123 Mandela Drive, Nelspruit, Mpumalanga");
             patient = patientRepository.save(patient);
 

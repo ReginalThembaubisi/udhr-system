@@ -1487,3 +1487,38 @@
   color: var(--udhr-text-secondary, #475569);
   font-size: 14px;
 }
+
+/* Consent at registration (POPIA) */
+.udhr-consent-box {
+  margin: 4px 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--udhr-border);
+  border-radius: 8px;
+  background: var(--udhr-bg);
+}
+.udhr-consent-box summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--udhr-primary);
+  margin-bottom: 8px;
+}
+.udhr-consent-box ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--udhr-text-secondary);
+}
+.udhr-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--udhr-text);
+  cursor: pointer;
+}
+.udhr-checkbox-row input {
+  margin-top: 2px;
+}

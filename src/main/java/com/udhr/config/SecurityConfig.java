@@ -21,16 +21,16 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 public class SecurityConfig {
 
-    // Scripts only from this site, so an injected <script> or inline handler
-    // can't run. Styles and fonts also come from Google Fonts (index.html);
-    // inline styles stay allowed because the screens use style attributes.
+    // Scripts, styles and fonts only from this site, so an injected <script>
+    // or inline handler can't run. Inline styles stay allowed because the
+    // screens use style attributes.
     // Images may come from any HTTPS site: announcement photos are links the
     // front desk pastes in, and an image can't run code.
     private static final String CONTENT_SECURITY_POLICY = String.join("; ",
             "default-src 'self'",
             "script-src 'self'",
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-            "font-src 'self' https://fonts.gstatic.com data:",
+            "style-src 'self' 'unsafe-inline'",
+            "font-src 'self' data:",
             "img-src 'self' data: blob: https:",
             "connect-src 'self'",
             "object-src 'none'",

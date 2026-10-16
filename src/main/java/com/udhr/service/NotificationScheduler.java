@@ -33,26 +33,24 @@ public class NotificationScheduler {
                 Patient patient = reminder.getPatient();
                 if (patient == null) continue;
 
-                String message = String.format("🔔 UDHR Medication Reminder: Hi %s, it's time to take your prescribed medication: %s (%s). Frequency: %s. Scheduled for %s.",
-                        patient.getFirstName(),
-                        reminder.getPrescription().getMedication(),
-                        reminder.getPrescription().getDosage(),
-                        reminder.getFrequency(),
-                        reminder.getReminderTime());
+                String message = reminderText(patient.getFirstName(), reminder.getReminderTime());
 
-                // 1. Send SMS
-                if (patient.getContactNumber() != null && !patient.getContactNumber().isEmpty()) {
+                // Only patients who agreed to SMS reminders get them.
+                if (Boolean.TRUE.equals(patient.getSmsRemindersConsent())
+                        && patient.getContactNumber() != null && !patient.getContactNumber().isEmpty()) {
                     africasTalkingService.sendSMS(patient.getContactNumber(), message);
-                }
-
-                // 2. Send Email (Mocked Console Dispatch)
-                if (patient.getEmail() != null && !patient.getEmail().isEmpty()) {
-                    System.out.println(String.format("[Email Dispatcher] Sending email reminder to: %s | Subject: Medication Reminder - %s | Body: %s",
-                            patient.getEmail(),
-                            reminder.getPrescription().getMedication(),
-                            message));
                 }
             }
         }
+    }
+
+    /**
+     * No medicine name: an SMS can be read by anyone holding the phone, and
+     * some medicines (ARVs, for example) reveal a diagnosis. POPIA treats
+     * health information as special personal information (section 32).
+     */
+    static String reminderText(String firstName, String reminderTime) {
+        return String.format("UDHR: Hi %s, it's time for your %s medication. Open the UDHR app to see which one.",
+                firstName, reminderTime);
     }
 }

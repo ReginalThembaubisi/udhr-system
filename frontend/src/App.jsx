@@ -18,6 +18,26 @@ const LAST_ACTIVITY_KEY = 'udhr_last_activity';
 const LOGOUT_SIGNAL_KEY = 'udhr_logout';
 const NOTICE_KEY = 'udhr_notice';
 
+// Read to every patient at registration (POPIA sections 18 and 26-27). The
+// version is stored with their consent; change PRIVACY_NOTICE_VERSION in
+// PatientService.java too when this wording changes.
+const PRIVACY_NOTICE_VERSION = '2026-10';
+const PRIVACY_NOTICE = [
+  'We keep your health record (your details, visits, vital signs, diagnoses, medicines, allergies and test results) so this clinic can treat you safely.',
+  'Only the staff involved in your care can see it, and every time someone opens it is recorded.',
+  'It is stored securely on servers in Germany (European Union), which has data protection laws as strict as ours.',
+  'We share it only for your care, for example a referral to another facility, or when the law requires it.',
+  'SMS reminders, if you want them, are sent through an SMS company and never name your medicine.',
+  'You can see your record in the patient portal, ask us to correct it, and complain to the clinic or to the Information Regulator (inforeg.org.za).',
+];
+
+const isUnder18 = (dateOfBirth) => {
+  if (!dateOfBirth) return false;
+  const dob = new Date(dateOfBirth);
+  const eighteenth = new Date(dob.getFullYear() + 18, dob.getMonth(), dob.getDate());
+  return eighteenth > new Date();
+};
+
 const readLastActivity = () => {
   try { return Number(localStorage.getItem(LAST_ACTIVITY_KEY)) || 0; } catch { return 0; }
 };
@@ -139,7 +159,8 @@ function App() {
   const [patientRegForm, setPatientRegForm] = useState({
     idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: '', contactNumber: '', address: '', email: '',
     nextOfKinFirstName: '', nextOfKinLastName: '', nextOfKinRelationship: '', nextOfKinPhone: '',
-    motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: '', portalPin: ''
+    motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: '', portalPin: '',
+    privacyNoticeAccepted: false, consentGivenBy: '', smsRemindersConsent: false
   });
   const [showRegExtras, setShowRegExtras] = useState(false);
   // Admin's registration form only: reason for visit, so a brand-new patient
@@ -223,6 +244,7 @@ function App() {
   const [adminLookupId, setAdminLookupId] = useState('');
   const [adminLookupRecord, setAdminLookupRecord] = useState(null);
   const [portalPinInput, setPortalPinInput] = useState('');
+  const [consentForm, setConsentForm] = useState({ consentGivenBy: '', smsRemindersConsent: false, explained: false });
 
   // "Today's Queue" board — everyone still in progress at this facility
   // today, across the whole admin -> nurse -> doctor -> pharmacy pipeline.
@@ -906,7 +928,8 @@ function App() {
       setPatientRegForm({
         idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: '', contactNumber: '', address: '', email: '',
         nextOfKinFirstName: '', nextOfKinLastName: '', nextOfKinRelationship: '', nextOfKinPhone: '',
-        motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: '', portalPin: ''
+        motherIdNumber: '', birthWeightGrams: '', birthLengthCm: '', apgarScore1Min: '', apgarScore5Min: '', portalPin: '',
+        privacyNoticeAccepted: false, consentGivenBy: '', smsRemindersConsent: false
       });
       setRegReasonForVisit('');
       setShowRegExtras(false);
@@ -1278,6 +1301,49 @@ function App() {
       setSuccessMessage(data.message);
       setPortalPinInput('');
       setAdminLookupRecord(prev => ({ ...prev, patient: { ...prev.patient, portalPinSet: true } }));
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // A patient switching SMS reminders on or off (they can withdraw consent at any time).
+  const handleSmsReminders = async (enabled) => {
+    setErrorMessage('');
+    try {
+      const response = await apiFetch('/api/patient/me/sms-reminders', {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ enabled })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : 'Could not update SMS reminders');
+      setPatientProfile(data);
+      setSuccessMessage(enabled ? 'SMS reminders are on.' : 'SMS reminders are off.');
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // Front desk records consent for a patient registered before it was captured.
+  const handleRecordConsent = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await apiFetch('/api/checkin/consent', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          identifier: adminLookupRecord.patient.idNumber || adminLookupRecord.patient.mrn,
+          consentGivenBy: consentForm.consentGivenBy,
+          smsRemindersConsent: consentForm.smsRemindersConsent
+        })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to record consent');
+      setSuccessMessage(`Consent recorded for ${data.firstName} ${data.lastName}.`);
+      setConsentForm({ consentGivenBy: '', smsRemindersConsent: false, explained: false });
+      setAdminLookupRecord(prev => ({ ...prev, patient: data }));
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -1957,6 +2023,39 @@ function App() {
   // sees a clinical record.
   const isSystemAdmin = userRole === 'SYSTEM_ADMIN';
 
+  // Consent block shared by both registration forms (front desk and clinical).
+  const renderConsentFields = () => {
+    const child = isUnder18(patientRegForm.dateOfBirth);
+    return (
+      <div className="udhr-consent-box">
+        <details>
+          <summary>Privacy notice to read to the patient (version {PRIVACY_NOTICE_VERSION})</summary>
+          <ul>
+            {PRIVACY_NOTICE.map(line => <li key={line}>{line}</li>)}
+          </ul>
+        </details>
+        {child && (
+          <div className="udhr-form-group">
+            <label className="udhr-label" htmlFor="consent-given-by">Parent or guardian who agreed (patient is under 18)</label>
+            <input id="consent-given-by" type="text" className="udhr-input" value={patientRegForm.consentGivenBy}
+              onChange={(e) => setPatientRegForm({ ...patientRegForm, consentGivenBy: e.target.value })}
+              placeholder="e.g. Mother: Thandi Zulu" required />
+          </div>
+        )}
+        <label className="udhr-checkbox-row">
+          <input type="checkbox" checked={patientRegForm.privacyNoticeAccepted}
+            onChange={(e) => setPatientRegForm({ ...patientRegForm, privacyNoticeAccepted: e.target.checked })} required />
+          <span>I explained the privacy notice and {child ? 'the parent or guardian' : 'the patient'} agreed</span>
+        </label>
+        <label className="udhr-checkbox-row">
+          <input type="checkbox" checked={patientRegForm.smsRemindersConsent}
+            onChange={(e) => setPatientRegForm({ ...patientRegForm, smsRemindersConsent: e.target.checked })} />
+          <span>Send SMS medication reminders (optional)</span>
+        </label>
+      </div>
+    );
+  };
+
   // Shown on every signed-in screen from 10 minutes without activity. Drawn
   // straight into <body> so nothing on the page (like the chat bubble) can
   // sit on top of it.
@@ -2362,6 +2461,19 @@ function App() {
                   ))}
                 </>
               )}
+
+              <h2 className="udhr-section-title">Your privacy</h2>
+              <div className="udhr-card">
+                <p className="udhr-row-subtitle" style={{ marginTop: 0 }}>
+                  Only the staff involved in your care can open your record, and every time someone does is recorded.
+                  To correct something in your record, ask the front desk at your clinic. You can also complain to the
+                  Information Regulator (inforeg.org.za).
+                </p>
+                <label className="udhr-checkbox-row">
+                  <input type="checkbox" checked={!!patientProfile?.smsRemindersConsent} onChange={(e) => handleSmsReminders(e.target.checked)} />
+                  <span>Send me SMS medication reminders (they never name the medicine)</span>
+                </label>
+              </div>
             </>
           )}
 
@@ -2979,6 +3091,7 @@ function App() {
           <div className="udhr-record-body">
             <form onSubmit={handleRegisterPatient}>
               {renderRegistrationFields()}
+              {renderConsentFields()}
               <button type="submit" className="udhr-btn-primary">Create Patient Record</button>
             </form>
           </div>
@@ -4532,6 +4645,7 @@ function App() {
                     </div>
                   </div>
                 )}
+                {renderConsentFields()}
                 <button type="submit" className="udhr-btn-primary">Create patient record</button>
               </form>
             </div>
@@ -4619,6 +4733,38 @@ function App() {
                     <input type="password" className="udhr-input" value={portalPinInput} onChange={(e) => setPortalPinInput(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="new-password" placeholder="New 6-digit PIN" required style={{ maxWidth: '200px' }} />
                     <button type="submit" className="udhr-btn-compact">{adminLookupRecord.patient.portalPinSet ? 'Reset PIN' : 'Set PIN'}</button>
                   </div>
+                </form>
+
+                <form onSubmit={handleRecordConsent} className="udhr-consent-box">
+                  <p className="udhr-row-title" style={{ marginBottom: '4px' }}>
+                    Privacy consent{' '}
+                    <span className={`udhr-tag ${adminLookupRecord.patient.privacyNoticeAcceptedAt ? 'info' : 'warning'}`}>
+                      {adminLookupRecord.patient.privacyNoticeAcceptedAt
+                        ? `Agreed ${new Date(adminLookupRecord.patient.privacyNoticeAcceptedAt).toLocaleDateString()} by ${adminLookupRecord.patient.consentGivenBy}`
+                        : 'Not recorded'}
+                    </span>
+                  </p>
+                  <p className="udhr-row-subtitle" style={{ marginBottom: '8px' }}>
+                    SMS reminders: {adminLookupRecord.patient.smsRemindersConsent ? 'on' : 'off'}. Record or update consent with the patient present.
+                  </p>
+                  <details>
+                    <summary>Privacy notice to read to the patient (version {PRIVACY_NOTICE_VERSION})</summary>
+                    <ul>{PRIVACY_NOTICE.map(line => <li key={line}>{line}</li>)}</ul>
+                  </details>
+                  {isUnder18(adminLookupRecord.patient.dateOfBirth) && (
+                    <input type="text" className="udhr-input" aria-label="Parent or guardian who agreed" value={consentForm.consentGivenBy}
+                      onChange={(e) => setConsentForm({ ...consentForm, consentGivenBy: e.target.value })}
+                      placeholder="Parent or guardian who agreed, e.g. Mother: Thandi Zulu" required style={{ marginBottom: '8px' }} />
+                  )}
+                  <label className="udhr-checkbox-row">
+                    <input type="checkbox" checked={consentForm.explained} onChange={(e) => setConsentForm({ ...consentForm, explained: e.target.checked })} required />
+                    <span>I explained the privacy notice and they agreed</span>
+                  </label>
+                  <label className="udhr-checkbox-row">
+                    <input type="checkbox" checked={consentForm.smsRemindersConsent} onChange={(e) => setConsentForm({ ...consentForm, smsRemindersConsent: e.target.checked })} />
+                    <span>Send SMS medication reminders</span>
+                  </label>
+                  <button type="submit" className="udhr-btn-compact" style={{ marginTop: '10px' }}>Record consent</button>
                 </form>
 
                 <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 8px' }}>Visit history</p>

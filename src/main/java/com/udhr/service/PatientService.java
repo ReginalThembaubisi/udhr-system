@@ -9,12 +9,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.Year;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class PatientService {
+
+    // Bump when the privacy notice shown at registration changes, so each
+    // patient's record shows which wording they agreed to.
+    public static final String PRIVACY_NOTICE_VERSION = "2026-10";
 
     @Autowired
     private PatientRepository patientRepository;
@@ -108,13 +113,28 @@ public class PatientService {
             }
         }
 
+        if (!Boolean.TRUE.equals(request.getPrivacyNoticeAccepted())) {
+            throw new RuntimeException("Explain the privacy notice to the patient and tick that they agreed before registering.");
+        }
+        LocalDate dateOfBirth;
+        try {
+            dateOfBirth = LocalDate.parse(request.getDateOfBirth());
+        } catch (Exception e) {
+            throw new RuntimeException("Date of birth is required (YYYY-MM-DD)");
+        }
+        String consentGivenBy = consentGivenBy(request.getConsentGivenBy(), dateOfBirth);
+
         Patient patient = new Patient();
+        patient.setPrivacyNoticeAcceptedAt(LocalDateTime.now());
+        patient.setPrivacyNoticeVersion(PRIVACY_NOTICE_VERSION);
+        patient.setConsentGivenBy(consentGivenBy);
+        patient.setSmsRemindersConsent(Boolean.TRUE.equals(request.getSmsRemindersConsent()));
         patient.setMrn(generateMrn());
         patient.setIdNumber(request.getIdNumber() != null && !request.getIdNumber().isBlank() ? request.getIdNumber() : null);
         patient.setPassportNumber(request.getPassportNumber() != null && !request.getPassportNumber().isBlank() ? request.getPassportNumber() : null);
         patient.setFirstName(request.getFirstName());
         patient.setLastName(request.getLastName());
-        patient.setDateOfBirth(LocalDate.parse(request.getDateOfBirth()));
+        patient.setDateOfBirth(dateOfBirth);
         patient.setGender(request.getGender());
         patient.setContactNumber(request.getContactNumber());
         patient.setEmail(request.getEmail());
@@ -199,6 +219,57 @@ public class PatientService {
                 (hadPin ? "Reset" : "Set") + " the patient portal PIN for " + saved.getMrn(),
                 hadPin ? "PIN set" : "No PIN", "PIN set");
         return saved;
+    }
+
+    /**
+     * Records consent for a patient registered before consent was captured, or
+     * updates it (for example a guardian's details, or a change of mind about
+     * SMS reminders). Done by the front desk with the patient present.
+     */
+    public Patient recordConsent(String identifier, String givenBy, Boolean smsRemindersConsent, String staffNumber) {
+        Patient patient = findByIdentifier(identifier);
+        String before = describeConsent(patient);
+        patient.setConsentGivenBy(consentGivenBy(givenBy, patient.getDateOfBirth()));
+        patient.setPrivacyNoticeAcceptedAt(LocalDateTime.now());
+        patient.setPrivacyNoticeVersion(PRIVACY_NOTICE_VERSION);
+        patient.setSmsRemindersConsent(Boolean.TRUE.equals(smsRemindersConsent));
+        Patient saved = patientRepository.save(patient);
+
+        auditService.recordChange(staffRepository.findByStaffNumber(staffNumber).orElse(null), saved, "RECORD_CONSENT",
+                "Recorded privacy notice consent for " + saved.getMrn(), before, describeConsent(saved));
+        return saved;
+    }
+
+    /** A patient switching SMS reminders on or off from the portal (POPIA section 11(2)). */
+    public Patient setSmsRemindersConsent(String idNumber, boolean consent) {
+        Patient patient = findByIdentifier(idNumber);
+        String before = describeConsent(patient);
+        patient.setSmsRemindersConsent(consent);
+        Patient saved = patientRepository.save(patient);
+        auditService.recordChange(null, saved, "PATIENT_SMS_CONSENT",
+                "Patient turned SMS reminders " + (consent ? "on" : "off"), before, describeConsent(saved));
+        return saved;
+    }
+
+    // A child can't consent alone (POPIA section 35): a parent or guardian is named.
+    private static String consentGivenBy(String givenBy, LocalDate dateOfBirth) {
+        String trimmed = givenBy == null ? "" : givenBy.trim();
+        boolean child = dateOfBirth != null && dateOfBirth.isAfter(LocalDate.now().minusYears(18));
+        if (child && (trimmed.isEmpty() || "patient".equalsIgnoreCase(trimmed))) {
+            throw new RuntimeException("This patient is under 18: enter the parent or guardian who agreed (e.g. Mother: Thandi Zulu).");
+        }
+        if (trimmed.length() > 120) {
+            throw new RuntimeException("Keep the name of the person who agreed under 120 characters");
+        }
+        return trimmed.isEmpty() ? "Patient" : trimmed;
+    }
+
+    private static String describeConsent(Patient patient) {
+        if (patient.getPrivacyNoticeAcceptedAt() == null) {
+            return "No consent recorded";
+        }
+        return "Notice " + patient.getPrivacyNoticeVersion() + " agreed by " + patient.getConsentGivenBy()
+                + "; SMS reminders " + (Boolean.TRUE.equals(patient.getSmsRemindersConsent()) ? "on" : "off");
     }
 
     private String validatePortalPin(String pin) {

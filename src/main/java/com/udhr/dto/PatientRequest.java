@@ -19,6 +19,11 @@ public class PatientRequest {
     // Set by the front desk after being warned that a patient with the same
     // name and date of birth already exists, to register them anyway.
     private Boolean confirmNotDuplicate;
+    // POPIA: staff explained the privacy notice and the patient (or a parent
+    // or guardian, for a child) agreed. Registration is refused without it.
+    private Boolean privacyNoticeAccepted;
+    private String consentGivenBy;
+    private Boolean smsRemindersConsent;
 
     // Next of kin, all optional
     private String nextOfKinFirstName;

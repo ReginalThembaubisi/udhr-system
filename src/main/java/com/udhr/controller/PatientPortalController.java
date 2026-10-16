@@ -3,12 +3,15 @@ package com.udhr.controller;
 import com.udhr.dto.PatientRecordResponse;
 import com.udhr.model.Patient;
 import com.udhr.service.PatientPortalService;
+import com.udhr.service.PatientService;
 import com.udhr.service.ReferralService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -22,6 +25,9 @@ public class PatientPortalController {
     @Autowired
     private ReferralService referralService;
 
+    @Autowired
+    private PatientService patientService;
+
     private String getLoggedInPatientId() {
         return (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
@@ -31,6 +37,17 @@ public class PatientPortalController {
         try {
             String idNumber = getLoggedInPatientId();
             Patient patient = patientPortalService.getPatientProfile(idNumber);
+            return ResponseEntity.ok(patient);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+        }
+    }
+
+    /** The patient switching SMS medication reminders on or off. */
+    @PutMapping("/sms-reminders")
+    public ResponseEntity<?> setSmsReminders(@RequestBody java.util.Map<String, Boolean> body) {
+        try {
+            Patient patient = patientService.setSmsRemindersConsent(getLoggedInPatientId(), Boolean.TRUE.equals(body.get("enabled")));
             return ResponseEntity.ok(patient);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());

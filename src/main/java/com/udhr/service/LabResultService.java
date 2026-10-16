@@ -1,5 +1,6 @@
 package com.udhr.service;
 
+import com.udhr.dto.ReportActivityItem;
 import com.udhr.dto.LabResultReportResponse;
 import com.udhr.dto.LabResultRequest;
 import com.udhr.dto.LabStaffTally;
@@ -109,7 +110,7 @@ public class LabResultService {
                 .limit(5)
                 .collect(Collectors.toList());
 
-        List<LabResult> recent = all.stream().limit(10).collect(Collectors.toList());
+        List<ReportActivityItem> recent = all.stream().limit(10).map(ReportActivityItem::from).collect(Collectors.toList());
 
         return new LabResultReportResponse(
                 facility.getName(),
@@ -135,17 +136,14 @@ public class LabResultService {
                 .filter(r -> DateRangeUtil.isWithinRange(r.getTestDate(), startDate, endDate))
                 .collect(Collectors.toList());
 
-        List<String> headers = List.of("Date", "Test Name", "Result", "Unit", "Normal Range", "Patient", "Staff", "Notes");
+        // Which tests were done and by whom, not whose results they were or
+        // what they showed (POPIA section 10).
+        List<String> headers = List.of("Date", "Test Name", "Staff");
         List<List<String>> rows = results.stream()
                 .map(r -> List.of(
                         r.getTestDate().toString(),
                         r.getTestName(),
-                        r.getResult() != null ? r.getResult() : "",
-                        r.getUnit() != null ? r.getUnit() : "",
-                        r.getNormalRange() != null ? r.getNormalRange() : "",
-                        r.getPatient().getFirstName() + " " + r.getPatient().getLastName(),
-                        r.getStaff().getFirstName() + " " + r.getStaff().getLastName(),
-                        r.getNotes() != null ? r.getNotes() : ""
+                        r.getStaff().getFirstName() + " " + r.getStaff().getLastName()
                 ))
                 .collect(Collectors.toList());
 

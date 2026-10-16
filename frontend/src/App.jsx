@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import './App.css';
 import { apiFetch, getAccessToken, onSessionExpired, refreshSession, setAccessToken } from './lib/api';
+import { LANGUAGES, getLanguage, setLanguage, t } from './i18n';
 
 // Sign-out after inactivity on shared clinic computers (fix list P1-4).
 const IDLE_WARNING_MS = 10 * 60 * 1000;
@@ -85,6 +86,11 @@ const parseSaId = (id) => {
   };
 };
 
+// Dates as "16 Oct 2026": the browser's default order is often American
+// (10/16/2026), which a South African reader takes for 10 June.
+const formatDate = (value) => (value ? new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+const formatDateTime = (value) => (value ? new Date(value).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
+
 const isUnder18 = (dateOfBirth) => {
   if (!dateOfBirth) return false;
   const dob = new Date(dateOfBirth);
@@ -126,6 +132,66 @@ function vitalFlag(key, value) {
   return null;
 }
 
+const splitDate = (value) => {
+  const [year = '', month = '', day = ''] = (value || '').split('-');
+  return { year, month, day };
+};
+
+// Day / month / year dropdowns for a date of birth. The browser's own date box
+// shows its own order (often mm/dd/yyyy, which reads wrong in South Africa)
+// and is fiddly on phones for dates decades back. `value` is "YYYY-MM-DD", or
+// "" until all three parts are chosen.
+function DateOfBirthField({ id, value, onChange, required }) {
+  const [parts, setParts] = useState(() => splitDate(value));
+  const lastSent = useRef(value || '');
+
+  // Follow changes made from outside, e.g. filled in from an SA ID number.
+  useEffect(() => {
+    if ((value || '') !== lastSent.current) {
+      lastSent.current = value || '';
+      setParts(splitDate(value));
+    }
+  }, [value]);
+
+  const update = (changes) => {
+    const next = { ...parts, ...changes };
+    setParts(next);
+    const date = new Date(Number(next.year), Number(next.month) - 1, Number(next.day));
+    const complete = next.year && next.month && next.day && date.getDate() === Number(next.day);
+    const full = complete ? `${next.year}-${next.month}-${next.day}` : '';
+    lastSent.current = full;
+    onChange(full);
+  };
+
+  const thisYear = new Date().getFullYear();
+  return (
+    <div className="udhr-dob-field">
+      <select id={id} className="udhr-input" aria-label={t('date.day')} value={parts.day} onChange={(e) => update({ day: e.target.value })} required={required}>
+        <option value="">{t('date.day')}</option>
+        {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map(d => <option key={d} value={d}>{Number(d)}</option>)}
+      </select>
+      <select className="udhr-input" aria-label={t('date.month')} value={parts.month} onChange={(e) => update({ month: e.target.value })} required={required}>
+        <option value="">{t('date.month')}</option>
+        {t('date.months').split(',').map((name, i) => <option key={name} value={String(i + 1).padStart(2, '0')}>{name}</option>)}
+      </select>
+      <select className="udhr-input" aria-label={t('date.year')} value={parts.year} onChange={(e) => update({ year: e.target.value })} required={required}>
+        <option value="">{t('date.year')}</option>
+        {Array.from({ length: 121 }, (_, i) => String(thisYear - i)).map(y => <option key={y} value={y}>{y}</option>)}
+      </select>
+    </div>
+  );
+}
+
+// Shown only once a second language has been added (see locales/en.js).
+function LanguagePicker({ value, onChange }) {
+  if (LANGUAGES.length < 2) return null;
+  return (
+    <select className="udhr-language-picker" aria-label={t('language.label')} value={value} onChange={(e) => onChange(e.target.value)}>
+      {LANGUAGES.map(lang => <option key={lang.code} value={lang.code}>{lang.name}</option>)}
+    </select>
+  );
+}
+
 function App() {
   // Authentication State
   // `token` is the access token from sign-in, kept to know that someone is
@@ -139,6 +205,11 @@ function App() {
   // True while a page load checks whether the session can be resumed, so the
   // login screen doesn't flash up for someone who is still signed in.
   const [restoringSession, setRestoringSession] = useState(true);
+  const [language, setLanguageState] = useState(getLanguage());
+  const changeLanguage = (code) => {
+    setLanguage(code);
+    setLanguageState(code);
+  };
   const [idleWarning, setIdleWarning] = useState(false);
   const [changePasswordForm, setChangePasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
 
@@ -535,6 +606,17 @@ function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // A "Manage" menu closes when you click anywhere else.
+  useEffect(() => {
+    const closeMenus = (e) => {
+      document.querySelectorAll('details.udhr-menu[open]').forEach(menu => {
+        if (!menu.contains(e.target)) menu.open = false;
+      });
+    };
+    document.addEventListener('click', closeMenus);
+    return () => document.removeEventListener('click', closeMenus);
+  }, []);
 
   // Fetch data on login
   useEffect(() => {
@@ -2174,11 +2256,11 @@ function App() {
   const idleDialog = idleWarning ? createPortal(
     <div className="udhr-idle-overlay" role="alertdialog" aria-modal="true" aria-labelledby="udhr-idle-title">
       <div className="udhr-idle-dialog">
-        <h2 id="udhr-idle-title">Are you still there?</h2>
-        <p>For patient privacy you'll be signed out in about 2 minutes unless you continue.</p>
+        <h2 id="udhr-idle-title">{t('idle.title')}</h2>
+        <p>{t('idle.body')}</p>
         <div className="udhr-idle-actions">
-          <button type="button" className="udhr-btn-neutral" onClick={() => handleLogout()}>Sign out now</button>
-          <button type="button" className="udhr-btn-primary" onClick={() => { markActivity(); setIdleWarning(false); }} autoFocus>Stay signed in</button>
+          <button type="button" className="udhr-btn-neutral" onClick={() => handleLogout()}>{t('idle.signOut')}</button>
+          <button type="button" className="udhr-btn-primary" onClick={() => { markActivity(); setIdleWarning(false); }} autoFocus>{t('idle.stay')}</button>
         </div>
       </div>
     </div>,
@@ -2204,10 +2286,8 @@ function App() {
             <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '-0.01em' }}>UDHR</span>
           </div>
           <div>
-            <h1 className="udhr-login-headline">Your health record,<br />in one place.</h1>
-            <p className="udhr-login-tagline">
-              Universal Digital Health Record connects patients, clinics and pharmacies so care follows you — not your paperwork.
-            </p>
+            <h1 className="udhr-login-headline">{t('login.headline1')}<br />{t('login.headline2')}</h1>
+            <p className="udhr-login-tagline">{t('login.tagline')}</p>
           </div>
 
           {publicAnnouncements.length > 0 && (() => {
@@ -2249,8 +2329,9 @@ function App() {
 
         <div className="udhr-login-form-pane">
           <div className="udhr-login-form-col">
-            <h2 className="udhr-login-title">Sign in</h2>
-            <p className="udhr-login-subtitle">Choose how you're accessing UDHR.</p>
+            <LanguagePicker value={language} onChange={changeLanguage} />
+            <h2 className="udhr-login-title">{t('login.title')}</h2>
+            <p className="udhr-login-subtitle">{t('login.subtitle')}</p>
 
             {errorMessage && (
               <div className="udhr-alert-banner error">
@@ -2273,14 +2354,14 @@ function App() {
                 className={`udhr-segmented-btn ${loginRole === 'patient' ? 'active' : ''}`}
                 onClick={() => { setLoginRole('patient'); setErrorMessage(''); }}
               >
-                Patient
+                {t('login.patient')}
               </button>
               <button
                 type="button"
                 className={`udhr-segmented-btn ${loginRole === 'staff' ? 'active' : ''}`}
                 onClick={() => { setLoginRole('staff'); setErrorMessage(''); }}
               >
-                Healthcare Staff
+                {t('login.staff')}
               </button>
             </div>
 
@@ -2288,7 +2369,7 @@ function App() {
               {loginRole === 'patient' ? (
                 <>
                   <div className="udhr-form-group">
-                    <label className="udhr-label" htmlFor="patientId">South African ID Number</label>
+                    <label className="udhr-label" htmlFor="patientId">{t('login.idNumber')}</label>
                     <input
                       type="text"
                       id="patientId"
@@ -2302,23 +2383,16 @@ function App() {
                         if (parsed?.dateOfBirth) setPatientDob(parsed.dateOfBirth);
                       }}
                       inputMode="numeric"
-                      placeholder="13-digit ID number"
+                      placeholder={t('login.idPlaceholder')}
                       required
                     />
                   </div>
                   <div className="udhr-form-group">
-                    <label className="udhr-label" htmlFor="patientDob">Date of Birth</label>
-                    <input
-                      type="date"
-                      id="patientDob"
-                      className="udhr-input"
-                      value={patientDob}
-                      onChange={(e) => setPatientDob(e.target.value)}
-                      required
-                    />
+                    <label className="udhr-label" htmlFor="patientDob">{t('login.dateOfBirth')}</label>
+                    <DateOfBirthField id="patientDob" value={patientDob} onChange={setPatientDob} required />
                   </div>
                   <div className="udhr-form-group">
-                    <label className="udhr-label" htmlFor="patientPin">Portal PIN</label>
+                    <label className="udhr-label" htmlFor="patientPin">{t('login.pin')}</label>
                     <input
                       type="password"
                       id="patientPin"
@@ -2327,10 +2401,10 @@ function App() {
                       onChange={(e) => setPatientPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       inputMode="numeric"
                       autoComplete="current-password"
-                      placeholder="6-digit PIN from your clinic"
+                      placeholder={t('login.pinPlaceholder')}
                       required
                     />
-                    <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>No PIN yet, or forgot it? Ask the front desk at your clinic.</p>
+                    <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>{t('login.pinHelp')}</p>
                   </div>
                 </>
               ) : (
@@ -2368,7 +2442,7 @@ function App() {
               )}
 
               <button type="submit" className="udhr-btn-primary" disabled={loading}>
-                {loading ? 'Signing in...' : 'Sign In'}
+                {loading ? t('login.submitting') : t('login.submit')}
               </button>
             </form>
           </div>
@@ -2398,14 +2472,17 @@ function App() {
               </div>
               UDHR
             </div>
-            <button className="udhr-logout-link" onClick={handleLogout}>
-              <LogOut size={15} /> Log out
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <LanguagePicker value={language} onChange={changeLanguage} />
+              <button className="udhr-logout-link" onClick={handleLogout}>
+                <LogOut size={15} /> {t('portal.logout')}
+              </button>
+            </div>
           </header>
 
           <div className="udhr-greeting">
-            <h1>Hi, {patientProfile?.firstName || 'there'}</h1>
-            <p>Here's where things stand today.</p>
+            <h1>{t('portal.hi', { name: patientProfile?.firstName || t('portal.there') })}</h1>
+            <p>{t('portal.subtitle')}</p>
           </div>
 
           {errorMessage && (
@@ -2433,25 +2510,42 @@ function App() {
             </div>
           )}
 
-          <div className="udhr-tab-bar" style={{ marginTop: '20px' }}>
-            {[
-              ['overview', 'Overview'],
-              ['symptoms', 'Symptom Checker'],
-              ['medications', 'Medications'],
-              ['food', 'Food Checker'],
-              ['labs', 'Lab Results'],
-              ['referral', 'Referral Letter'],
-            ].map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                className={`udhr-tab-pill ${patientPortalTab === key ? 'active' : ''}`}
-                onClick={() => setPatientPortalTab(key)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* Four tabs that fit on one line of a phone; related pages sit
+              together under one of them. */}
+          {(() => {
+            const groups = [
+              { label: t('portal.tab.home'), pages: [['overview', t('portal.tab.home')]] },
+              { label: t('portal.tab.medicines'), pages: [['medications', t('portal.tab.medicines')]] },
+              { label: t('portal.tab.results'), pages: [['labs', t('portal.page.labs')], ['referral', t('portal.page.referral')]] },
+              { label: t('portal.tab.help'), pages: [['symptoms', t('portal.page.symptoms')], ['food', t('portal.page.food')]] },
+            ];
+            const current = groups.find(g => g.pages.some(([key]) => key === patientPortalTab)) || groups[0];
+            return (
+              <>
+                <div className="udhr-tab-bar" style={{ marginTop: '20px' }}>
+                  {groups.map(group => (
+                    <button
+                      key={group.label}
+                      type="button"
+                      className={`udhr-tab-pill ${group === current ? 'active' : ''}`}
+                      onClick={() => { if (group !== current) setPatientPortalTab(group.pages[0][0]); }}
+                    >
+                      {group.label}
+                    </button>
+                  ))}
+                </div>
+                {current.pages.length > 1 && (
+                  <div className="udhr-subpage-bar">
+                    {current.pages.map(([key, label]) => (
+                      <button key={key} type="button" className={`udhr-subpage ${patientPortalTab === key ? 'active' : ''}`} onClick={() => setPatientPortalTab(key)}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* ===== Overview ===== */}
           {patientPortalTab === 'overview' && (
@@ -2463,7 +2557,7 @@ function App() {
                   .sort((a, b) => new Date(a.scheduledTime) - new Date(b.scheduledTime))[0];
                 return (
                   <div className="udhr-next-dose">
-                    <p className="udhr-next-dose-label">Your next medicine</p>
+                    <p className="udhr-next-dose-label">{t('portal.nextMedicine')}</p>
                     {next ? (
                       <>
                         <p className="udhr-next-dose-name">{next.reminder.prescription.medication}</p>
@@ -2471,10 +2565,10 @@ function App() {
                           {new Date(next.scheduledTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           {next.reminder.prescription.dosage ? ` · ${next.reminder.prescription.dosage}` : ''}
                         </p>
-                        <button type="button" className="udhr-btn-primary" onClick={() => handleUpdateAdherence(next.id, 'TAKEN', '')}>I've taken it</button>
+                        <button type="button" className="udhr-btn-primary" onClick={() => handleUpdateAdherence(next.id, 'TAKEN', '')}>{t('portal.taken')}</button>
                       </>
                     ) : (
-                      <p className="udhr-next-dose-time">Nothing due right now.</p>
+                      <p className="udhr-next-dose-time">{t('portal.nothingDue')}</p>
                     )}
                   </div>
                 );
@@ -2482,14 +2576,14 @@ function App() {
 
               <div className="udhr-stat-grid">
                 <div className="udhr-stat-card">
-                  <p className="udhr-stat-label">Weekly adherence</p>
+                  <p className="udhr-stat-label">{t('portal.adherence')}</p>
                   <p className="udhr-stat-value">
                     {/* 0% before anything has been marked looked like a failure. */}
-                    {(reminderData?.stats?.takenDoses || 0) + (reminderData?.stats?.missedDoses || 0) > 0 ? `${reminderData.stats.adherenceScore}%` : 'Not started'}
+                    {(reminderData?.stats?.takenDoses || 0) + (reminderData?.stats?.missedDoses || 0) > 0 ? `${reminderData.stats.adherenceScore}%` : t('portal.notStarted')}
                   </p>
                 </div>
                 <div className="udhr-stat-card">
-                  <p className="udhr-stat-label">Last symptom check</p>
+                  <p className="udhr-stat-label">{t('portal.lastSymptomCheck')}</p>
                   <p className="udhr-stat-value" style={{
                     color: triageHistory[0]?.urgencyLevel === 'RED' ? 'var(--udhr-danger)' : triageHistory[0]?.urgencyLevel === 'YELLOW' ? 'var(--udhr-warning)' : undefined
                   }}>
@@ -2497,7 +2591,7 @@ function App() {
                   </p>
                 </div>
                 <div className="udhr-stat-card">
-                  <p className="udhr-stat-label">Active alerts</p>
+                  <p className="udhr-stat-label">{t('portal.activeAlerts')}</p>
                   <p className="udhr-stat-value" style={{ color: patientAlerts.length > 0 ? 'var(--udhr-danger)' : undefined }}>
                     {patientAlerts.length}
                   </p>
@@ -2506,42 +2600,42 @@ function App() {
 
               {(healthGuidance?.conditions?.length > 0 || healthGuidance?.allergies?.length > 0) && (
                 <>
-                  <h2 className="udhr-section-title">Your health profile</h2>
+                  <h2 className="udhr-section-title">{t('portal.healthProfile')}</h2>
                   <div className="udhr-chip-row">
                     {healthGuidance?.conditions.map((c, i) => (
-                      <span key={`c-${i}`} className="udhr-tag info">Condition: {c}</span>
+                      <span key={`c-${i}`} className="udhr-tag info">{t('portal.condition', { name: c })}</span>
                     ))}
                     {healthGuidance?.allergies.map((a, i) => (
-                      <span key={`a-${i}`} className="udhr-tag danger">⚠️ Allergy: {a}</span>
+                      <span key={`a-${i}`} className="udhr-tag danger">⚠️ {t('portal.allergy', { name: a })}</span>
                     ))}
                   </div>
                 </>
               )}
 
-              <h2 className="udhr-section-title">Quick actions</h2>
+              <h2 className="udhr-section-title">{t('portal.quickActions')}</h2>
               <div className="udhr-quick-grid">
                 <button type="button" className="udhr-quick-card" onClick={() => setChatWidgetOpen(true)}>
                   <MessageCircle size={20} color="#2563eb" />
-                  <span>Ask the health assistant</span>
+                  <span>{t('portal.askAssistant')}</span>
                 </button>
                 <button type="button" className="udhr-quick-card" onClick={() => setPatientPortalTab('symptoms')}>
                   <Search size={20} color="#2563eb" />
-                  <span>Check my symptoms</span>
+                  <span>{t('portal.checkSymptoms')}</span>
                 </button>
                 <button type="button" className="udhr-quick-card" onClick={() => setPatientPortalTab('food')}>
                   <FileSpreadsheet size={20} color="#2563eb" />
-                  <span>Check food ingredients</span>
+                  <span>{t('portal.checkFood')}</span>
                 </button>
               </div>
 
               {patientAlerts && patientAlerts.length > 0 && (
                 <>
-                  <h2 className="udhr-section-title">Clinical warnings & doctor's instructions</h2>
+                  <h2 className="udhr-section-title">{t('portal.clinicalWarnings')}</h2>
                   {patientAlerts.map((alert) => (
                     <div key={alert.id} className="udhr-card">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                         <span className={`udhr-tag ${alert.severity === 'CRITICAL' ? 'danger' : 'info'}`}>{alert.severity} WARNING</span>
-                        <span className="udhr-row-subtitle">{new Date(alert.createdAt).toLocaleDateString()}</span>
+                        <span className="udhr-row-subtitle">{formatDate(alert.createdAt)}</span>
                       </div>
                       <p style={{ margin: 0, fontSize: '13.5px', color: 'var(--udhr-text-secondary)' }}>{alert.message}</p>
                     </div>
@@ -2552,7 +2646,7 @@ function App() {
               {((healthGuidance?.dietaryGuidelines?.length > 0) || (healthGuidance?.healthTips?.length > 0)) && (
                 <details className="udhr-tips">
                   <summary className="udhr-section-title">
-                    Diet and lifestyle tips for you ({(healthGuidance?.dietaryGuidelines?.length || 0) + (healthGuidance?.healthTips?.length || 0)})
+                    {t('portal.dietTips', { count: (healthGuidance?.dietaryGuidelines?.length || 0) + (healthGuidance?.healthTips?.length || 0) })}
                   </summary>
                   {healthGuidance?.dietaryGuidelines?.filter(g => g.foodType === 'EAT').map((item) => (
                     <div key={`eat-${item.id}`} className="udhr-card">
@@ -2577,7 +2671,7 @@ function App() {
 
               {healthGuidance?.medicationWarnings && Object.keys(healthGuidance.medicationWarnings).length > 0 && (
                 <>
-                  <h2 className="udhr-section-title" style={{ marginTop: '24px' }}>Medication allergy warnings</h2>
+                  <h2 className="udhr-section-title" style={{ marginTop: '24px' }}>{t('portal.allergyWarnings')}</h2>
                   {Object.entries(healthGuidance.medicationWarnings).map(([allergen, warnings]) => (
                     <div key={allergen} className="udhr-card">
                       <p className="udhr-row-title">Allergen: {allergen.toUpperCase()}</p>
@@ -2595,16 +2689,12 @@ function App() {
                 </>
               )}
 
-              <h2 className="udhr-section-title">Your privacy</h2>
+              <h2 className="udhr-section-title">{t('portal.privacy')}</h2>
               <div className="udhr-card">
-                <p className="udhr-row-subtitle" style={{ marginTop: 0 }}>
-                  Only the staff involved in your care can open your record, and every time someone does is recorded.
-                  To correct something in your record, ask the front desk at your clinic. You can also complain to the
-                  Information Regulator (inforeg.org.za).
-                </p>
+                <p className="udhr-row-subtitle" style={{ marginTop: 0 }}>{t('portal.privacyBody')}</p>
                 <label className="udhr-checkbox-row">
                   <input type="checkbox" checked={!!patientProfile?.smsRemindersConsent} onChange={(e) => handleSmsReminders(e.target.checked)} />
-                  <span>Send me SMS medication reminders (they never name the medicine)</span>
+                  <span>{t('portal.smsReminders')}</span>
                 </label>
               </div>
             </>
@@ -2671,7 +2761,7 @@ function App() {
                   {triageHistory.map((check) => (
                     <div key={check.id} className="udhr-card">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <span className="udhr-row-subtitle">{new Date(check.checkedAt).toLocaleDateString()}</span>
+                        <span className="udhr-row-subtitle">{formatDate(check.checkedAt)}</span>
                         <span className={`udhr-tag ${check.urgencyLevel === 'RED' ? 'danger' : 'info'}`}>{check.urgencyLevel}</span>
                       </div>
                       <p style={{ margin: 0, fontSize: '13.5px' }}>{check.recommendation.split('[')[0]}</p>
@@ -2905,7 +2995,7 @@ function App() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span className="udhr-row-subtitle">Referred to</span><strong style={{ textAlign: 'right' }}>{patientReferral.toFacility?.name}</strong></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span className="udhr-row-subtitle">Reason</span><strong style={{ textAlign: 'right' }}>{patientReferral.reason}</strong></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span className="udhr-row-subtitle">Issued by</span><strong style={{ textAlign: 'right' }}>Dr. {patientReferral.referredBy?.firstName} {patientReferral.referredBy?.lastName}</strong></div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span className="udhr-row-subtitle">Issued</span><strong style={{ textAlign: 'right' }}>{new Date(patientReferral.referredAt).toLocaleDateString()}</strong></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span className="udhr-row-subtitle">Issued</span><strong style={{ textAlign: 'right' }}>{formatDate(patientReferral.referredAt)}</strong></div>
                   </div>
                   <p className="udhr-empty-note" style={{ marginTop: '14px', marginBottom: 0, textAlign: 'left' }}>
                     Valid immediately — no approval wait. Show this code at {patientReferral.toFacility?.name}'s front desk.
@@ -2996,13 +3086,11 @@ function App() {
           { key: 'labs', label: 'Lab Results', icon: <FileSpreadsheet size={17} /> },
           { key: 'patients', label: 'Register', icon: <Users size={17} /> },
           { key: 'alerts', label: 'Alerts', icon: <ShieldAlert size={17} /> },
-          { key: 'queue', label: 'Queue', icon: <Clock size={17} /> },
           { key: 'referrals', label: 'Referrals', icon: <CornerUpRight size={17} /> },
         ]
       : [
-          { key: 'patients', label: 'Patients', icon: <Users size={17} /> },
+          { key: 'patients', label: "Today's patients", icon: <Users size={17} /> },
           { key: 'alerts', label: 'Alerts', icon: <ShieldAlert size={17} /> },
-          { key: 'queue', label: 'Queue', icon: <Clock size={17} /> },
           { key: 'referrals', label: 'Referrals', icon: <CornerUpRight size={17} /> },
         ];
 
@@ -3010,29 +3098,27 @@ function App() {
       setActiveTabStaff(key);
       setIsMobileNavOpen(false);
       if (key === 'alerts') fetchClinicalAlerts();
-      if (key === 'queue') fetchFacilityQueueToday();
       if (key === 'referrals') fetchReferrals();
       if (key === 'vitals' && isNurse) fetchNurseVitalsQueue();
       if (key === 'patients' && isDoctor) fetchDoctorConsultQueue();
     };
 
-    const renderQueuePanel = () => (
-      <>
-        <h1 className="udhr-page-title">Today's Queue</h1>
-        <p className="udhr-page-subtitle">Everyone still in progress at your facility today, across the whole pipeline.</p>
-        <div className="udhr-record-card">
+    // Everyone in the clinic today, folded under the nurse's and doctor's own
+    // queue instead of being a separate "Queue" tab that looked like the
+    // place to pick patients from.
+    const renderClinicToday = () => (
+      <details className="udhr-clinic-today" onToggle={(e) => { if (e.currentTarget.open) fetchFacilityQueueToday(); }}>
+        <summary>Everyone in the clinic today</summary>
+        <div className="udhr-record-card" style={{ marginTop: '10px' }}>
           <div className="udhr-record-body">
             {facilityQueueToday.length === 0 ? (
-              <p className="udhr-empty-note">No one in the queue right now.</p>
+              <p className="udhr-empty-note">No one else in the clinic right now.</p>
             ) : (
               facilityQueueToday.map(visit => (
                 <div key={visit.id} className="udhr-list-row" style={{ flexWrap: 'wrap' }}>
                   <div>
                     <p className="udhr-row-title">{visit.patient.firstName} {visit.patient.lastName}</p>
-                    <p className="udhr-row-subtitle">
-                      {visit.patient.idNumber ? `ID: ${visit.patient.idNumber} · ` : ''}File no. {visit.patient.mrn}
-                    </p>
-                    <p className="udhr-row-subtitle">{visit.reason} · waiting since {new Date(visit.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                    <p className="udhr-row-subtitle">{visit.reason} · since {new Date(visit.visitDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                   <span className="udhr-tag info">{visitStatusLabel(visit.status)}</span>
                 </div>
@@ -3040,7 +3126,7 @@ function App() {
             )}
           </div>
         </div>
-      </>
+      </details>
     );
 
     const renderReferralsPanel = () => (
@@ -3155,7 +3241,7 @@ function App() {
         </div>
         <div className="udhr-form-group">
           <label className="udhr-label">Date of Birth</label>
-          <input type="date" className="udhr-input" value={patientRegForm.dateOfBirth} onChange={(e) => setPatientRegForm({ ...patientRegForm, dateOfBirth: e.target.value })} required max={new Date().toISOString().split('T')[0]} />
+          <DateOfBirthField value={patientRegForm.dateOfBirth} onChange={(v) => setPatientRegForm(form => ({ ...form, dateOfBirth: v }))} required />
         </div>
         <div className="udhr-form-group">
           <label className="udhr-label">Gender</label>
@@ -3268,6 +3354,7 @@ function App() {
                 )}
               </div>
             </div>
+            {renderClinicToday()}
           </>
         )}
 
@@ -3278,7 +3365,7 @@ function App() {
               <div className="udhr-record-body">
                 <p className="udhr-row-title" style={{ fontSize: '14px', marginBottom: '2px' }}>{vitalsPatient.firstName} {vitalsPatient.lastName}</p>
                 <p className="udhr-row-subtitle" style={{ marginBottom: '10px' }}>
-                  {vitalsPatient.idNumber ? `ID: ${vitalsPatient.idNumber} · ` : ''}File no. {vitalsPatient.mrn} · {vitalsPatient.gender} · DOB {vitalsPatient.dateOfBirth}
+                  {vitalsPatient.idNumber ? `ID: ${vitalsPatient.idNumber} · ` : ''}File no. {vitalsPatient.mrn} · {vitalsPatient.gender} · born {formatDate(vitalsPatient.dateOfBirth)}
                 </p>
                 {vitalsVisitReason && (
                   <p className="udhr-row-subtitle" style={{ marginBottom: '8px' }}><strong>Reason for visit:</strong> {vitalsVisitReason}</p>
@@ -3356,7 +3443,7 @@ function App() {
               <div className="udhr-record-body">
                 <p className="udhr-row-title" style={{ fontSize: '14px', marginBottom: '2px' }}>{labsPatient.firstName} {labsPatient.lastName}</p>
                 <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>
-                  {labsPatient.idNumber ? `ID: ${labsPatient.idNumber} · ` : ''}File no. {labsPatient.mrn} · {labsPatient.gender} · DOB {labsPatient.dateOfBirth}
+                  {labsPatient.idNumber ? `ID: ${labsPatient.idNumber} · ` : ''}File no. {labsPatient.mrn} · {labsPatient.gender} · born {formatDate(labsPatient.dateOfBirth)}
                 </p>
                 <form onSubmit={handleAddLabResult}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
@@ -3386,14 +3473,14 @@ function App() {
       ['labs', 'Labs'],
       ['vitals', 'Vitals'],
       ['conditions', 'Conditions & allergies'],
-      ['immunizations', 'Immunizations'],
+      ['immunizations', 'Immunisations'],
       ['timeline', 'Timeline'],
     ];
 
     const renderDoctorPatientsPanel = () => (
       <>
-        <h1 className="udhr-page-title">Patients</h1>
-        <p className="udhr-page-subtitle">Patients the nurse has taken vitals for and sent through to you — pick one from the list below.</p>
+        <h1 className="udhr-page-title">Today's patients</h1>
+        <p className="udhr-page-subtitle">Patients the nurse has sent through to you. Pick the next one from the list.</p>
 
         {!searchedPatientRecord && (
           <>
@@ -3431,6 +3518,7 @@ function App() {
                 )}
               </div>
             </div>
+            {renderClinicToday()}
           </>
         )}
 
@@ -3444,7 +3532,7 @@ function App() {
                 <div>
                   <p className="udhr-row-title" style={{ fontSize: '16px' }}>{searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}</p>
                   <p className="udhr-row-subtitle">
-                    {searchedPatientRecord.patient.idNumber ? `ID: ${searchedPatientRecord.patient.idNumber} · ` : ''}File no. {searchedPatientRecord.patient.mrn} · {searchedPatientRecord.patient.gender} · Born {searchedPatientRecord.patient.dateOfBirth}
+                    {searchedPatientRecord.patient.idNumber ? `ID: ${searchedPatientRecord.patient.idNumber} · ` : ''}File no. {searchedPatientRecord.patient.mrn} · {searchedPatientRecord.patient.gender} · Born {formatDate(searchedPatientRecord.patient.dateOfBirth)}
                   </p>
                   <p className="udhr-row-subtitle">
                     Contact: {searchedPatientRecord.patient.contactNumber || 'N/A'} · Email: {searchedPatientRecord.patient.email || 'N/A'}
@@ -3455,7 +3543,7 @@ function App() {
                       : null;
                     return (
                       <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>
-                        Last visit: {lastVisit ? `${new Date(lastVisit.visitDate).toLocaleDateString()} — ${lastVisit.reason}${lastVisit.notes ? ` (${lastVisit.notes})` : ''}` : 'No recorded visits'}
+                        Last visit: {lastVisit ? `${formatDate(lastVisit.visitDate)} — ${lastVisit.reason}${lastVisit.notes ? ` (${lastVisit.notes})` : ''}` : 'No recorded visits'}
                       </p>
                     );
                   })()}
@@ -3472,7 +3560,7 @@ function App() {
                     ].filter(([, , value]) => value !== null && value !== undefined && value !== '');
                     return (
                       <div className="udhr-vitals-strip">
-                        <span className="udhr-row-subtitle">Vitals {new Date(v.recordedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}:</span>
+                        <span className="udhr-row-subtitle">Vitals {new Date(v.recordedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}:</span>
                         {items.map(([key, label, value, unit]) => {
                           const flag = vitalFlag(key, value);
                           return (
@@ -3523,13 +3611,25 @@ function App() {
                 </div>
               </div>
 
+              {/* Two choices instead of eight tabs: what the doctor does now, and
+                  everything already on file. */}
               <div className="udhr-record-subtabs" ref={recordSubTabsRef}>
-                {recordSubTabs.map(([key, label]) => (
-                  <button key={key} type="button" className={`udhr-subtab ${activeRecordTab === key ? 'active' : ''}`} onClick={() => setActiveRecordTab(key)}>
-                    {label}
-                  </button>
-                ))}
+                <button type="button" className={`udhr-subtab ${activeRecordTab === 'add' ? 'active' : ''}`} onClick={() => setActiveRecordTab('add')}>
+                  Diagnose & prescribe
+                </button>
+                <button type="button" className={`udhr-subtab ${activeRecordTab !== 'add' ? 'active' : ''}`} onClick={() => { if (activeRecordTab === 'add') setActiveRecordTab('diagnoses'); }}>
+                  History
+                </button>
               </div>
+              {activeRecordTab !== 'add' && (
+                <div className="udhr-history-pills">
+                  {recordSubTabs.filter(([key]) => key !== 'add').map(([key, label]) => (
+                    <button key={key} type="button" className={`udhr-tab-pill ${activeRecordTab === key ? 'active' : ''}`} onClick={() => setActiveRecordTab(key)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className="udhr-record-body">
                 {activeRecordTab === 'diagnoses' && (
@@ -3542,7 +3642,7 @@ function App() {
                           {d.diagnosis} {d.icd10Code && <span className="udhr-tag info" style={{ marginLeft: '6px' }}>ICD-10: {d.icd10Code}</span>}
                           {d.facility?.name && <span className="udhr-tag neutral" style={{ marginLeft: '6px' }}>📍 {d.facility.name}</span>}
                         </p>
-                        <p className="udhr-row-subtitle">Diagnosed: {new Date(d.diagnosedAt).toLocaleString()} · {d.notes}</p>
+                        <p className="udhr-row-subtitle">Diagnosed: {formatDateTime(d.diagnosedAt)} · {d.notes}</p>
                       </div>
                     ))
                   )
@@ -3578,7 +3678,7 @@ function App() {
                           <div key={log.id} className="udhr-list-row">
                             <div>
                               <p className="udhr-row-title">{log.reminder.prescription.medication}</p>
-                              <p className="udhr-row-subtitle">{new Date(log.scheduledTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</p>
+                              <p className="udhr-row-subtitle">{formatDateTime(log.scheduledTime)}</p>
                               {log.notes && <p className="udhr-row-subtitle" style={{ fontStyle: 'italic' }}>"{log.notes}"</p>}
                             </div>
                             <span className={`udhr-tag ${log.status === 'TAKEN' ? 'info' : 'danger'}`}>{log.status}</span>
@@ -3629,7 +3729,7 @@ function App() {
                             </div>
                           )}
                           <div style={{ gridColumn: '1 / -1' }}>
-                            <p className="udhr-row-subtitle">Recorded by {v.recordedBy ? `${v.recordedBy.firstName} ${v.recordedBy.lastName}` : 'nurse'} on {new Date(v.recordedAt).toLocaleString()}</p>
+                            <p className="udhr-row-subtitle">Recorded by {v.recordedBy ? `${v.recordedBy.firstName} ${v.recordedBy.lastName}` : 'nurse'} on {formatDateTime(v.recordedAt)}</p>
                           </div>
                         </div>
                       );
@@ -3765,7 +3865,7 @@ function App() {
                             patientTimeline.symptomChecks.map(check => (
                               <div key={check.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '8px 0' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '12.5px' }}>
-                                  <span className="udhr-row-subtitle">{new Date(check.checkedAt).toLocaleDateString()}</span>
+                                  <span className="udhr-row-subtitle">{formatDate(check.checkedAt)}</span>
                                   <span className={`udhr-tag ${check.urgencyLevel === 'RED' ? 'danger' : 'info'}`}>{check.urgencyLevel}</span>
                                 </div>
                                 <p style={{ margin: '4px 0 0', fontSize: '12.5px' }}>{check.recommendation.split('[')[0]}</p>
@@ -3915,7 +4015,7 @@ function App() {
                     <p className="udhr-row-title" style={{ fontSize: '14px', marginTop: '6px' }}>
                       Patient: {item.patient.firstName} {item.patient.lastName} ({item.patient.idNumber || item.patient.mrn})
                     </p>
-                    <p className="udhr-row-subtitle">Fired: {new Date(alert.createdAt).toLocaleString()} · Type: {alert.alertType}</p>
+                    <p className="udhr-row-subtitle">Fired: {formatDateTime(alert.createdAt)} · Type: {alert.alertType}</p>
                   </div>
                   <button type="button" className="udhr-btn-soft-success" onClick={() => handleResolveAlert(alert.id)}>Resolve alert</button>
                 </div>
@@ -3941,7 +4041,7 @@ function App() {
                     ) : (
                       item.recentSymptomChecks.map(check => (
                         <p key={check.id} style={{ fontSize: '12.5px', margin: '0 0 4px' }}>
-                          {new Date(check.checkedAt).toLocaleDateString()}: urgency <strong>{check.urgencyLevel}</strong>
+                          {formatDate(check.checkedAt)}: urgency <strong>{check.urgencyLevel}</strong>
                         </p>
                       ))
                     )}
@@ -4041,7 +4141,6 @@ function App() {
           {activeTabStaff === 'vitals' && isNurse && renderNurseVitalsPanel()}
           {activeTabStaff === 'labs' && isNurse && renderNurseLabsPanel()}
           {activeTabStaff === 'alerts' && renderAlertsPanel()}
-          {activeTabStaff === 'queue' && renderQueuePanel()}
           {activeTabStaff === 'referrals' && renderReferralsPanel()}
         </main>
       </div>
@@ -4177,19 +4276,22 @@ function App() {
                     </p>
                     <p className="udhr-row-subtitle">{member.staffNumber} — {member.email}</p>
                   </div>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <button type="button" className="udhr-btn-neutral" onClick={() => handleResetStaffPassword(member)}>
-                      Reset password
-                    </button>
-                    <button type="button" className="udhr-btn-neutral" onClick={() => handleForceLogout(member)}>
-                      End sessions
-                    </button>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                     <button type="button" className="udhr-btn-neutral" onClick={() => fetchAuditLogForStaff(member.id)}>
                       View activity
                     </button>
-                    <button type="button" className="udhr-btn-neutral" onClick={() => handleToggleStaffActive(member)}>
-                      {member.active ? 'Deactivate' : 'Reactivate'}
-                    </button>
+                    {/* The less common actions live in one menu instead of three
+                        more buttons on every row. */}
+                    <details className="udhr-menu">
+                      <summary className="udhr-btn-neutral">Manage ▾</summary>
+                      <div className="udhr-menu-list">
+                        <button type="button" onClick={(e) => { e.currentTarget.closest('details').open = false; handleResetStaffPassword(member); }}>Reset password</button>
+                        <button type="button" onClick={(e) => { e.currentTarget.closest('details').open = false; handleForceLogout(member); }}>End all sessions</button>
+                        <button type="button" className={member.active ? 'udhr-menu-danger' : ''} onClick={(e) => { e.currentTarget.closest('details').open = false; handleToggleStaffActive(member); }}>
+                          {member.active ? 'Deactivate account' : 'Reactivate account'}
+                        </button>
+                      </div>
+                    </details>
                   </div>
                 </div>
               ))
@@ -4269,7 +4371,7 @@ function App() {
                   </div>
                   <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <p className="udhr-row-subtitle" style={{ margin: 0 }}>
-                      {entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ''}
+                      {entry.createdAt ? formatDateTime(entry.createdAt) : ''}
                     </p>
                     {entry.ipAddress && (
                       <p className="udhr-row-subtitle" style={{ margin: 0 }}>{entry.ipAddress}</p>
@@ -4454,7 +4556,7 @@ function App() {
                       <div>
                         <p className="udhr-row-title">{p.medication}</p>
                         <p className="udhr-row-subtitle">{p.dosage} · {p.frequency}</p>
-                        <p className="udhr-row-subtitle">Prescribed by {p.doctor ? `${p.doctor.firstName} ${p.doctor.lastName}` : 'doctor'} on {new Date(p.createdAt).toLocaleDateString()}</p>
+                        <p className="udhr-row-subtitle">Prescribed by {p.doctor ? `${p.doctor.firstName} ${p.doctor.lastName}` : 'doctor'} on {formatDate(p.createdAt)}</p>
                         {p.notes && <p className="udhr-row-subtitle" style={{ fontStyle: 'italic' }}>{p.notes}</p>}
                         {pharmacyRecord.allergyWarnings?.[p.id] && (
                           <div className="udhr-allergy-alert" role="alert">
@@ -4510,7 +4612,7 @@ function App() {
                     {dispenseHistory.map(d => (
                       <div key={d.id} className="udhr-list-row">
                         <p className="udhr-row-title" style={{ fontSize: '13px' }}>{d.prescription.medication} — {d.quantityDispensed}{d.daysSupply ? ` (${d.daysSupply} days)` : ''}</p>
-                        <p className="udhr-row-subtitle">by {d.dispensedBy.firstName} {d.dispensedBy.lastName} on {new Date(d.dispensedAt).toLocaleDateString()}</p>
+                        <p className="udhr-row-subtitle">by {d.dispensedBy.firstName} {d.dispensedBy.lastName} on {formatDate(d.dispensedAt)}</p>
                       </div>
                     ))}
                   </div>
@@ -4716,8 +4818,8 @@ function App() {
               <form onSubmit={handleCheckIn} className="udhr-found-patient">
                 <p className="udhr-row-title" style={{ fontSize: '15px' }}>{frontDeskResult.patient.firstName} {frontDeskResult.patient.lastName}</p>
                 <p className="udhr-row-subtitle" style={{ marginBottom: '12px' }}>
-                  Born {frontDeskResult.patient.dateOfBirth} · File no. {frontDeskResult.patient.mrn}
-                  {frontDeskResult.visits?.[0] ? ` · Last visit ${new Date(frontDeskResult.visits[0].visitDate).toLocaleDateString()}` : ' · First visit'}
+                  Born {formatDate(frontDeskResult.patient.dateOfBirth)} · File no. {frontDeskResult.patient.mrn}
+                  {frontDeskResult.visits?.[0] ? ` · Last visit ${formatDate(frontDeskResult.visits[0].visitDate)}` : ' · First visit'}
                 </p>
                 <div className="udhr-form-group">
                   <label className="udhr-label" htmlFor="checkin-reason">Reason for visit (optional)</label>
@@ -4770,7 +4872,7 @@ function App() {
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Date of Birth</label>
-                  <input type="date" className="udhr-input" value={patientRegForm.dateOfBirth} onChange={(e) => setPatientRegForm({ ...patientRegForm, dateOfBirth: e.target.value })} required max={new Date().toISOString().split('T')[0]} />
+                  <DateOfBirthField value={patientRegForm.dateOfBirth} onChange={(v) => setPatientRegForm(form => ({ ...form, dateOfBirth: v }))} required />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Gender</label>
@@ -4869,7 +4971,7 @@ function App() {
                   <span className={`udhr-tag ${adminLookupRecord.firstVisit ? 'info' : 'neutral'}`} style={{ marginLeft: '8px' }}>{adminLookupRecord.firstVisit ? 'NEW' : 'RETURNING'}</span>
                 </p>
                 <p className="udhr-row-subtitle">
-                  {adminLookupRecord.patient.idNumber ? `ID: ${adminLookupRecord.patient.idNumber} · ` : ''}File no. {adminLookupRecord.patient.mrn} · {adminLookupRecord.patient.gender} · Born {adminLookupRecord.patient.dateOfBirth}
+                  {adminLookupRecord.patient.idNumber ? `ID: ${adminLookupRecord.patient.idNumber} · ` : ''}File no. {adminLookupRecord.patient.mrn} · {adminLookupRecord.patient.gender} · Born {formatDate(adminLookupRecord.patient.dateOfBirth)}
                 </p>
                 <p className="udhr-row-subtitle" style={{ marginBottom: '12px' }}>
                   Contact: {adminLookupRecord.patient.contactNumber || 'N/A'} · Email: {adminLookupRecord.patient.email || 'N/A'}
@@ -4892,7 +4994,7 @@ function App() {
                     Privacy consent{' '}
                     <span className={`udhr-tag ${adminLookupRecord.patient.privacyNoticeAcceptedAt ? 'info' : 'warning'}`}>
                       {adminLookupRecord.patient.privacyNoticeAcceptedAt
-                        ? `Agreed ${new Date(adminLookupRecord.patient.privacyNoticeAcceptedAt).toLocaleDateString()} by ${adminLookupRecord.patient.consentGivenBy}`
+                        ? `Agreed ${formatDate(adminLookupRecord.patient.privacyNoticeAcceptedAt)} by ${adminLookupRecord.patient.consentGivenBy}`
                         : 'Not recorded'}
                     </span>
                   </p>
@@ -4931,7 +5033,7 @@ function App() {
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <span className={`udhr-tag ${v.status === 'COMPLETE' ? 'info' : 'warning'}`}>{visitStatusLabel(v.status)}</span>
-                        <p className="udhr-row-subtitle" style={{ marginTop: '2px' }}>{new Date(v.visitDate).toLocaleString()}</p>
+                        <p className="udhr-row-subtitle" style={{ marginTop: '2px' }}>{formatDateTime(v.visitDate)}</p>
                       </div>
                     </div>
                   ))
@@ -4960,7 +5062,7 @@ function App() {
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <span className={`udhr-tag ${v.status === 'COMPLETE' ? 'info' : 'warning'}`}>{visitStatusLabel(v.status)}</span>
-                      <p className="udhr-row-subtitle" style={{ marginTop: '2px' }}>{new Date(v.visitDate).toLocaleString()}</p>
+                      <p className="udhr-row-subtitle" style={{ marginTop: '2px' }}>{formatDateTime(v.visitDate)}</p>
                     </div>
                   </div>
                 );
@@ -5099,7 +5201,7 @@ function App() {
                   <p className="udhr-row-subtitle">{r.fromFacility.name} → {r.toFacility.name} · {r.reason}</p>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
                     <span className="udhr-tag neutral">{r.status}</span>
-                    <span className="udhr-row-subtitle">{new Date(r.referredAt).toLocaleDateString()}</span>
+                    <span className="udhr-row-subtitle">{formatDate(r.referredAt)}</span>
                   </div>
                 </div>
               ))

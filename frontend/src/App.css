@@ -1622,3 +1622,125 @@
   cursor: pointer;
   list-style: revert;
 }
+
+/* "Everyone in the clinic today", folded under the nurse's and doctor's queue */
+.udhr-clinic-today {
+  margin-top: 20px;
+  max-width: 720px;
+}
+.udhr-clinic-today summary {
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--udhr-primary);
+}
+
+/* Doctor: the sections inside History */
+.udhr-history-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 10px 20px 0;
+}
+
+/* System admin: "Manage" menu on each account */
+.udhr-menu {
+  position: relative;
+}
+.udhr-menu > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.udhr-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.udhr-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 50;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--udhr-border);
+  border-radius: 8px;
+  background: var(--udhr-surface);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+.udhr-menu-list button {
+  display: block;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--udhr-text);
+  cursor: pointer;
+}
+.udhr-menu-list button:hover {
+  background: var(--udhr-bg);
+}
+.udhr-menu-list .udhr-menu-danger {
+  color: var(--udhr-danger);
+}
+
+/* Day / month / year dropdowns for a date of birth */
+.udhr-dob-field {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr 1.2fr;
+  gap: 8px;
+}
+
+/* Patient portal: the pages inside "My results" and "Help" */
+.udhr-subpage-bar {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+.udhr-subpage {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--udhr-border);
+  border-radius: 10px;
+  background: var(--udhr-surface);
+  color: var(--udhr-text-secondary);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.udhr-subpage.active {
+  border-color: var(--udhr-primary);
+  background: var(--udhr-primary-tint);
+  color: var(--udhr-primary);
+}
+
+/* Language picker (login and patient portal) */
+.udhr-language-picker {
+  float: right;
+  padding: 6px 10px;
+  border: 1px solid var(--udhr-border);
+  border-radius: 8px;
+  background: var(--udhr-surface);
+  color: var(--udhr-text);
+  font: inherit;
+  font-size: 13.5px;
+}
+.udhr-page header .udhr-language-picker {
+  float: none;
+}
+
+/* The four patient tabs fit on one line of a phone */
+@media (max-width: 640px) {
+  .udhr-page .udhr-tab-bar {
+    flex-wrap: nowrap;
+    justify-content: space-between;
+    gap: 2px;
+  }
+  .udhr-page .udhr-tab-pill {
+    padding: 9px 8px;
+    font-size: 14.5px;
+  }
+}

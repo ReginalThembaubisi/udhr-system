@@ -304,8 +304,10 @@ public class StockService {
     }
 
     private void sendReorderAlerts(StockItem item) {
-        List<Staff> admins = staffRepository.findByFacilityIdAndRole(item.getFacility().getId(), "ADMIN");
-        if (admins.isEmpty()) {
+        // The pharmacist manages stock and places orders, so the alert goes to
+        // them. It used to go to the front desk, who can't act on it.
+        List<Staff> pharmacists = staffRepository.findByFacilityIdAndRole(item.getFacility().getId(), "PHARMACIST");
+        if (pharmacists.isEmpty()) {
             return;
         }
 
@@ -316,12 +318,12 @@ public class StockService {
                 item.getReorderLevel(), item.getUnit()
         );
 
-        for (Staff admin : admins) {
-            if (admin.getContactNumber() != null && !admin.getContactNumber().isBlank()) {
-                africasTalkingService.sendSMS(admin.getContactNumber(), message);
+        for (Staff pharmacist : pharmacists) {
+            if (pharmacist.getContactNumber() != null && !pharmacist.getContactNumber().isBlank()) {
+                africasTalkingService.sendSMS(pharmacist.getContactNumber(), message);
             }
-            if (admin.getEmail() != null && !admin.getEmail().isBlank()) {
-                System.out.println("[Email Dispatcher] Reorder alert queued for " + admin.getStaffNumber() + ": " + subject);
+            if (pharmacist.getEmail() != null && !pharmacist.getEmail().isBlank()) {
+                System.out.println("[Email Dispatcher] Reorder alert queued for " + pharmacist.getStaffNumber() + ": " + subject);
             }
         }
     }

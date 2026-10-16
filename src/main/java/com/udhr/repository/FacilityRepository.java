@@ -8,4 +8,6 @@ import java.util.List;
 @Repository
 public interface FacilityRepository extends JpaRepository<Facility, Long> {
     List<Facility> findByProvince(String province);
+
+    boolean existsByNameIgnoreCase(String name);
 }

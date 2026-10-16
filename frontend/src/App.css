@@ -1522,3 +1522,103 @@
 .udhr-checkbox-row input {
   margin-top: 2px;
 }
+
+.udhr-field-hint {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--udhr-success-text);
+}
+.udhr-field-hint-warning {
+  color: var(--udhr-warning-text);
+}
+
+/* Front desk: the patient found by "Find patient" */
+.udhr-found-patient {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--udhr-border);
+}
+
+/* Queue rows: the action button stays button-sized instead of filling the row. */
+.udhr-list-row > .udhr-btn-primary {
+  width: auto;
+  flex-shrink: 0;
+  padding-left: 18px;
+  padding-right: 18px;
+}
+
+/* Patient portal: larger text and tap targets. Patients read on phones and
+   many are older; staff screens keep their denser sizes. */
+.udhr-page {
+  font-size: 16px;
+}
+.udhr-page .udhr-row-subtitle,
+.udhr-page .udhr-card p,
+.udhr-page .udhr-empty-note {
+  font-size: 15px;
+  line-height: 1.5;
+}
+.udhr-page .udhr-row-title {
+  font-size: 16px;
+}
+.udhr-page .udhr-section-title {
+  font-size: 18px;
+}
+.udhr-page .udhr-stat-label {
+  font-size: 13.5px;
+}
+.udhr-page .udhr-stat-value {
+  font-size: 19px;
+}
+.udhr-page .udhr-tab-pill {
+  font-size: 15px;
+  padding: 10px 16px;
+}
+.udhr-page .udhr-tag {
+  font-size: 13px;
+}
+.udhr-page .udhr-checkbox-row {
+  font-size: 15px;
+}
+.udhr-page .udhr-btn-primary {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+/* Patient portal: the next medicine, first thing on the page. */
+.udhr-next-dose {
+  margin-bottom: 16px;
+  padding: 18px;
+  border-radius: 14px;
+  background: var(--udhr-primary-tint);
+  border: 1px solid var(--udhr-border);
+}
+.udhr-next-dose-label {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--udhr-primary);
+}
+.udhr-next-dose-name {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--udhr-text);
+}
+.udhr-next-dose-time {
+  margin: 2px 0 14px;
+  font-size: 16px;
+  color: var(--udhr-text-secondary);
+}
+.udhr-next-dose .udhr-btn-primary {
+  width: 100%;
+}
+
+/* Patient portal: diet tips folded away under one heading. */
+.udhr-tips {
+  margin-top: 24px;
+}
+.udhr-tips summary {
+  cursor: pointer;
+  list-style: revert;
+}

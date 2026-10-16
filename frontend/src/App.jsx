@@ -293,6 +293,9 @@ function App() {
   const [addDiagnosisForm, setAddDiagnosisForm] = useState({
     patientId: '', conditionName: '', notes: ''
   });
+  // Doctor: is the medicine being typed in stock at this facility? Result of
+  // /api/stock/availability, or null while nothing is typed.
+  const [stockCheck, setStockCheck] = useState(null);
   const [addPrescriptionForm, setAddPrescriptionForm] = useState({
     patientId: '', medicationName: '', dosage: '', frequency: 'Once daily', durationDays: 7, notes: '', dispenseMethod: 'PHARMACY'
   });
@@ -603,6 +606,28 @@ function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // While the doctor types a medicine, check this facility's stock (after a
+  // short pause, so it isn't a request per key press).
+  useEffect(() => {
+    const name = addPrescriptionForm.medicationName.trim();
+    if (userRole !== 'DOCTOR' || name.length < 3) {
+      setStockCheck(null);
+      return;
+    }
+    const patientId = searchedPatientRecord?.patient?.id;
+    const timer = setTimeout(async () => {
+      try {
+        const query = `medication=${encodeURIComponent(name)}${patientId ? `&patientId=${patientId}` : ''}`;
+        const response = await apiFetch(`/api/stock/availability?${query}`, { headers: getAuthHeaders() });
+        if (response.ok) setStockCheck({ ...(await response.json()), medication: addPrescriptionForm.medicationName });
+      } catch {
+        setStockCheck(null);
+      }
+    }, 450);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addPrescriptionForm.medicationName, userRole, searchedPatientRecord?.patient?.id]);
 
   // A "Manage" menu closes when you click anywhere else.
   useEffect(() => {
@@ -1114,6 +1139,12 @@ function App() {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
+    if (stockCheck && stockCheck.medication === addPrescriptionForm.medicationName
+        && addPrescriptionForm.dispenseMethod !== 'SELF'
+        && (stockCheck.status === 'OUT_OF_STOCK' || stockCheck.status === 'NOT_STOCKED')
+        && !window.confirm(`${addPrescriptionForm.medicationName} isn't available at this pharmacy. Prescribe it anyway? The patient will have to get it somewhere else.`)) {
+      return;
+    }
 
     try {
       const payload = prescriptionAllergyConflicts
@@ -3823,6 +3854,41 @@ function App() {
                       <div className="udhr-form-group">
                         <label className="udhr-label">Medication</label>
                         <input type="text" className="udhr-input" placeholder="e.g. Amoxicillin 250mg" value={addPrescriptionForm.medicationName} onChange={(e) => { setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value }); setPrescriptionAllergyConflicts(null); setAllergyOverrideReason(''); }} required />
+                        {/* What this facility's pharmacy has, so the doctor doesn't
+                            prescribe something the patient can't collect here. */}
+                        {stockCheck && stockCheck.medication === addPrescriptionForm.medicationName && (
+                          <div className={`udhr-stock-check ${stockCheck.status.toLowerCase()}`}>
+                            <p>
+                              {stockCheck.status === 'IN_STOCK' && `✓ In stock: ${stockCheck.onHand} ${stockCheck.unit}`}
+                              {stockCheck.status === 'LOW' && `Running low: only ${stockCheck.onHand} ${stockCheck.unit} left`}
+                              {stockCheck.status === 'OUT_OF_STOCK' && 'Out of stock at this pharmacy'}
+                              {stockCheck.status === 'NOT_STOCKED' && 'Not stocked at this pharmacy'}
+                              {stockCheck.stockName && stockCheck.stockName.toLowerCase() !== addPrescriptionForm.medicationName.trim().toLowerCase() && stockCheck.status !== 'NOT_STOCKED' && ` (as ${stockCheck.stockName})`}
+                            </p>
+                            {stockCheck.alternatives.length > 0 && (
+                              <>
+                                <p className="udhr-stock-check-label">In stock instead (tap to use):</p>
+                                <div className="udhr-stock-alternatives">
+                                  {stockCheck.alternatives.map(alt => (
+                                    <button key={alt.name} type="button" title={alt.note}
+                                      onClick={() => { setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: alt.name }); setPrescriptionAllergyConflicts(null); setAllergyOverrideReason(''); }}>
+                                      <strong>{alt.name}</strong> · {alt.onHand} {alt.unit}
+                                      <span>{alt.relation === 'SAME_MEDICINE' ? 'same medicine' : 'same class, check dose'}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                            {stockCheck.leftOutForAllergy?.length > 0 && (
+                              <p className="udhr-stock-check-label" style={{ color: 'var(--udhr-danger-text)' }}>
+                                Not suggested because of the patient's allergies: {stockCheck.leftOutForAllergy.join(', ')}
+                              </p>
+                            )}
+                            {stockCheck.status !== 'IN_STOCK' && stockCheck.status !== 'LOW' && stockCheck.alternatives.length === 0 && (
+                              <p className="udhr-stock-check-label">No alternative in stock here{stockCheck.generic ? '' : ' (medicine not recognised, so no alternatives could be looked up)'}.</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
                         <div className="udhr-form-group" style={{ marginBottom: 0 }}>

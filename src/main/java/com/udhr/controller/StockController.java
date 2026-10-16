@@ -5,6 +5,7 @@ import com.udhr.dto.StockItemRequest;
 import com.udhr.dto.StockReportResponse;
 import com.udhr.model.StockItem;
 import com.udhr.model.StockTransaction;
+import com.udhr.service.StockAvailabilityService;
 import com.udhr.service.StockService;
 import com.udhr.security.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -24,6 +25,9 @@ public class StockController {
 
     @Autowired
     private StockService stockService;
+
+    @Autowired
+    private StockAvailabilityService stockAvailabilityService;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -66,6 +70,26 @@ public class StockController {
         try {
             List<StockItem> items = stockService.getStockForFacility(staffNumber);
             return ResponseEntity.ok(items);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
+        }
+    }
+
+    /**
+     * For the prescriber: is this medicine in stock at my facility, and if
+     * not, what can I give instead? patientId lets allergy-conflicting
+     * alternatives be left out.
+     */
+    @GetMapping("/availability")
+    public ResponseEntity<?> availability(@RequestParam String medication,
+                                          @RequestParam(required = false) Long patientId,
+                                          HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+        try {
+            return ResponseEntity.ok(stockAvailabilityService.check(medication, patientId, staffNumber));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
         }

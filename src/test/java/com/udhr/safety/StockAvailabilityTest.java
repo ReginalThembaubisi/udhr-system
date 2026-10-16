@@ -49,9 +49,12 @@ class StockAvailabilityTest {
 
     @Test
     void anotherBrandOfTheSameMedicineCountsAsInStock() throws Exception {
+        // Panado (paracetamol) has none, but other paracetamol does. Other tests
+        // add paracetamol stock too, so the exact item isn't asserted.
         JsonNode result = check("Paracetamol 500mg", null);
         assertThat(result.get("status").asText()).isEqualTo("IN_STOCK");
-        assertThat(result.get("stockName").asText()).isEqualTo("Calpol syrup");
+        assertThat(result.get("generic").asText()).isEqualTo("paracetamol");
+        assertThat(result.get("stockName").asText()).isNotEqualTo("Panado 500mg");
     }
 
     @Test

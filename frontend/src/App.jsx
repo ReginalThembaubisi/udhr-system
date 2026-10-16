@@ -270,11 +270,6 @@ function App() {
   const [activeTabStaff, setActiveTabStaff] = useState('patients'); // 'patients', 'vitals', 'alerts', 'queue', or 'referrals'
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [activeRecordTab, setActiveRecordTab] = useState('add'); // sub-tab within a loaded patient record (doctor view) — lands on Diagnose & Prescribe, the doctor's core job
-  // Lets clicking the visit-status pill (e.g. "VITALS DONE") jump straight
-  // to the Vitals sub-tab below instead of making the doctor hunt for it.
-  const recordSubTabsRef = useRef(null);
-  // Where the "VITALS DONE" pill scrolls back to when clicked again.
-  const recordTopRef = useRef(null);
 
   // Staff Dashboard Data State
   const [searchId, setSearchId] = useState('9001015000083');
@@ -3463,7 +3458,7 @@ function App() {
 
         {searchedPatientRecord ? (
           <>
-            <div ref={recordTopRef}>
+            <div>
               <button type="button" className="udhr-btn-neutral" onClick={handleBackToDoctorQueue} style={{ marginBottom: '16px' }}>← Back to queue</button>
             </div>
             <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
@@ -3522,23 +3517,14 @@ function App() {
                       <span key={c.id} className="udhr-tag info">{c.conditionName}</span>
                     ))}
                   </div>
+                  {/* The visit's stage as the doctor sees it. "Ready for doctor" is
+                      the nurse's view of it and read as wrong once the doctor had
+                      the patient open. Vitals are in the strip above and under
+                      History → Vitals. */}
                   {searchedPatientRecord.currentVisit ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (activeRecordTab === 'vitals') {
-                          setActiveRecordTab('add');
-                          recordTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        } else {
-                          setActiveRecordTab('vitals');
-                          recordSubTabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }
-                      }}
-                      title={activeRecordTab === 'vitals' ? 'Back to the top of this record' : "View vitals and the nurse's notes"}
-                      style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px', border: 'none', cursor: 'pointer' }}
-                    >
-                      {activeRecordTab === 'vitals' ? '← Back' : `${visitStatusLabel(searchedPatientRecord.currentVisit.status)} →`}
-                    </button>
+                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-primary)', background: 'var(--udhr-primary-tint)', padding: '4px 10px', borderRadius: '999px' }}>
+                      {searchedPatientRecord.currentVisit.status === 'VITALS_DONE' ? 'In consultation' : visitStatusLabel(searchedPatientRecord.currentVisit.status)}
+                    </span>
                   ) : (
                     <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px' }}>
                       No open visit
@@ -3552,7 +3538,7 @@ function App() {
 
               {/* Two choices instead of eight tabs: what the doctor does now, and
                   everything already on file. */}
-              <div className="udhr-record-subtabs" ref={recordSubTabsRef}>
+              <div className="udhr-record-subtabs">
                 <button type="button" className={`udhr-subtab ${activeRecordTab === 'add' ? 'active' : ''}`} onClick={() => setActiveRecordTab('add')}>
                   Diagnose & prescribe
                 </button>

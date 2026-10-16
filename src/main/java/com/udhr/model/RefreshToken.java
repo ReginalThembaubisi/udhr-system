@@ -34,9 +34,16 @@ public class RefreshToken {
     @Column(name = "token_hash", nullable = false, unique = true, length = 64)
     private String tokenHash;
 
+    // Exactly one of staff or patient is set: patients get refresh tokens too,
+    // so a page reload doesn't sign them out now that the access token lives
+    // only in the page's memory.
     @ManyToOne
-    @JoinColumn(name = "staff_id", nullable = false)
+    @JoinColumn(name = "staff_id")
     private Staff staff;
+
+    @ManyToOne
+    @JoinColumn(name = "patient_id")
+    private Patient patient;
 
     @Column(name = "expires_at", nullable = false)
     private LocalDateTime expiresAt;
@@ -46,6 +53,12 @@ public class RefreshToken {
     // deleted so a replay of the old value is recognisable.
     @Column(name = "revoked", nullable = false)
     private Boolean revoked = false;
+
+    // When the token was used up by a normal refresh. Two tabs refreshing at
+    // the same moment both send the same token; the loser of that race is told
+    // to retry instead of being treated as a thief (see TokenService).
+    @Column(name = "rotated_at")
+    private LocalDateTime rotatedAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

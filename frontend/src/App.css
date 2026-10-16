@@ -1754,3 +1754,61 @@
 .udhr-report-stats .udhr-stat-label {
   margin: 2px 0 0;
 }
+
+/* Doctor: stock at this facility for the medicine being prescribed */
+.udhr-stock-check {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--udhr-border);
+  background: var(--udhr-bg);
+  font-size: 13px;
+}
+.udhr-stock-check p {
+  margin: 0;
+  font-weight: 600;
+}
+.udhr-stock-check.in_stock p:first-child {
+  color: var(--udhr-success-text);
+}
+.udhr-stock-check.low p:first-child {
+  color: var(--udhr-warning-text);
+}
+.udhr-stock-check.out_of_stock p:first-child,
+.udhr-stock-check.not_stocked p:first-child {
+  color: var(--udhr-danger-text);
+}
+.udhr-stock-check .udhr-stock-check-label {
+  margin-top: 8px;
+  font-weight: 500;
+  color: var(--udhr-text-secondary);
+}
+.udhr-stock-alternatives {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.udhr-stock-alternatives button {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--udhr-border);
+  border-radius: 8px;
+  background: var(--udhr-surface);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--udhr-text);
+  cursor: pointer;
+}
+.udhr-stock-alternatives button:hover {
+  border-color: var(--udhr-primary);
+}
+.udhr-stock-alternatives span {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--udhr-text-muted);
+}

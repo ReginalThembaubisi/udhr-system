@@ -69,6 +69,10 @@ public class SecurityConfig {
                 // service in production (see Dockerfile) — it has to be reachable
                 // before login, otherwise no one can even load the page to log in.
                 .requestMatchers("/", "/index.html", "/assets/**", "/favicon.svg", "/icons.svg", "/vite.svg").permitAll()
+                // Spring renders refusals through /error as a second request
+                // that carries no sign-in. Left protected, every 403 ("not
+                // allowed") turned into a 401 ("not signed in") on a real server.
+                .requestMatchers("/error").permitAll()
                 .requestMatchers("/api/auth/change-password").authenticated()
                 .requestMatchers("/api/auth/**").permitAll()
 

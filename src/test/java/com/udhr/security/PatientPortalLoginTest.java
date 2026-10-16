@@ -58,7 +58,7 @@ class PatientPortalLoginTest {
         for (int i = 0; i < 5; i++) {
             patientLogin(id, "1980-01-01", "111111").andExpect(status().isUnauthorized());
         }
-        String locked = body(patientLogin(id, "1980-01-01", "731946").andExpect(status().isUnauthorized()));
+        String locked = body(patientLogin(id, "1980-01-01", "731946").andExpect(status().isTooManyRequests()));
         assertThat(locked).contains("Too many incorrect attempts");
 
         // The front desk resetting the PIN also clears the lock.

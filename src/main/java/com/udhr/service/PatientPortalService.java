@@ -2,6 +2,7 @@ package com.udhr.service;
 
 import com.udhr.dto.PatientLoginRequest;
 import com.udhr.dto.PatientLoginResponse;
+import com.udhr.exception.LoginLockedException;
 import com.udhr.dto.PatientRecordResponse;
 import com.udhr.model.*;
 import com.udhr.repository.*;
@@ -52,23 +53,39 @@ public class PatientPortalService {
     @Autowired
     private BCryptPasswordEncoder passwordEncoder;
 
+    @Autowired
+    private TokenService tokenService;
+
+    @Autowired
+    private LoginAttemptService loginAttemptService;
+
     private static final int MAX_FAILED_ATTEMPTS = 5;
     private static final int LOCKOUT_MINUTES = 15;
     // One message for every wrong detail, so the login can't be used to find
     // out which ID numbers are registered or which part was wrong.
     private static final String INVALID = "ID number, date of birth or PIN is incorrect";
 
-    public PatientLoginResponse login(PatientLoginRequest request) {
+    public PatientLoginResponse login(PatientLoginRequest request, String clientAddress) {
+        // Each patient account locks after 5 failures (below). This also stops
+        // one machine guessing across many ID numbers, the same limit as staff.
+        String addressKey = LoginAttemptService.addressKey(clientAddress);
+        java.time.Instant addressLockedUntil = loginAttemptService.lockedUntil(addressKey);
+        if (addressLockedUntil != null) {
+            throw new LoginLockedException("Too many incorrect attempts. Try again "
+                    + LoginAttemptService.waitText(addressLockedUntil) + ".");
+        }
+
         Patient patient;
         try {
             patient = patientService.findByIdentifier(request.getIdNumber() == null ? "" : request.getIdNumber().trim());
         } catch (Exception e) {
+            recordAddressFailure(addressKey, clientAddress);
             throw new RuntimeException(INVALID);
         }
 
         if (patient.getLoginLockedUntil() != null && patient.getLoginLockedUntil().isAfter(LocalDateTime.now())) {
-            throw new RuntimeException("Too many incorrect attempts. Try again after "
-                    + patient.getLoginLockedUntil().toLocalTime().withNano(0)
+            throw new LoginLockedException("Too many incorrect attempts. Try again "
+                    + LoginAttemptService.waitText(patient.getLoginLockedUntil().atZone(java.time.ZoneId.systemDefault()).toInstant())
                     + ", or ask the front desk at your clinic to reset your PIN.");
         }
 
@@ -97,6 +114,7 @@ public class PatientPortalService {
                         "Patient portal locked for " + LOCKOUT_MINUTES + " minutes after " + MAX_FAILED_ATTEMPTS + " failed sign-in attempts");
             }
             patientRepository.save(patient);
+            recordAddressFailure(addressKey, clientAddress);
             throw new RuntimeException(INVALID);
         }
 
@@ -104,11 +122,24 @@ public class PatientPortalService {
         patient.setLoginLockedUntil(null);
         patientRepository.save(patient);
 
+        return buildSession(patient);
+    }
+
+    private void recordAddressFailure(String addressKey, String clientAddress) {
+        if (loginAttemptService.recordFailure(addressKey, LoginAttemptService.MAX_ADDRESS_FAILURES)) {
+            auditService.recordSecurityEvent(null, "PATIENT_LOGIN_LOCKED", "Patient portal sign-in locked for 15 minutes for address "
+                    + clientAddress + " after " + LoginAttemptService.MAX_ADDRESS_FAILURES + " failed attempts");
+        }
+    }
+
+    /** A fresh access token and refresh token, after sign-in or a refresh. */
+    public PatientLoginResponse buildSession(Patient patient) {
         String token = jwtUtil.generateToken(patient.getIdNumber(), "PATIENT");
         String fullName = patient.getFirstName() + " " + patient.getLastName();
 
         return new PatientLoginResponse(
                 token,
+                tokenService.issueRefreshToken(patient),
                 patient.getIdNumber(),
                 fullName,
                 "PATIENT"

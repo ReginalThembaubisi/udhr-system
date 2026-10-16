@@ -38,5 +38,15 @@ public class SchemaPatchRunner implements CommandLineRunner {
         } catch (Exception e) {
             System.out.println("SchemaPatchRunner: skipped audit_logs.staff_id patch (" + e.getMessage() + ")");
         }
+
+        // refresh_tokens.staff_id was required too, until patients got refresh
+        // tokens of their own (a patient's row has no staff member).
+        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
+            if (conn.getMetaData().getDatabaseProductName().toLowerCase().contains("postgresql")) {
+                stmt.execute("ALTER TABLE refresh_tokens ALTER COLUMN staff_id DROP NOT NULL");
+            }
+        } catch (Exception e) {
+            System.out.println("SchemaPatchRunner: skipped refresh_tokens.staff_id patch (" + e.getMessage() + ")");
+        }
     }
 }

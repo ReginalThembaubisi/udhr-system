@@ -4,6 +4,7 @@ import com.udhr.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -11,11 +12,31 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.security.web.header.writers.StaticHeadersWriter;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    // Scripts only from this site, so an injected <script> or inline handler
+    // can't run. Styles and fonts also come from Google Fonts (index.html);
+    // inline styles stay allowed because the screens use style attributes.
+    // Images may come from any HTTPS site: announcement photos are links the
+    // front desk pastes in, and an image can't run code.
+    private static final String CONTENT_SECURITY_POLICY = String.join("; ",
+            "default-src 'self'",
+            "script-src 'self'",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "font-src 'self' https://fonts.gstatic.com data:",
+            "img-src 'self' data: blob: https:",
+            "connect-src 'self'",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'none'");
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
@@ -28,6 +49,21 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            // A request with no valid sign-in gets 401, not Spring's default 403,
+            // so the page can tell "your session expired" (refresh and retry)
+            // apart from "your role isn't allowed to do this" (fix list P1-2).
+            .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+            // Browser security headers on every response, the app's own pages
+            // included (fix list P1-7).
+            .headers(headers -> headers
+                .contentSecurityPolicy(csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY))
+                .frameOptions(frame -> frame.deny())
+                .referrerPolicy(referrer -> referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                // Spring only sends HSTS on HTTPS requests, and Render's proxy
+                // reaches the app over plain HTTP, so it is always sent here.
+                // Browsers ignore it on plain-HTTP pages, so localhost is unaffected.
+                .httpStrictTransportSecurity(hsts -> hsts.disable())
+                .addHeaderWriter(new StaticHeadersWriter("Strict-Transport-Security", "max-age=31536000; includeSubDomains")))
             .authorizeHttpRequests(auth -> auth
                 // The built React app is served as static files from this same
                 // service in production (see Dockerfile) — it has to be reachable

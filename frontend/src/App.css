@@ -1442,3 +1442,48 @@
     order: -1;
   }
 }
+
+/* Inactivity warning (fix list P1-4) */
+.udhr-idle-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.45);
+}
+.udhr-idle-dialog {
+  width: 100%;
+  max-width: 420px;
+  padding: 24px;
+  border-radius: 12px;
+  background: var(--udhr-surface, #fff);
+  border: 1px solid var(--udhr-border);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
+}
+.udhr-idle-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: var(--udhr-text);
+}
+.udhr-idle-dialog p {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: var(--udhr-text-secondary, #475569);
+}
+.udhr-idle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.udhr-restoring {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--udhr-text-secondary, #475569);
+  font-size: 14px;
+}

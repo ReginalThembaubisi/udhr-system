@@ -1,5 +1,6 @@
 package com.udhr.service;
 
+import com.udhr.model.Patient;
 import com.udhr.model.RefreshToken;
 import com.udhr.model.RevokedToken;
 import com.udhr.model.Staff;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
@@ -36,6 +38,7 @@ import java.util.HexFormat;
 public class TokenService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final Duration ROTATION_GRACE = Duration.ofSeconds(30);
 
     @Autowired
     private RevokedTokenRepository revokedTokenRepository;
@@ -129,22 +132,32 @@ public class TokenService {
      */
     @Transactional
     public String issueRefreshToken(Staff staff) {
+        RefreshToken refreshToken = new RefreshToken();
+        refreshToken.setStaff(staff);
+        return save(refreshToken);
+    }
+
+    /** The same, for a patient signed in to the portal. */
+    @Transactional
+    public String issueRefreshToken(Patient patient) {
+        RefreshToken refreshToken = new RefreshToken();
+        refreshToken.setPatient(patient);
+        return save(refreshToken);
+    }
+
+    private String save(RefreshToken refreshToken) {
         byte[] raw = new byte[48];
         RANDOM.nextBytes(raw);
         String rawToken = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
-
-        RefreshToken refreshToken = new RefreshToken();
         refreshToken.setTokenHash(hash(rawToken));
-        refreshToken.setStaff(staff);
         refreshToken.setExpiresAt(LocalDateTime.now().plusNanos(refreshExpiration * 1_000_000));
         refreshTokenRepository.save(refreshToken);
-
         return rawToken;
     }
 
     /**
-     * Consumes a refresh token and returns the staff member it belonged to, or
-     * throws if it is unknown, expired or already used.
+     * Consumes a refresh token and returns it (with its staff member or
+     * patient), or throws if it is unknown, expired or already used.
      *
      * The row is revoked on use (rotation): a refresh token works exactly once.
      * If someone steals one and uses it, the real user's next refresh fails and
@@ -152,21 +165,42 @@ public class TokenService {
      * granting quiet, indefinite access.
      */
     @Transactional
-    public Staff consumeRefreshToken(String rawToken) {
+    public RefreshToken consumeRefreshToken(String rawToken) {
         RefreshToken stored = refreshTokenRepository.findByTokenHash(hash(rawToken))
                 .orElseThrow(() -> new RuntimeException("Session expired — please sign in again"));
 
         if (!stored.isUsable()) {
-            // A token presented after it was already used or revoked is a strong
-            // signal of theft or replay: drop every session this account has
-            // rather than just refusing this one request.
-            revokeAllSessions(stored.getStaff(), "REFRESH_TOKEN_REUSE");
+            // Two tabs that refresh at the same moment send the same token, and
+            // one of them always loses. That isn't theft: the browser already
+            // holds the replacement, so the loser just retries.
+            if (stored.getRotatedAt() != null
+                    && stored.getRotatedAt().isAfter(LocalDateTime.now().minus(ROTATION_GRACE))) {
+                throw new RuntimeException("Session was just renewed — please retry");
+            }
+            // Otherwise a token presented after it was already used or revoked
+            // is a strong signal of theft or replay: drop every session this
+            // account has rather than just refusing this one request.
+            if (stored.getStaff() != null) {
+                revokeAllSessions(stored.getStaff(), "REFRESH_TOKEN_REUSE");
+            } else if (stored.getPatient() != null) {
+                refreshTokenRepository.revokeAllForPatient(stored.getPatient().getId());
+            }
             throw new RuntimeException("Session is no longer valid — please sign in again");
         }
 
         stored.setRevoked(true);
+        stored.setRotatedAt(LocalDateTime.now());
         refreshTokenRepository.save(stored);
-        return stored.getStaff();
+        return stored;
+    }
+
+    /** Revokes a refresh token on logout, without treating a repeat as theft. */
+    @Transactional
+    public void revokeRefreshToken(String rawToken) {
+        refreshTokenRepository.findByTokenHash(hash(rawToken)).ifPresent(stored -> {
+            stored.setRevoked(true);
+            refreshTokenRepository.save(stored);
+        });
     }
 
     @Transactional

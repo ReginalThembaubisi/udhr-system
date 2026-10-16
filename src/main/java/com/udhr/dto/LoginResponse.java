@@ -1,5 +1,6 @@
 package com.udhr.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -7,10 +8,11 @@ import lombok.NoArgsConstructor;
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class LoginResponse {
+public class LoginResponse implements SessionResponse {
     private String token;
-    // Exchanged for a new access token when the short-lived one runs out, so
-    // the 30-minute access token doesn't mean signing in every half hour.
+    // Exchanged for a new access token when the short-lived one runs out.
+    // Sent as an HttpOnly cookie, never in the body (fix list P1-3).
+    @JsonIgnore
     private String refreshToken;
     private String staffNumber;
     private String fullName;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
@@ -6,6 +7,23 @@ import {
   Menu, Users, CornerUpRight, Package, Building2, Megaphone, MessageCircle, Send, Eye, EyeOff
 } from 'lucide-react';
 import './App.css';
+import { apiFetch, getAccessToken, onSessionExpired, refreshSession, setAccessToken } from './lib/api';
+
+// Sign-out after inactivity on shared clinic computers (fix list P1-4).
+const IDLE_WARNING_MS = 10 * 60 * 1000;
+const IDLE_LOGOUT_MS = 12 * 60 * 1000;
+// Shared between tabs, so working in one tab keeps the others signed in.
+// A timestamp, not a credential: nothing in localStorage can sign anyone in.
+const LAST_ACTIVITY_KEY = 'udhr_last_activity';
+const LOGOUT_SIGNAL_KEY = 'udhr_logout';
+const NOTICE_KEY = 'udhr_notice';
+
+const readLastActivity = () => {
+  try { return Number(localStorage.getItem(LAST_ACTIVITY_KEY)) || 0; } catch { return 0; }
+};
+const markActivity = () => {
+  try { localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now())); } catch { /* private mode */ }
+};
 
 // Adult reference ranges used to flag a vital sign as high or low on screen.
 // The server refuses impossible values; these only highlight abnormal ones.
@@ -36,11 +54,18 @@ function vitalFlag(key, value) {
 
 function App() {
   // Authentication State
-  const [token, setToken] = useState(localStorage.getItem('token') || '');
-  const [userRole, setUserRole] = useState(localStorage.getItem('role') || '');
-  const [userIdNumber, setUserIdNumber] = useState(localStorage.getItem('idNumber') || '');
-  const [userName, setUserName] = useState(localStorage.getItem('userName') || '');
-  const [mustChangePassword, setMustChangePassword] = useState(localStorage.getItem('mustChangePassword') === 'true');
+  // `token` is the access token from sign-in, kept to know that someone is
+  // signed in. Calls use the current one from lib/api, which is renewed
+  // quietly every 30 minutes without re-rendering the app.
+  const [token, setToken] = useState('');
+  const [userRole, setUserRole] = useState('');
+  const [userIdNumber, setUserIdNumber] = useState('');
+  const [userName, setUserName] = useState('');
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+  // True while a page load checks whether the session can be resumed, so the
+  // login screen doesn't flash up for someone who is still signed in.
+  const [restoringSession, setRestoringSession] = useState(true);
+  const [idleWarning, setIdleWarning] = useState(false);
   const [changePasswordForm, setChangePasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
 
   const [loginRole, setLoginRole] = useState('patient'); // 'patient' or 'staff'
@@ -244,8 +269,19 @@ function App() {
   const getAuthHeaders = () => {
     return {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
+      'Authorization': `Bearer ${getAccessToken()}`
     };
+  };
+
+  // Puts a session from sign-in or refresh on screen.
+  const applySession = (data) => {
+    setAccessToken(data.token);
+    setToken(data.token);
+    setUserRole(data.role);
+    setUserIdNumber(data.idNumber || data.staffNumber);
+    setUserName(data.fullName);
+    setMustChangePassword(!!data.mustChangePassword);
+    markActivity();
   };
 
   // Log in user
@@ -258,13 +294,13 @@ function App() {
     try {
       let response;
       if (loginRole === 'patient') {
-        response = await fetch('/api/auth/patient/login', {
+        response = await apiFetch('/api/auth/patient/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ idNumber: patientIdNumber, dateOfBirth: patientDob, pin: patientPin })
         });
       } else {
-        response = await fetch('/api/auth/login', {
+        response = await apiFetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ staffNumber, password: staffPassword })
@@ -280,23 +316,11 @@ function App() {
         throw new Error(typeof data === 'string' ? data : data.message || 'Login failed');
       }
 
-      // Save credentials
-      localStorage.setItem('token', data.token);
-      // Access tokens now last 30 minutes rather than a day, so the refresh
-      // token is what keeps someone signed in across a shift.
-      if (data.refreshToken) {
-        localStorage.setItem('refreshToken', data.refreshToken);
-      }
-      localStorage.setItem('role', data.role);
-      localStorage.setItem('idNumber', data.idNumber || data.staffNumber);
-      localStorage.setItem('userName', data.fullName);
-      localStorage.setItem('mustChangePassword', data.mustChangePassword ? 'true' : 'false');
-
-      setToken(data.token);
-      setUserRole(data.role);
-      setUserIdNumber(data.idNumber || data.staffNumber);
-      setUserName(data.fullName);
-      setMustChangePassword(!!data.mustChangePassword);
+      // The access token stays in memory; the server set the refresh token as
+      // an HttpOnly cookie that keeps the session going across a shift.
+      applySession(data);
+      setStaffPassword('');
+      setPatientPin('');
       setSuccessMessage('Logged in successfully!');
     } catch (err) {
       setErrorMessage(err.message);
@@ -305,56 +329,31 @@ function App() {
     }
   };
 
-  // Logout. Tells the server first so the token is actually revoked — clearing
-  // localStorage alone would leave the token working for anyone else holding a
-  // copy until it expired on its own.
-  const handleLogout = () => {
-    const currentToken = localStorage.getItem('token');
-    const currentRefreshToken = localStorage.getItem('refreshToken');
-    if (currentToken) {
-      fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${currentToken}` },
-        body: JSON.stringify({ refreshToken: currentRefreshToken })
-      }).catch(() => {
-        // Signing out locally must succeed even if the server can't be reached.
-      });
+  // Logout. Tells the server first so the tokens are actually revoked:
+  // clearing the browser alone would leave them working for anyone else
+  // holding a copy. `notice` is shown on the login screen afterwards.
+  const handleLogout = (reason, notice) => {
+    apiFetch(reason === 'idle' ? '/api/auth/logout?reason=idle' : '/api/auth/logout', {
+      method: 'POST',
+      // keepalive lets the request finish even though the page reloads below.
+      keepalive: true,
+    }).catch(() => {
+      // Signing out locally must succeed even if the server can't be reached.
+    });
+    setAccessToken('');
+    try {
+      localStorage.removeItem(LAST_ACTIVITY_KEY);
+      // Tells this user's other tabs to sign out too.
+      localStorage.setItem(LOGOUT_SIGNAL_KEY, String(Date.now()));
+      sessionStorage.clear();
+      if (typeof notice === 'string') sessionStorage.setItem(NOTICE_KEY, notice);
+    } catch {
+      // storage blocked: the reload below still clears the page
     }
-
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('role');
-    localStorage.removeItem('idNumber');
-    localStorage.removeItem('userName');
-    localStorage.removeItem('mustChangePassword');
-    sessionStorage.clear();
     // Start the next user from a clean page. Resetting state by hand missed
     // things (one patient saw the previous patient's chat on a shared computer),
     // and every new piece of state would be another thing to remember here.
     window.location.replace('/');
-    setToken('');
-    setUserRole('');
-    setUserIdNumber('');
-    setUserName('');
-    setMustChangePassword(false);
-    setPatientProfile(null);
-    setPatientRecord(null);
-    setHealthGuidance(null);
-    setSearchedPatientRecord(null);
-    setTriageResult(null);
-    setCheckResults([]);
-    setIngredientsInput('');
-    setReminderData(null);
-    setPatientAdherence(null);
-    setClinicalAlerts([]);
-    setPatientTimeline(null);
-    setDrugFoodConflicts([]);
-    setActiveTabStaff('patients');
-    setVitalsPatient(null);
-    setPharmacyRecord(null);
-    setFacilityList([]);
-    setAdminTab('frontdesk');
-    setRecentCheckIns([]);
   };
 
   // Forced password change for a new staff account (or an admin reset)
@@ -368,7 +367,7 @@ function App() {
     }
     setLoading(true);
     try {
-      const response = await fetch('/api/auth/change-password', {
+      const response = await apiFetch('/api/auth/change-password', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -380,12 +379,9 @@ function App() {
       if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Failed to change password');
 
       // Changing the password ends every other session, so the tokens issued
-      // here are the only ones that still work — swap both over.
-      localStorage.setItem('token', data.token);
-      if (data.refreshToken) {
-        localStorage.setItem('refreshToken', data.refreshToken);
-      }
-      localStorage.setItem('mustChangePassword', 'false');
+      // here are the only ones that still work: the server already swapped the
+      // refresh cookie, and this swaps the access token.
+      setAccessToken(data.token);
       setToken(data.token);
       setMustChangePassword(false);
       setChangePasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -396,6 +392,70 @@ function App() {
       setLoading(false);
     }
   };
+
+  // On page load, resume the session if this browser was in use in the last
+  // 12 minutes; otherwise make sure no leftover session survives. Tokens left
+  // in localStorage by older versions of the app are deleted.
+  useEffect(() => {
+    try {
+      ['token', 'refreshToken', 'role', 'idNumber', 'userName', 'mustChangePassword'].forEach(k => localStorage.removeItem(k));
+      const notice = sessionStorage.getItem(NOTICE_KEY);
+      if (notice) {
+        sessionStorage.removeItem(NOTICE_KEY);
+        setErrorMessage(notice);
+      }
+    } catch {
+      // storage blocked: nothing to clean up
+    }
+    onSessionExpired(() => handleLogout('expired', 'Your session has ended. Please sign in again.'));
+
+    const recentlyActive = Date.now() - readLastActivity() < IDLE_LOGOUT_MS;
+    if (!recentlyActive) {
+      apiFetch('/api/auth/logout', { method: 'POST' }).catch(() => {}).finally(() => setRestoringSession(false));
+      return;
+    }
+    refreshSession().then(session => {
+      if (session) applySession(session);
+      setRestoringSession(false);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Signs out after 12 minutes without a click, key press, touch or scroll,
+  // with a warning at 10, so a walked-away-from clinic computer doesn't stay
+  // signed in. Background queue refreshes don't count as activity.
+  useEffect(() => {
+    if (!token) return;
+    let lastWrite = 0;
+    const onActivity = () => {
+      const now = Date.now();
+      if (now - lastWrite > 5000) {
+        lastWrite = now;
+        markActivity();
+      }
+    };
+    const events = ['mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'];
+    events.forEach(e => window.addEventListener(e, onActivity, { passive: true, capture: true }));
+    const check = setInterval(() => {
+      const idle = Date.now() - readLastActivity();
+      if (idle >= IDLE_LOGOUT_MS) {
+        handleLogout('idle', 'You were signed out after 12 minutes without activity.');
+      } else {
+        setIdleWarning(idle >= IDLE_WARNING_MS);
+      }
+    }, 5000);
+    // Signing out in one tab signs out every tab.
+    const onStorage = (e) => {
+      if (e.key === LOGOUT_SIGNAL_KEY) window.location.replace('/');
+    };
+    window.addEventListener('storage', onStorage);
+    return () => {
+      events.forEach(e => window.removeEventListener(e, onActivity, { capture: true }));
+      clearInterval(check);
+      window.removeEventListener('storage', onStorage);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   // Fetch data on login
   useEffect(() => {
@@ -443,7 +503,7 @@ function App() {
     const interval = setInterval(async () => {
       if (document.hidden) return;
       try {
-        const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+        const response = await apiFetch(url);
         if (response.ok) setList(await response.json());
       } catch {
         // keep the current list; the next tick tries again
@@ -495,7 +555,7 @@ function App() {
 
   const fetchPublicAnnouncements = async () => {
     try {
-      const response = await fetch('/api/announcements/public');
+      const response = await apiFetch('/api/announcements/public');
       if (response.ok) {
         const data = await response.json();
         setPublicAnnouncements(data);
@@ -507,7 +567,7 @@ function App() {
 
   const fetchAnnouncements = async () => {
     try {
-      const response = await fetch('/api/announcements', { headers: getAuthHeaders() });
+      const response = await apiFetch('/api/announcements', { headers: getAuthHeaders() });
       if (response.ok) {
         const data = await response.json();
         setAnnouncements(data);
@@ -519,7 +579,7 @@ function App() {
 
   const fetchReferralReport = async () => {
     try {
-      const response = await fetch('/api/referrals/report', { headers: getAuthHeaders() });
+      const response = await apiFetch('/api/referrals/report', { headers: getAuthHeaders() });
       if (response.ok) {
         const data = await response.json();
         setReferralReport(data);
@@ -535,7 +595,7 @@ function App() {
     setSuccessMessage('');
     setLoading(true);
     try {
-      const response = await fetch('/api/announcements', {
+      const response = await apiFetch('/api/announcements', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(newAnnouncementForm)
@@ -556,7 +616,7 @@ function App() {
   const handleToggleAnnouncement = async (id, active) => {
     setErrorMessage('');
     try {
-      const response = await fetch(`/api/announcements/${id}`, {
+      const response = await apiFetch(`/api/announcements/${id}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({ active })
@@ -572,7 +632,7 @@ function App() {
   const handleDeleteAnnouncement = async (id) => {
     setErrorMessage('');
     try {
-      const response = await fetch(`/api/announcements/${id}`, {
+      const response = await apiFetch(`/api/announcements/${id}`, {
         method: 'DELETE',
         headers: getAuthHeaders()
       });
@@ -588,70 +648,70 @@ function App() {
     setLoading(true);
     try {
       // 1. Fetch Profile
-      const profileRes = await fetch('/api/patient/me', { headers: getAuthHeaders() });
+      const profileRes = await apiFetch('/api/patient/me', { headers: getAuthHeaders() });
       if (profileRes.ok) {
         const profileData = await profileRes.json();
         setPatientProfile(profileData);
       }
 
       // 2. Fetch Record
-      const recordRes = await fetch('/api/patient/me/record', { headers: getAuthHeaders() });
+      const recordRes = await apiFetch('/api/patient/me/record', { headers: getAuthHeaders() });
       if (recordRes.ok) {
         const recordData = await recordRes.json();
         setPatientRecord(recordData);
       }
 
       // 3. Fetch Symptoms List
-      const symptomsRes = await fetch('/api/symptoms', { headers: getAuthHeaders() });
+      const symptomsRes = await apiFetch('/api/symptoms', { headers: getAuthHeaders() });
       if (symptomsRes.ok) {
         const symptomsData = await symptomsRes.json();
         setSymptomsList(symptomsData);
       }
 
       // 4. Fetch Triage History
-      const historyRes = await fetch('/api/symptom-checker/history', { headers: getAuthHeaders() });
+      const historyRes = await apiFetch('/api/symptom-checker/history', { headers: getAuthHeaders() });
       if (historyRes.ok) {
         const historyData = await historyRes.json();
         setTriageHistory(historyData);
       }
 
       // 5. Fetch Health Guidance & FDA warnings
-      const guidanceRes = await fetch('/api/health-guidance/tips', { headers: getAuthHeaders() });
+      const guidanceRes = await apiFetch('/api/health-guidance/tips', { headers: getAuthHeaders() });
       if (guidanceRes.ok) {
         const guidanceData = await guidanceRes.json();
         setHealthGuidance(guidanceData);
       }
 
       // 6. Fetch Medication Reminders
-      const remindersRes = await fetch('/api/reminders/patient', { headers: getAuthHeaders() });
+      const remindersRes = await apiFetch('/api/reminders/patient', { headers: getAuthHeaders() });
       if (remindersRes.ok) {
         const remindersData = await remindersRes.json();
         setReminderData(remindersData);
       }
 
       // 7. Fetch Drug Food Audit Conflicts
-      const conflictRes = await fetch('/api/clinical-alerts/drug-food-audit', { headers: getAuthHeaders() });
+      const conflictRes = await apiFetch('/api/clinical-alerts/drug-food-audit', { headers: getAuthHeaders() });
       if (conflictRes.ok) {
         const conflictData = await conflictRes.json();
         setDrugFoodConflicts(conflictData);
       }
 
       // 8. Fetch Active Clinical Alerts
-      const patientAlertsRes = await fetch('/api/clinical-alerts/my-alerts', { headers: getAuthHeaders() });
+      const patientAlertsRes = await apiFetch('/api/clinical-alerts/my-alerts', { headers: getAuthHeaders() });
       if (patientAlertsRes.ok) {
         const patientAlertsData = await patientAlertsRes.json();
         setPatientAlerts(patientAlertsData);
       }
 
       // 9. Fetch My Lab Results
-      const myLabResultsRes = await fetch('/api/lab-results/my-results', { headers: getAuthHeaders() });
+      const myLabResultsRes = await apiFetch('/api/lab-results/my-results', { headers: getAuthHeaders() });
       if (myLabResultsRes.ok) {
         const myLabResultsData = await myLabResultsRes.json();
         setMyLabResults(myLabResultsData);
       }
 
       // 10. Fetch my active referral letter, if any
-      const referralRes = await fetch('/api/patient/me/referral', { headers: getAuthHeaders() });
+      const referralRes = await apiFetch('/api/patient/me/referral', { headers: getAuthHeaders() });
       // 204 = no active referral, which is the usual case.
       if (referralRes.ok && referralRes.status !== 204) {
         const referralData = await referralRes.json();
@@ -669,7 +729,7 @@ function App() {
   // Fetch all unresolved alerts for doctors
   const fetchClinicalAlerts = async () => {
     try {
-      const alertsRes = await fetch('/api/clinical-alerts', { headers: getAuthHeaders() });
+      const alertsRes = await apiFetch('/api/clinical-alerts', { headers: getAuthHeaders() });
       if (alertsRes.ok) {
         const alertsData = await alertsRes.json();
         setClinicalAlerts(alertsData);
@@ -693,7 +753,7 @@ function App() {
     if (idOverride) setSearchId(idOverride);
 
     try {
-      const response = await fetch(`/api/patients/${idToSearch}/record`, { headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/patients/${idToSearch}/record`, { headers: getAuthHeaders() });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.message || 'Patient record not found');
@@ -706,20 +766,20 @@ function App() {
       if (facilitiesForReferral.length === 0) fetchReferrals();
 
       // Trigger automatic CDS evaluation on patient file search to generate alerts in real time
-      await fetch(`/api/clinical-alerts/patient/${data.patient.id}/evaluate`, {
+      await apiFetch(`/api/clinical-alerts/patient/${data.patient.id}/evaluate`, {
         method: 'POST',
         headers: getAuthHeaders()
       });
 
       // Fetch Adherence Logs
-      const adherenceRes = await fetch(`/api/reminders/patient/${data.patient.id}/adherence`, { headers: getAuthHeaders() });
+      const adherenceRes = await apiFetch(`/api/reminders/patient/${data.patient.id}/adherence`, { headers: getAuthHeaders() });
       if (adherenceRes.ok) {
         const adherenceData = await adherenceRes.json();
         setPatientAdherence(adherenceData);
       }
 
       // Fetch patient timeline data (adherence logs, symptom checks, alerts, food conflicts)
-      const timelineRes = await fetch(`/api/clinical-alerts/patient/${data.patient.id}`, { headers: getAuthHeaders() });
+      const timelineRes = await apiFetch(`/api/clinical-alerts/patient/${data.patient.id}`, { headers: getAuthHeaders() });
       if (timelineRes.ok) {
         const timelineData = await timelineRes.json();
         setPatientTimeline(timelineData);
@@ -737,7 +797,7 @@ function App() {
     setSuccessMessage('');
     setLoading(true);
     try {
-      const response = await fetch(`/api/clinical-alerts/patient/${patientId}/evaluate`, {
+      const response = await apiFetch(`/api/clinical-alerts/patient/${patientId}/evaluate`, {
         method: 'POST',
         headers: getAuthHeaders()
       });
@@ -760,7 +820,7 @@ function App() {
     setSuccessMessage('');
     setLoading(true);
     try {
-      const response = await fetch(`/api/clinical-alerts/${alertId}/resolve`, {
+      const response = await apiFetch(`/api/clinical-alerts/${alertId}/resolve`, {
         method: 'POST',
         headers: getAuthHeaders()
       });
@@ -791,7 +851,7 @@ function App() {
     setLoading(true);
 
     try {
-      let response = await fetch('/api/patients', {
+      let response = await apiFetch('/api/patients', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(patientRegForm)
@@ -808,7 +868,7 @@ function App() {
           setErrorMessage(`Not registered: ${d.name} is already on file (${d.mrn}). Use "Check in patient" for returning patients.`);
           return;
         }
-        response = await fetch('/api/patients', {
+        response = await apiFetch('/api/patients', {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({ ...patientRegForm, confirmNotDuplicate: true })
@@ -825,7 +885,7 @@ function App() {
       // of making admin retype the same ID/MRN into a second form.
       if (regReasonForVisit.trim()) {
         try {
-          const checkinResponse = await fetch('/api/checkin', {
+          const checkinResponse = await apiFetch('/api/checkin', {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ idNumber: data.idNumber || data.mrn, reason: regReasonForVisit })
@@ -873,7 +933,7 @@ function App() {
         diagnosis: addDiagnosisForm.conditionName,
         notes: addDiagnosisForm.notes
       };
-      const response = await fetch('/api/diagnoses', {
+      const response = await apiFetch('/api/diagnoses', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
@@ -901,7 +961,7 @@ function App() {
       const payload = prescriptionAllergyConflicts
         ? { ...addPrescriptionForm, allergyOverrideReason }
         : addPrescriptionForm;
-      const response = await fetch('/api/prescriptions', {
+      const response = await apiFetch('/api/prescriptions', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
@@ -935,7 +995,7 @@ function App() {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await fetch('/api/allergies', {
+      const response = await apiFetch('/api/allergies', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ ...newAllergyForm, patientId: searchedPatientRecord.patient.id })
@@ -958,7 +1018,7 @@ function App() {
     setVitalsPatient(null);
     setLoading(true);
     try {
-      const response = await fetch(`/api/patients/${vitalsSearchId}`, { headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/patients/${vitalsSearchId}`, { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(typeof data === 'string' ? data : data.message || 'Patient not found');
@@ -991,7 +1051,7 @@ function App() {
         heightCm: vitalsForm.heightCm ? parseFloat(vitalsForm.heightCm) : null,
         notes: vitalsForm.notes
       };
-      const response = await fetch('/api/vitals', {
+      const response = await apiFetch('/api/vitals', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
@@ -1024,7 +1084,7 @@ function App() {
     setLoading(true);
     if (idOverride) setPharmacySearchId(idOverride);
     try {
-      const response = await fetch(`/api/pharmacy/patient/${idToSearch}`, { headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/pharmacy/patient/${idToSearch}`, { headers: getAuthHeaders() });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.message || 'Patient not found');
@@ -1047,7 +1107,7 @@ function App() {
       return;
     }
     try {
-      const response = await fetch(`/api/pharmacy/dispense/${prescriptionId}`, {
+      const response = await apiFetch(`/api/pharmacy/dispense/${prescriptionId}`, {
         method: 'POST',
         headers: getAuthHeaders()
       });
@@ -1070,7 +1130,7 @@ function App() {
     setSuccessMessage('');
     try {
       const payload = { idNumber: labsSearchId, ...labResultForm };
-      const response = await fetch('/api/lab-results', {
+      const response = await apiFetch('/api/lab-results', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
@@ -1091,7 +1151,7 @@ function App() {
     setErrorMessage('');
     setLoading(true);
     try {
-      const response = await fetch('/api/facilities', { headers: getAuthHeaders() });
+      const response = await apiFetch('/api/facilities', { headers: getAuthHeaders() });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Failed to load facilities');
       setFacilityList(data);
@@ -1107,7 +1167,7 @@ function App() {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await fetch('/api/staff', {
+      const response = await apiFetch('/api/staff', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(newStaffForm)
@@ -1128,7 +1188,7 @@ function App() {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await fetch('/api/facilities', {
+      const response = await apiFetch('/api/facilities', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(newFacilityForm)
@@ -1149,7 +1209,7 @@ function App() {
   const fetchRecentCheckIns = async () => {
     setErrorMessage('');
     try {
-      const response = await fetch('/api/checkin/recent', { headers: getAuthHeaders() });
+      const response = await apiFetch('/api/checkin/recent', { headers: getAuthHeaders() });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Failed to load check-ins');
       setRecentCheckIns(data);
@@ -1163,7 +1223,7 @@ function App() {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await fetch('/api/checkin', {
+      const response = await apiFetch('/api/checkin', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ idNumber: checkinSearchId, reason: checkinReason })
@@ -1191,7 +1251,7 @@ function App() {
     setAdminLookupRecord(null);
     setLoading(true);
     try {
-      const response = await fetch(`/api/checkin/lookup/${adminLookupId}`, { headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/checkin/lookup/${adminLookupId}`, { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Patient not found');
       setAdminLookupRecord(data);
@@ -1208,7 +1268,7 @@ function App() {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await fetch('/api/checkin/portal-pin', {
+      const response = await apiFetch('/api/checkin/portal-pin', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ identifier: adminLookupRecord.patient.idNumber || adminLookupRecord.patient.mrn, pin: portalPinInput })
@@ -1231,7 +1291,7 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch('/api/clinical-alerts', {
+      const response = await apiFetch('/api/clinical-alerts', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -1267,7 +1327,7 @@ function App() {
     setTriageResult(null);
 
     try {
-      const response = await fetch('/api/symptom-checker/check', {
+      const response = await apiFetch('/api/symptom-checker/check', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(selectedSymptoms)
@@ -1297,7 +1357,7 @@ function App() {
     setChatSending(true);
 
     try {
-      const response = await fetch('/api/patient/chatbot', {
+      const response = await apiFetch('/api/patient/chatbot', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ message: text })
@@ -1332,7 +1392,7 @@ function App() {
     setSuccessMessage('');
     setLoading(true);
     try {
-      const response = await fetch(`/api/reminders/adherence/${adherenceId}`, {
+      const response = await apiFetch(`/api/reminders/adherence/${adherenceId}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ status, notes })
@@ -1361,11 +1421,8 @@ function App() {
     formData.append('file', file);
     
     try {
-      const response = await fetch('/api/food-checker/ocr', {
+      const response = await apiFetch('/api/food-checker/ocr', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
         body: formData
       });
       const data = await response.json();
@@ -1388,7 +1445,7 @@ function App() {
     setLoading(true);
     
     try {
-      const response = await fetch(`/api/food-checker/search?type=${lookupType}&query=${productQuery}`, {
+      const response = await apiFetch(`/api/food-checker/search?type=${lookupType}&query=${productQuery}`, {
         headers: getAuthHeaders()
       });
       const data = await response.json();
@@ -1415,7 +1472,7 @@ function App() {
     setCheckResults([]);
     
     try {
-      const response = await fetch('/api/food-checker/check', {
+      const response = await apiFetch('/api/food-checker/check', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ ingredients: ingredientsInput })
@@ -1448,7 +1505,7 @@ function App() {
   // nobody has to search for a patient by ID except as a manual fallback.
   const fetchNurseVitalsQueue = async () => {
     try {
-      const response = await fetch('/api/visits/queue/WAITING_VITALS', { headers: getAuthHeaders() });
+      const response = await apiFetch('/api/visits/queue/WAITING_VITALS', { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to load the vitals queue');
       setNurseVitalsQueue(data);
@@ -1459,7 +1516,7 @@ function App() {
 
   const fetchDoctorConsultQueue = async () => {
     try {
-      const response = await fetch('/api/visits/queue/VITALS_DONE', { headers: getAuthHeaders() });
+      const response = await apiFetch('/api/visits/queue/VITALS_DONE', { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to load the consultation queue');
       setDoctorConsultQueue(data);
@@ -1470,7 +1527,7 @@ function App() {
 
   const fetchPharmacyQueue = async () => {
     try {
-      const response = await fetch('/api/pharmacy/queue', { headers: getAuthHeaders() });
+      const response = await apiFetch('/api/pharmacy/queue', { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to load the pharmacy queue');
       setPharmacyQueue(data);
@@ -1493,7 +1550,7 @@ function App() {
   const loadVitalsAllergies = async (patientId) => {
     setVitalsAllergies([]);
     try {
-      const response = await fetch(`/api/allergies/patient/${patientId}`, { headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/allergies/patient/${patientId}`, { headers: getAuthHeaders() });
       if (response.ok) setVitalsAllergies(await response.json());
     } catch {
       // Non-blocking: vitals can still be recorded without the allergy list.
@@ -1526,7 +1583,7 @@ function App() {
     setSuccessMessage('');
     setLoading(true);
     try {
-      const response = await fetch('/api/visits/discharge', {
+      const response = await apiFetch('/api/visits/discharge', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ patientId: searchedPatientRecord.patient.id, dischargeOutcome: 'HOME' })
@@ -1558,7 +1615,7 @@ function App() {
   // progress at this facility today, across the whole pipeline.
   const fetchFacilityQueueToday = async () => {
     try {
-      const response = await fetch('/api/visits/today', { headers: getAuthHeaders() });
+      const response = await apiFetch('/api/visits/today', { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || "Failed to load today's queue");
       setFacilityQueueToday(data);
@@ -1576,7 +1633,7 @@ function App() {
     setLabsPatient(null);
     setLoading(true);
     try {
-      const response = await fetch(`/api/patients/${labsSearchId}`, { headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/patients/${labsSearchId}`, { headers: getAuthHeaders() });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.message || 'Patient not found');
@@ -1598,9 +1655,9 @@ function App() {
   const fetchReferrals = async () => {
     try {
       const [inRes, outRes, facRes] = await Promise.all([
-        fetch('/api/referrals/incoming', { headers: getAuthHeaders() }),
-        fetch('/api/referrals/outgoing', { headers: getAuthHeaders() }),
-        fetch('/api/facilities', { headers: getAuthHeaders() })
+        apiFetch('/api/referrals/incoming', { headers: getAuthHeaders() }),
+        apiFetch('/api/referrals/outgoing', { headers: getAuthHeaders() }),
+        apiFetch('/api/facilities', { headers: getAuthHeaders() })
       ]);
       const inData = await parseResponseBody(inRes);
       const outData = await parseResponseBody(outRes);
@@ -1616,7 +1673,7 @@ function App() {
     e.preventDefault();
     setErrorMessage('');
     try {
-      const response = await fetch(`/api/patients/${referralLookupId.trim()}`, { headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/patients/${referralLookupId.trim()}`, { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Patient not found');
       setReferralLookupPatient(data);
@@ -1638,7 +1695,7 @@ function App() {
     setSuccessMessage('');
     setLoading(true);
     try {
-      const response = await fetch('/api/referrals', {
+      const response = await apiFetch('/api/referrals', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ patientId: referralPatient.id, ...referralForm })
@@ -1660,7 +1717,7 @@ function App() {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await fetch(`/api/referrals/${id}/respond`, {
+      const response = await apiFetch(`/api/referrals/${id}/respond`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ status })
@@ -1677,7 +1734,7 @@ function App() {
   // ===== Restored feature: Immunizations (EPI schedule) =====
   const fetchImmunizations = async (patientId) => {
     try {
-      const response = await fetch(`/api/immunizations/patient/${patientId}`, { headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/immunizations/patient/${patientId}`, { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (response.ok) setPatientImmunizations(data);
     } catch (err) {
@@ -1689,7 +1746,7 @@ function App() {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await fetch(`/api/immunizations/patient/${patientId}/schedule`, { method: 'POST', headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/immunizations/patient/${patientId}/schedule`, { method: 'POST', headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to generate immunization schedule');
       setPatientImmunizations(data);
@@ -1705,7 +1762,7 @@ function App() {
     try {
       const options = { method: 'POST', headers: getAuthHeaders() };
       if (action === 'administer') options.body = JSON.stringify({});
-      const response = await fetch(`/api/immunizations/${id}/${action}`, options);
+      const response = await apiFetch(`/api/immunizations/${id}/${action}`, options);
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || `Failed to update immunization`);
       if (searchedPatientRecord) fetchImmunizations(searchedPatientRecord.patient.id);
@@ -1717,7 +1774,7 @@ function App() {
   // ===== Restored feature: Pharmacy stock/inventory =====
   const fetchStockItems = async () => {
     try {
-      const response = await fetch('/api/stock', { headers: getAuthHeaders() });
+      const response = await apiFetch('/api/stock', { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (response.ok) setStockItems(data);
     } catch (err) {
@@ -1730,7 +1787,7 @@ function App() {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await fetch('/api/stock', {
+      const response = await apiFetch('/api/stock', {
         method: 'POST',
         headers: getAuthHeaders(),
         // An empty date input sends '' — send null instead so the backend
@@ -1753,7 +1810,7 @@ function App() {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await fetch('/api/stock/adjust', {
+      const response = await apiFetch('/api/stock/adjust', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ stockItemId, quantityChange, notes: 'Manual adjustment' })
@@ -1770,7 +1827,7 @@ function App() {
   // ===== Restored feature: Dispense event log =====
   const fetchDispenseHistoryForPatient = async (patientId) => {
     try {
-      const response = await fetch(`/api/dispensing/patient/${patientId}`, { headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/dispensing/patient/${patientId}`, { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (response.ok) setDispenseHistory(data);
     } catch (err) {
@@ -1783,7 +1840,7 @@ function App() {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await fetch('/api/dispensing', {
+      const response = await apiFetch('/api/dispensing', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(dispenseLogForm)
@@ -1802,7 +1859,7 @@ function App() {
 
   const fetchSystemAdminStaff = async () => {
     try {
-      const response = await fetch('/api/system-admin/staff', { headers: getAuthHeaders() });
+      const response = await apiFetch('/api/system-admin/staff', { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (response.ok) setSystemAdminStaff(data);
     } catch (err) {
@@ -1817,7 +1874,7 @@ function App() {
       if (auditFilters.startDate) params.append('startDate', auditFilters.startDate);
       if (auditFilters.endDate) params.append('endDate', auditFilters.endDate);
       if (auditFilters.action) params.append('action', auditFilters.action);
-      const response = await fetch(`/api/system-admin/audit-log?${params.toString()}`, { headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/system-admin/audit-log?${params.toString()}`, { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to load the audit trail');
       setAuditEntries(data);
@@ -1829,7 +1886,7 @@ function App() {
   const fetchAuditLogForStaff = async (staffId) => {
     setErrorMessage('');
     try {
-      const response = await fetch(`/api/system-admin/audit-log/staff/${staffId}`, { headers: getAuthHeaders() });
+      const response = await apiFetch(`/api/system-admin/audit-log/staff/${staffId}`, { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to load the audit trail');
       setAuditEntries(data);
@@ -1844,7 +1901,7 @@ function App() {
     setSuccessMessage('');
     setResetResult(null);
     try {
-      const response = await fetch(`/api/system-admin/staff/${staffMember.id}/reset-password`, {
+      const response = await apiFetch(`/api/system-admin/staff/${staffMember.id}/reset-password`, {
         method: 'POST',
         headers: getAuthHeaders()
       });
@@ -1861,7 +1918,7 @@ function App() {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await fetch(`/api/system-admin/staff/${staffMember.id}/force-logout`, {
+      const response = await apiFetch(`/api/system-admin/staff/${staffMember.id}/force-logout`, {
         method: 'POST',
         headers: getAuthHeaders()
       });
@@ -1877,7 +1934,7 @@ function App() {
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await fetch(`/api/system-admin/staff/${staffMember.id}/active`, {
+      const response = await apiFetch(`/api/system-admin/staff/${staffMember.id}/active`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ active: !staffMember.active })
@@ -1899,6 +1956,28 @@ function App() {
   // The oversight role: manages accounts and reviews the audit trail, and never
   // sees a clinical record.
   const isSystemAdmin = userRole === 'SYSTEM_ADMIN';
+
+  // Shown on every signed-in screen from 10 minutes without activity. Drawn
+  // straight into <body> so nothing on the page (like the chat bubble) can
+  // sit on top of it.
+  const idleDialog = idleWarning ? createPortal(
+    <div className="udhr-idle-overlay" role="alertdialog" aria-modal="true" aria-labelledby="udhr-idle-title">
+      <div className="udhr-idle-dialog">
+        <h2 id="udhr-idle-title">Are you still there?</h2>
+        <p>For patient privacy you'll be signed out in about 2 minutes unless you continue.</p>
+        <div className="udhr-idle-actions">
+          <button type="button" className="udhr-btn-neutral" onClick={() => handleLogout()}>Sign out now</button>
+          <button type="button" className="udhr-btn-primary" onClick={() => { markActivity(); setIdleWarning(false); }} autoFocus>Stay signed in</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  ) : null;
+
+  // Checking whether the last session can be resumed (a fraction of a second).
+  if (restoringSession) {
+    return <div className="udhr-restoring" aria-busy="true">Loading…</div>;
+  }
 
   // 1. Login — light clinical redesign. Rendered on its own, ahead of the
   // shared app shell below, since it uses a full-viewport two-pane layout
@@ -2092,6 +2171,7 @@ function App() {
 
     return (
       <div className="udhr-page">
+        {idleDialog}
         <div className="udhr-page-inner">
           <header className="udhr-page-header">
             <div className="udhr-page-logo">
@@ -3666,6 +3746,7 @@ function App() {
 
     return (
       <div className="udhr-shell">
+        {idleDialog}
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
         <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
           <div className="udhr-sidebar-header">
@@ -3963,6 +4044,7 @@ function App() {
 
     return (
       <div className="udhr-shell">
+        {idleDialog}
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
         <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
           <div className="udhr-sidebar-header">
@@ -4280,6 +4362,7 @@ function App() {
 
     return (
       <div className="udhr-shell">
+        {idleDialog}
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
         <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
           <div className="udhr-sidebar-header">
@@ -4788,6 +4871,7 @@ function App() {
 
     return (
       <div className="udhr-shell">
+        {idleDialog}
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
         <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
           <div className="udhr-sidebar-header">
@@ -4848,6 +4932,7 @@ function App() {
 
   return (
     <div className="app-container">
+      {idleDialog}
       {/* Header */}
       <header className="app-header">
         <div className="logo-container">

@@ -1068,7 +1068,6 @@ function App() {
       }
 
       setSuccessMessage(message);
-      setSearchId(data.idNumber || data.mrn);
       setPatientRegForm({
         idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: '', contactNumber: '', address: '', email: '',
         nextOfKinFirstName: '', nextOfKinLastName: '', nextOfKinRelationship: '', nextOfKinPhone: '',
@@ -1078,10 +1077,6 @@ function App() {
       setRegReasonForVisit('');
       setShowRegExtras(false);
       setShowRegisterForm(false);
-      // Load the newly registered patient record
-      setSearchedPatientRecord({
-        patient: data, allergies: [], chronicConditions: [], visits: [], diagnoses: [], prescriptions: [], labResults: []
-      });
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -1189,7 +1184,10 @@ function App() {
       const response = await apiFetch(`/api/patients/${vitalsSearchId}`, { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) {
-        throw new Error(typeof data === 'string' ? data : data.message || 'Patient not found');
+        // Registration is the front desk's job; tell the nurse where to send them.
+        throw new Error(response.status === 404 || response.status === 400
+          ? 'No patient with that ID or file number. New patients are registered at the front desk.'
+          : (typeof data === 'string' ? data : data.message || 'Patient not found'));
       }
       setVitalsPatient(data);
       setVitalsVisitReason('');
@@ -3121,7 +3119,6 @@ function App() {
       ? [
           { key: 'vitals', label: 'Vitals', icon: <Activity size={17} /> },
           { key: 'labs', label: 'Lab Results', icon: <FileSpreadsheet size={17} /> },
-          { key: 'patients', label: 'Register', icon: <Users size={17} /> },
           { key: 'alerts', label: 'Alerts', icon: <ShieldAlert size={17} /> },
           { key: 'referrals', label: 'Referrals', icon: <CornerUpRight size={17} /> },
         ]
@@ -3254,101 +3251,6 @@ function App() {
       </>
     );
 
-    const renderRegistrationFields = () => (
-      <>
-        <div className="udhr-form-group">
-          <label className="udhr-label">ID Number</label>
-          <input type="text" className="udhr-input" value={patientRegForm.idNumber} onChange={(e) => handleRegIdChange(e.target.value)} placeholder="13-digit SA ID number (optional)" maxLength={13} inputMode="numeric" pattern="[0-9]*" />
-          {renderIdHint()}
-        </div>
-        <div className="udhr-form-group">
-          <label className="udhr-label">Passport Number</label>
-          <input type="text" className="udhr-input" value={patientRegForm.passportNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, passportNumber: e.target.value })} placeholder="Passport number (optional)" />
-        </div>
-        <p className="udhr-empty-note" style={{ marginBottom: '12px' }}>
-          Every patient gets a file number automatically. ID and passport number are optional.
-        </p>
-        <div className="udhr-form-group">
-          <label className="udhr-label">First Name</label>
-          <input type="text" className="udhr-input" value={patientRegForm.firstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, firstName: e.target.value })} required />
-        </div>
-        <div className="udhr-form-group">
-          <label className="udhr-label">Last Name</label>
-          <input type="text" className="udhr-input" value={patientRegForm.lastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, lastName: e.target.value })} required />
-        </div>
-        <div className="udhr-form-group">
-          <label className="udhr-label">Date of Birth</label>
-          <DateOfBirthField value={patientRegForm.dateOfBirth} onChange={(v) => setPatientRegForm(form => ({ ...form, dateOfBirth: v }))} required />
-        </div>
-        <div className="udhr-form-group">
-          <label className="udhr-label">Gender</label>
-          <select className="udhr-input" value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })} required>
-            <option value="" disabled>Select gender</option>
-            <option value="MALE">Male</option>
-            <option value="FEMALE">Female</option>
-            <option value="OTHER">Other</option>
-          </select>
-        </div>
-        <div className="udhr-form-group">
-          <label className="udhr-label">Contact Number</label>
-          <input type="text" className="udhr-input" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value.replace(/\D/g, '') })} inputMode="numeric" pattern="[0-9]*" />
-        </div>
-        <div className="udhr-form-group">
-          <label className="udhr-label">Email Address</label>
-          <input type="email" className="udhr-input" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@gmail.com" />
-        </div>
-        <div className="udhr-form-group">
-          <label className="udhr-label">Patient portal PIN (optional)</label>
-          <input type="password" className="udhr-input" value={patientRegForm.portalPin} onChange={(e) => setPatientRegForm({ ...patientRegForm, portalPin: e.target.value.replace(/\D/g, '').slice(0, 6) })} inputMode="numeric" autoComplete="new-password" placeholder="6 digits, chosen by the patient" />
-          <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>Lets the patient sign in to view their record. Can also be set later under Visitors.</p>
-        </div>
-        <div className="udhr-form-group">
-          <label className="udhr-label">Address</label>
-          <textarea className="udhr-textarea" value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} />
-        </div>
-        <button
-          type="button"
-          className="udhr-btn-neutral"
-          style={{ width: '100%', marginBottom: '10px' }}
-          onClick={() => setShowRegExtras(!showRegExtras)}
-        >
-          {showRegExtras ? 'Hide' : 'Add'} Next of Kin / Newborn Details (optional)
-        </button>
-        {showRegExtras && (
-          <div style={{ background: '#f8fafc', border: '1px solid var(--udhr-border)', padding: '12px', borderRadius: '8px', marginBottom: '10px' }}>
-            <p className="udhr-empty-note" style={{ marginBottom: '8px' }}>Next of Kin</p>
-            <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} /></div>
-            <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} /></div>
-            <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Relationship (e.g. Husband)" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} /></div>
-            <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Phone number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} /></div>
-            <p className="udhr-empty-note" style={{ margin: '12px 0 8px' }}>Newborn — leave blank unless registering a baby at birth</p>
-            <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Mother's ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} /></div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-              <input type="number" className="udhr-input" placeholder="Birth weight (g)" value={patientRegForm.birthWeightGrams} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthWeightGrams: e.target.value })} />
-              <input type="number" className="udhr-input" placeholder="Birth length (cm)" value={patientRegForm.birthLengthCm} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthLengthCm: e.target.value })} />
-              <input type="number" className="udhr-input" placeholder="Apgar (1 min)" value={patientRegForm.apgarScore1Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore1Min: e.target.value })} />
-              <input type="number" className="udhr-input" placeholder="Apgar (5 min)" value={patientRegForm.apgarScore5Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore5Min: e.target.value })} />
-            </div>
-          </div>
-        )}
-      </>
-    );
-
-    const renderNurseRegisterPanel = () => (
-      <>
-        <h1 className="udhr-page-title">Register</h1>
-        <p className="udhr-page-subtitle">Register a new patient at this facility.</p>
-        <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)' }}>
-          <div className="udhr-record-body">
-            <form onSubmit={handleRegisterPatient}>
-              {renderRegistrationFields()}
-              {renderConsentFields()}
-              <button type="submit" className="udhr-btn-primary">Create Patient Record</button>
-            </form>
-          </div>
-        </div>
-      </>
-    );
 
     const renderNurseVitalsPanel = () => (
       <>
@@ -4174,7 +4076,7 @@ function App() {
             </div>
           )}
 
-          {activeTabStaff === 'patients' && (isNurse ? renderNurseRegisterPanel() : renderDoctorPatientsPanel())}
+          {activeTabStaff === 'patients' && !isNurse && renderDoctorPatientsPanel()}
           {activeTabStaff === 'vitals' && isNurse && renderNurseVitalsPanel()}
           {activeTabStaff === 'labs' && isNurse && renderNurseLabsPanel()}
           {activeTabStaff === 'alerts' && renderAlertsPanel()}

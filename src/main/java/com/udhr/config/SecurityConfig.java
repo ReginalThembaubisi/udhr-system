@@ -99,9 +99,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/reminders/adherence/**").hasRole("PATIENT")
                 .requestMatchers("/api/reminders/patient/**").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/symptoms").hasAnyRole("PATIENT", "DOCTOR", "NURSE")
-                // Front desk (Admin) can register a new patient and check patients in,
-                // but the clinical record stays off-limits to Admin.
-                .requestMatchers(HttpMethod.POST, "/api/patients").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
+                // Registering patients is the front desk's job alone, so every
+                // new file goes through the same duplicate check and consent
+                // step. The clinical record stays off-limits to the front desk.
+                .requestMatchers(HttpMethod.POST, "/api/patients").hasRole("ADMIN")
                 // Only the doctor's screen ever reads the full clinical record (diagnoses,
                 // prescriptions, allergies, vitals, labs) — nurse and pharmacist don't need it
                 // and shouldn't be able to pull it even by calling the API directly.

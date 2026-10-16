@@ -74,6 +74,7 @@ public class SecurityConfig {
                 // allowed") turned into a 401 ("not signed in") on a real server.
                 .requestMatchers("/error").permitAll()
                 .requestMatchers("/api/auth/change-password").authenticated()
+                .requestMatchers("/api/auth/2fa/**").authenticated()
                 .requestMatchers("/api/auth/**").permitAll()
 
                 // ---- System administrator: oversight of the system itself ----

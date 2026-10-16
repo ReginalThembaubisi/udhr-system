@@ -1,6 +1,7 @@
 package com.udhr.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -68,6 +69,27 @@ public class Staff {
     // existing sessions stay valid.
     @Column(name = "sessions_valid_from")
     private LocalDateTime sessionsValidFrom;
+
+    // Two-step sign-in with an authenticator app (TotpService). The secret is
+    // stored encrypted and never leaves the server after setup; a pending one
+    // exists only between showing the QR code and the first correct code.
+    @JsonIgnore
+    @Column(name = "totp_secret", length = 200)
+    private String totpSecret;
+
+    @JsonIgnore
+    @Column(name = "totp_pending_secret", length = 200)
+    private String totpPendingSecret;
+
+    // The last 30-second window a code was accepted for, so no code works twice.
+    @JsonIgnore
+    @Column(name = "totp_last_step")
+    private Long totpLastStep;
+
+    @JsonProperty("twoFactorEnabled")
+    public boolean isTwoFactorEnabled() {
+        return totpSecret != null;
+    }
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

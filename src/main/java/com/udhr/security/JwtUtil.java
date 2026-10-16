@@ -17,6 +17,8 @@ import java.util.UUID;
 @Component
 public class JwtUtil {
 
+    public static final String TWO_FACTOR_CHALLENGE = "2fa-challenge";
+
     @Value("${jwt.secret}")
     private String secretKey;
 
@@ -32,6 +34,15 @@ public class JwtUtil {
     }
 
     public String generateToken(String staffNumber, String role, boolean mustChangePassword) {
+        return generateToken(staffNumber, role, mustChangePassword, false);
+    }
+
+    /**
+     * twoFactorSetup: the account must set up two-step sign-in before it can do
+     * anything else (STAFF_2FA=required). Enforced by JwtAuthenticationFilter,
+     * like mustChangePassword.
+     */
+    public String generateToken(String staffNumber, String role, boolean mustChangePassword, boolean twoFactorSetup) {
         // Every token gets a unique id (`jti`) so an individual token can be
         // named and revoked later — without it, a stolen token could only be
         // waited out, never killed.
@@ -40,10 +51,37 @@ public class JwtUtil {
                 .setSubject(staffNumber)
                 .claim("role", role)
                 .claim("mustChangePassword", mustChangePassword)
+                .claim("twoFactorSetup", twoFactorSetup)
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
+    }
+
+    /**
+     * Proof that the password was right, good for 5 minutes and only for
+     * entering the authenticator code. The filter never accepts it as a
+     * sign-in (see extractPurpose).
+     */
+    public String generateTwoFactorChallenge(String staffNumber) {
+        return Jwts.builder()
+                .setId(UUID.randomUUID().toString())
+                .setSubject(staffNumber)
+                .claim("purpose", TWO_FACTOR_CHALLENGE)
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + 5 * 60 * 1000))
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    /** Set only on special-purpose tokens, which must never count as a sign-in. */
+    public String extractPurpose(String token) {
+        return getClaims(token).get("purpose", String.class);
+    }
+
+    public boolean extractTwoFactorSetup(String token) {
+        Boolean value = getClaims(token).get("twoFactorSetup", Boolean.class);
+        return value != null && value;
     }
 
     private Claims getClaims(String token) {

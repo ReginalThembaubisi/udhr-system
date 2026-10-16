@@ -48,6 +48,9 @@ public class SystemAdminService {
     @Autowired
     private TokenService tokenService;
 
+    @Autowired
+    private LoginAttemptService loginAttemptService;
+
     // ---- Account management ------------------------------------------------------
 
     public List<Staff> getAllStaff() {
@@ -79,6 +82,9 @@ public class SystemAdminService {
         staffRepository.save(target);
 
         tokenService.revokeAllSessions(target, "ADMIN_PASSWORD_RESET");
+        // Lift any lockout too, so the person can sign in with the new
+        // password straight away instead of waiting out the 15 minutes.
+        loginAttemptService.reset(LoginAttemptService.accountKey(target.getStaffNumber()));
 
         record(performedBy, "ADMIN_PASSWORD_RESET",
                 "Reset password for " + describe(target) + " and ended all their sessions");

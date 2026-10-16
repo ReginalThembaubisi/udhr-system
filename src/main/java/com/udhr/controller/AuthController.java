@@ -9,6 +9,7 @@ import com.udhr.exception.LoginLockedException;
 import com.udhr.security.JwtUtil;
 import com.udhr.service.AuthService;
 import com.udhr.service.PatientPortalService;
+import com.udhr.service.TwoFactorService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -16,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -45,6 +47,9 @@ public class AuthController {
 
     @Autowired
     private PatientPortalService patientPortalService;
+
+    @Autowired
+    private TwoFactorService twoFactorService;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -96,6 +101,11 @@ public class AuthController {
     }
 
     private static ResponseEntity<?> withSession(SessionResponse session) {
+        // No refresh token yet means sign-in isn't finished (two-step code
+        // still needed), so no cookie is set.
+        if (session.getRefreshToken() == null) {
+            return ResponseEntity.ok(session);
+        }
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshCookie(session.getRefreshToken()).toString())
                 .body(session);
@@ -114,6 +124,49 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request, HttpServletRequest httpRequest) {
         return signIn(() -> authService.login(request, clientAddress(httpRequest)));
+    }
+
+    /** Second step of a staff sign-in: the code from the authenticator app. */
+    @PostMapping("/login/verify")
+    public ResponseEntity<?> verifyTwoFactor(@RequestBody Map<String, String> body, HttpServletRequest httpRequest) {
+        return signIn(() -> authService.verifyTwoFactor(body.get("challengeToken"), body.get("code"), clientAddress(httpRequest)));
+    }
+
+    // ---- Two-step sign-in setup, for the signed-in staff member ------------------
+
+    @GetMapping("/2fa/status")
+    public ResponseEntity<?> twoFactorStatus(HttpServletRequest httpRequest) {
+        return staffAction(httpRequest, staffNumber -> ResponseEntity.ok(twoFactorService.status(staffNumber)));
+    }
+
+    @PostMapping("/2fa/setup")
+    public ResponseEntity<?> twoFactorSetup(HttpServletRequest httpRequest) {
+        return staffAction(httpRequest, staffNumber -> ResponseEntity.ok(twoFactorService.begin(staffNumber)));
+    }
+
+    @PostMapping("/2fa/confirm")
+    public ResponseEntity<?> twoFactorConfirm(@RequestBody Map<String, String> body, HttpServletRequest httpRequest) {
+        return staffAction(httpRequest, staffNumber -> withSession(twoFactorService.confirm(staffNumber, body.get("code"), extractToken(httpRequest))));
+    }
+
+    @PostMapping("/2fa/disable")
+    public ResponseEntity<?> twoFactorDisable(@RequestBody Map<String, String> body, HttpServletRequest httpRequest) {
+        return staffAction(httpRequest, staffNumber -> {
+            twoFactorService.disable(staffNumber, body.get("password"), body.get("code"));
+            return ResponseEntity.ok(Map.of("message", "Two-step sign-in turned off"));
+        });
+    }
+
+    private ResponseEntity<?> staffAction(HttpServletRequest httpRequest, java.util.function.Function<String, ResponseEntity<?>> action) {
+        String staffNumber = extractStaffNumber(httpRequest);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+        try {
+            return action.apply(staffNumber);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
     }
 
     @PostMapping("/patient/login")

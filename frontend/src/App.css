@@ -1812,3 +1812,80 @@
   font-size: 12px;
   color: var(--udhr-text-muted);
 }
+
+/* Two-step sign-in */
+.udhr-code-input {
+  font-size: 20px;
+  letter-spacing: 0.3em;
+  text-align: center;
+}
+.udhr-two-factor p,
+.udhr-two-factor li {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--udhr-text-secondary);
+}
+.udhr-two-factor ol {
+  padding-left: 18px;
+  margin: 8px 0 16px;
+}
+.udhr-two-factor-qr {
+  display: block;
+  margin: 8px auto 12px;
+  border: 1px solid var(--udhr-border);
+  border-radius: 8px;
+}
+.udhr-two-factor-key {
+  font-size: 13px;
+  word-break: break-all;
+  color: var(--udhr-text);
+}
+.udhr-two-factor-message {
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.udhr-two-factor-message.success {
+  background: var(--udhr-success-tint);
+  color: var(--udhr-success-text) !important;
+}
+.udhr-two-factor-message.error {
+  background: var(--udhr-danger-tint);
+  color: var(--udhr-danger-text) !important;
+}
+
+/* "Last sign-in" notice after a staff sign-in */
+.udhr-signin-notice {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 900;
+  max-width: 380px;
+  padding: 12px 36px 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--udhr-border);
+  background: var(--udhr-surface);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
+  font-size: 13px;
+  color: var(--udhr-text);
+}
+.udhr-signin-notice.warning {
+  border-color: var(--udhr-warning);
+  background: var(--udhr-warning-tint);
+}
+.udhr-signin-notice p {
+  margin: 0;
+}
+.udhr-signin-notice-help {
+  margin-top: 4px !important;
+  color: var(--udhr-text-secondary);
+}
+.udhr-signin-notice button {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--udhr-text-muted);
+}

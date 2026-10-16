@@ -5,6 +5,7 @@ import com.udhr.dto.PasswordResetResponse;
 import com.udhr.model.Staff;
 import com.udhr.security.JwtUtil;
 import com.udhr.service.SystemAdminService;
+import com.udhr.service.TwoFactorService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -25,6 +26,9 @@ public class SystemAdminController {
 
     @Autowired
     private SystemAdminService systemAdminService;
+
+    @Autowired
+    private TwoFactorService twoFactorService;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -59,6 +63,25 @@ public class SystemAdminController {
         try {
             PasswordResetResponse response = systemAdminService.resetPassword(staffId, actor);
             return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    /**
+     * Clears someone's authenticator app (lost or new phone) after checking who
+     * they are in person; they set it up again at their next sign-in.
+     */
+    @PostMapping("/staff/{staffId}/reset-two-factor")
+    public ResponseEntity<?> resetTwoFactor(@PathVariable Long staffId, HttpServletRequest request) {
+        String actor = extractStaffNumber(request);
+        if (actor == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+        try {
+            Staff staff = twoFactorService.resetFor(staffId, actor);
+            return ResponseEntity.ok(Map.of("message", "Two-step sign-in reset for " + staff.getFirstName() + " " + staff.getLastName()
+                    + ". They can set it up again after signing in."));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
         }

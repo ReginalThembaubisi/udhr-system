@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import QRCode from 'qrcode';
 import {
   Activity, Heart, AlertTriangle, Shield, ShieldAlert, User, LogOut, Search, PlusCircle,
   Calendar, MapPin, Phone, CheckCircle, XCircle, FileText, Pill, Compass, Clock,
@@ -182,6 +183,107 @@ function DateOfBirthField({ id, value, onChange, required }) {
   );
 }
 
+// Some endpoints return a plain-text error body instead of JSON; this reads
+// either shape without throwing a JSON parse error.
+const parseResponseBody = async (response) => {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
+};
+
+// Two-step sign-in for staff: shows whether it is on, sets it up with a QR
+// code for an authenticator app, and turns it off. onSession receives the
+// fresh session handed back when it is turned on (all others are ended).
+function TwoFactorSettings({ required, onSession }) {
+  const [status, setStatus] = useState(null);
+  const [setup, setSetup] = useState(null); // { secret, qr }
+  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [message, setMessage] = useState(null); // { type, text }
+  const headers = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${getAccessToken()}` });
+  const errorText = (data, fallback) => (typeof data === 'string' ? data : data?.message || fallback);
+
+  useEffect(() => {
+    apiFetch('/api/auth/2fa/status', { headers: headers() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(setStatus)
+      .catch(() => setStatus(null));
+  }, []);
+
+  const begin = async () => {
+    setMessage(null);
+    const response = await apiFetch('/api/auth/2fa/setup', { method: 'POST', headers: headers() });
+    const data = await parseResponseBody(response);
+    if (!response.ok) return setMessage({ type: 'error', text: errorText(data, 'Could not start setup') });
+    setSetup({ secret: data.secret, qr: await QRCode.toDataURL(data.otpauthUri, { margin: 1, width: 200 }) });
+  };
+
+  const confirm = async (e) => {
+    e.preventDefault();
+    const response = await apiFetch('/api/auth/2fa/confirm', { method: 'POST', headers: headers(), body: JSON.stringify({ code }) });
+    const data = await parseResponseBody(response);
+    if (!response.ok) return setMessage({ type: 'error', text: errorText(data, 'That code isn\'t right') });
+    setSetup(null);
+    setCode('');
+    setStatus({ ...status, enabled: true });
+    setMessage({ type: 'success', text: 'Two-step sign-in is on. Any other signed-in devices were signed out.' });
+    onSession(data);
+  };
+
+  const disable = async (e) => {
+    e.preventDefault();
+    const response = await apiFetch('/api/auth/2fa/disable', { method: 'POST', headers: headers(), body: JSON.stringify({ password, code }) });
+    const data = await parseResponseBody(response);
+    if (!response.ok) return setMessage({ type: 'error', text: errorText(data, 'Could not turn it off') });
+    setCode('');
+    setPassword('');
+    setStatus({ ...status, enabled: false });
+    setMessage({ type: 'success', text: 'Two-step sign-in is off.' });
+  };
+
+  if (!status) return <p className="udhr-empty-note">Loading...</p>;
+  return (
+    <div className="udhr-two-factor">
+      {message && <p className={`udhr-two-factor-message ${message.type}`}>{message.text}</p>}
+      {status.enabled ? (
+        <>
+          <p><span className="udhr-tag info">On</span> Signing in needs your password and a code from your authenticator app.</p>
+          {!required && (
+            <form onSubmit={disable}>
+              <p className="udhr-label" style={{ marginTop: '14px' }}>Turn it off</p>
+              <input type="password" className="udhr-input" aria-label="Your password" placeholder="Your password" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ marginBottom: '8px' }} />
+              <input type="text" className="udhr-input udhr-code-input" aria-label="Current code" placeholder="Current 6-digit code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" required style={{ marginBottom: '8px' }} />
+              <button type="submit" className="udhr-btn-neutral">Turn off two-step sign-in</button>
+            </form>
+          )}
+        </>
+      ) : !setup ? (
+        <>
+          <p>Add a second step to signing in: after your password, a 6-digit code from an app on your phone. Then a stolen or guessed password isn't enough to get into your account.</p>
+          <ol>
+            <li>Install <strong>Google Authenticator</strong> or <strong>Microsoft Authenticator</strong> on your phone (free).</li>
+            <li>Press the button below and scan the QR code with the app.</li>
+            <li>Type the code the app shows to finish.</li>
+          </ol>
+          <button type="button" className="udhr-btn-primary" onClick={begin}>Set up two-step sign-in</button>
+        </>
+      ) : (
+        <form onSubmit={confirm}>
+          <p>Scan this with your authenticator app:</p>
+          <img src={setup.qr} alt="QR code for your authenticator app" width="200" height="200" className="udhr-two-factor-qr" />
+          <p className="udhr-row-subtitle">Can't scan? Enter this key in the app instead: <code className="udhr-two-factor-key">{setup.secret.match(/.{1,4}/g).join(' ')}</code></p>
+          <label className="udhr-label" htmlFor="twoFactorSetupCode" style={{ marginTop: '12px' }}>Code shown in the app</label>
+          <input id="twoFactorSetupCode" type="text" className="udhr-input udhr-code-input" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="6 digits" required />
+          <button type="submit" className="udhr-btn-primary" style={{ marginTop: '10px' }} disabled={code.length !== 6}>Turn on</button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 // Shown only once a second language has been added (see locales/en.js).
 function LanguagePicker({ value, onChange }) {
   if (LANGUAGES.length < 2) return null;
@@ -205,6 +307,15 @@ function App() {
   // True while a page load checks whether the session can be resumed, so the
   // login screen doesn't flash up for someone who is still signed in.
   const [restoringSession, setRestoringSession] = useState(true);
+  // Two-step sign-in: the challenge from a correct password while the
+  // authenticator code is being entered.
+  const [twoFactorChallenge, setTwoFactorChallenge] = useState(null);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
+  // STAFF_2FA=required and this account has no authenticator app yet.
+  const [twoFactorSetupRequired, setTwoFactorSetupRequired] = useState(false);
+  const [showSecurity, setShowSecurity] = useState(false);
+  // "Last sign-in" notice after a staff sign-in.
+  const [signInNotice, setSignInNotice] = useState(null);
   const [language, setLanguageState] = useState(getLanguage());
   const changeLanguage = (code) => {
     setLanguage(code);
@@ -432,7 +543,16 @@ function App() {
     setUserIdNumber(data.idNumber || data.staffNumber);
     setUserName(data.fullName);
     setMustChangePassword(!!data.mustChangePassword);
+    setTwoFactorSetupRequired(!!data.twoFactorSetupRequired);
     markActivity();
+  };
+
+  // After a staff sign-in: when and where the previous one was, so someone
+  // else using the account gets noticed.
+  const showSignInNotice = (data) => {
+    if (data.lastSignInAt) {
+      setSignInNotice({ at: data.lastSignInAt, from: data.lastSignInFrom, failed: data.failedAttemptsSinceLastSignIn || 0 });
+    }
   };
 
   // Log in user
@@ -467,11 +587,49 @@ function App() {
         throw new Error(typeof data === 'string' ? data : data.message || 'Login failed');
       }
 
+      // Password right, authenticator code still needed.
+      if (data.twoFactorRequired) {
+        setTwoFactorChallenge(data.challengeToken);
+        setTwoFactorCode('');
+        setStaffPassword('');
+        return;
+      }
+
       // The access token stays in memory; the server set the refresh token as
       // an HttpOnly cookie that keeps the session going across a shift.
       applySession(data);
+      showSignInNotice(data);
       setStaffPassword('');
       setPatientPin('');
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Second step of a staff sign-in: the 6-digit code from the authenticator app.
+  const handleVerifyCode = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setLoading(true);
+    try {
+      const response = await apiFetch('/api/auth/login/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeToken: twoFactorChallenge, code: twoFactorCode })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) {
+        // A timed-out challenge means starting again from the password.
+        const text = typeof data === 'string' ? data : data?.message || '';
+        if (text.startsWith('Sign-in timed out')) setTwoFactorChallenge(null);
+        throw new Error(typeof data === 'string' ? data : data.message || 'Sign-in failed');
+      }
+      setTwoFactorChallenge(null);
+      setTwoFactorCode('');
+      applySession(data);
+      showSignInNotice(data);
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -1788,17 +1946,6 @@ function App() {
     }
   };
 
-  // Some restored-feature endpoints return a plain-text error body instead of JSON;
-  // this reads either shape without throwing a JSON parse error.
-  const parseResponseBody = async (response) => {
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      return { message: text };
-    }
-  };
-
   // ===== Automatic hand-off queues: admin -> nurse -> doctor -> pharmacy =====
   // Each stage reads a list of patients the previous stage already queued —
   // nobody has to search for a patient by ID except as a manual fallback.
@@ -2229,6 +2376,21 @@ function App() {
     }
   };
 
+  const handleResetTwoFactor = async (staffMember) => {
+    if (!window.confirm(`Reset two-step sign-in for ${staffMember.firstName} ${staffMember.lastName}? Only do this after checking who they are in person. Their sessions will end.`)) return;
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await apiFetch(`/api/system-admin/staff/${staffMember.id}/reset-two-factor`, { method: 'POST', headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Could not reset two-step sign-in');
+      setSuccessMessage(data.message);
+      fetchSystemAdminStaff();
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
   const handleToggleStaffActive = async (staffMember) => {
     setErrorMessage('');
     setSuccessMessage('');
@@ -2328,9 +2490,52 @@ function App() {
     document.body
   ) : null;
 
+  // "Sign-in security" window, opened from the staff sidebar.
+  const securityDialog = showSecurity ? createPortal(
+    <div className="udhr-idle-overlay" role="dialog" aria-modal="true" aria-labelledby="udhr-security-title" onClick={(e) => { if (e.target === e.currentTarget) setShowSecurity(false); }}>
+      <div className="udhr-idle-dialog" style={{ maxWidth: '480px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 id="udhr-security-title">Sign-in security</h2>
+          <button type="button" className="udhr-link-button" onClick={() => setShowSecurity(false)}>Close</button>
+        </div>
+        <TwoFactorSettings required={false} onSession={(data) => { setAccessToken(data.token); setToken(data.token); }} />
+      </div>
+    </div>,
+    document.body
+  ) : null;
+
+  // After a staff sign-in: the previous sign-in, so misuse gets noticed.
+  const signInNoticeBox = signInNotice ? createPortal(
+    <div className={`udhr-signin-notice ${signInNotice.failed > 0 ? 'warning' : ''}`} role="status">
+      <p>
+        Last sign-in: <strong>{formatDateTime(signInNotice.at)}</strong>{signInNotice.from ? ` from ${signInNotice.from}` : ''}.
+        {signInNotice.failed > 0 && <> <strong>{signInNotice.failed} failed attempt{signInNotice.failed === 1 ? '' : 's'}</strong> since then.</>}
+      </p>
+      <p className="udhr-signin-notice-help">Not you? Tell your system administrator straight away.</p>
+      <button type="button" aria-label="Dismiss" onClick={() => setSignInNotice(null)}>×</button>
+    </div>,
+    document.body
+  ) : null;
+
   // Checking whether the last session can be resumed (a fraction of a second).
   if (restoringSession) {
     return <div className="udhr-restoring" aria-busy="true">Loading…</div>;
+  }
+
+  // STAFF_2FA=required and this account has no authenticator app yet: nothing
+  // else works until it is set up.
+  if (token && twoFactorSetupRequired && !mustChangePassword) {
+    return (
+      <div className="udhr-restoring" style={{ alignItems: 'flex-start', paddingTop: '60px' }}>
+        {idleDialog}
+        <div className="udhr-idle-dialog" style={{ maxWidth: '480px' }}>
+          <h2>Set up two-step sign-in</h2>
+          <p>Your clinic requires a code from an authenticator app as well as your password.</p>
+          <TwoFactorSettings required onSession={(data) => applySession(data)} />
+          <button type="button" className="udhr-link-button" style={{ marginTop: '14px' }} onClick={() => handleLogout()}>Log out</button>
+        </div>
+      </div>
+    );
   }
 
   // 1. Login — light clinical redesign. Rendered on its own, ahead of the
@@ -2426,86 +2631,106 @@ function App() {
               </button>
             </div>
 
-            <form onSubmit={handleLogin}>
-              {loginRole === 'patient' ? (
-                <>
-                  <div className="udhr-form-group">
-                    <label className="udhr-label" htmlFor="patientId">{t('login.idNumber')}</label>
-                    <input
-                      type="text"
-                      id="patientId"
-                      className="udhr-input"
-                      value={patientIdNumber}
-                      onChange={(e) => {
-                        const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
-                        setPatientIdNumber(digits);
-                        // The date of birth is in the ID number, so fill it in.
-                        const parsed = parseSaId(digits);
-                        if (parsed?.dateOfBirth) setPatientDob(parsed.dateOfBirth);
-                      }}
-                      inputMode="numeric"
-                      placeholder={t('login.idPlaceholder')}
-                      required
-                    />
-                  </div>
-                  <div className="udhr-form-group">
-                    <label className="udhr-label" htmlFor="patientDob">{t('login.dateOfBirth')}</label>
-                    <DateOfBirthField id="patientDob" value={patientDob} onChange={setPatientDob} required />
-                  </div>
-                  <div className="udhr-form-group">
-                    <label className="udhr-label" htmlFor="patientPin">{t('login.pin')}</label>
-                    <input
-                      type="password"
-                      id="patientPin"
-                      className="udhr-input"
-                      value={patientPin}
-                      onChange={(e) => setPatientPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      inputMode="numeric"
-                      autoComplete="current-password"
-                      placeholder={t('login.pinPlaceholder')}
-                      required
-                    />
-                    <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>{t('login.pinHelp')}</p>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="udhr-form-group">
-                    <label className="udhr-label" htmlFor="staffNum">Staff Number</label>
-                    <input
-                      type="text"
-                      id="staffNum"
-                      className="udhr-input"
-                      value={staffNumber}
-                      onChange={(e) => setStaffNumber(e.target.value)}
-                      placeholder="e.g. DOC001 or NUR001"
-                      required
-                    />
-                  </div>
-                  <div className="udhr-form-group">
-                    <label className="udhr-label" htmlFor="staffPass">Password</label>
-                    <div className="udhr-password-field">
+            {twoFactorChallenge ? (
+              <form onSubmit={handleVerifyCode}>
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="twoFactorCode">Code from your authenticator app</label>
+                  <input id="twoFactorCode" type="text" className="udhr-input udhr-code-input" value={twoFactorCode}
+                    onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric" autoComplete="one-time-code" placeholder="6 digits" autoFocus required />
+                  <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>
+                    Open Google or Microsoft Authenticator on your phone and type the 6-digit code shown for UDHR. Lost your phone? Ask your system administrator.
+                  </p>
+                </div>
+                <button type="submit" className="udhr-btn-primary" disabled={loading || twoFactorCode.length !== 6}>
+                  {loading ? t('login.submitting') : 'Verify'}
+                </button>
+                <button type="button" className="udhr-link-button" style={{ marginTop: '12px' }} onClick={() => { setTwoFactorChallenge(null); setErrorMessage(''); }}>
+                  Use a different account
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleLogin}>
+                {loginRole === 'patient' ? (
+                  <>
+                    <div className="udhr-form-group">
+                      <label className="udhr-label" htmlFor="patientId">{t('login.idNumber')}</label>
                       <input
-                        type={showStaffPassword ? 'text' : 'password'}
-                        id="staffPass"
+                        type="text"
+                        id="patientId"
                         className="udhr-input"
-                        value={staffPassword}
-                        onChange={(e) => setStaffPassword(e.target.value)}
-                        placeholder="••••••••"
+                        value={patientIdNumber}
+                        onChange={(e) => {
+                          const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
+                          setPatientIdNumber(digits);
+                          // The date of birth is in the ID number, so fill it in.
+                          const parsed = parseSaId(digits);
+                          if (parsed?.dateOfBirth) setPatientDob(parsed.dateOfBirth);
+                        }}
+                        inputMode="numeric"
+                        placeholder={t('login.idPlaceholder')}
                         required
                       />
-                      <button type="button" className="udhr-password-toggle" onClick={() => setShowStaffPassword(!showStaffPassword)} aria-label={showStaffPassword ? 'Hide password' : 'Show password'}>
-                        {showStaffPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
                     </div>
-                  </div>
-                </>
-              )}
+                    <div className="udhr-form-group">
+                      <label className="udhr-label" htmlFor="patientDob">{t('login.dateOfBirth')}</label>
+                      <DateOfBirthField id="patientDob" value={patientDob} onChange={setPatientDob} required />
+                    </div>
+                    <div className="udhr-form-group">
+                      <label className="udhr-label" htmlFor="patientPin">{t('login.pin')}</label>
+                      <input
+                        type="password"
+                        id="patientPin"
+                        className="udhr-input"
+                        value={patientPin}
+                        onChange={(e) => setPatientPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        inputMode="numeric"
+                        autoComplete="current-password"
+                        placeholder={t('login.pinPlaceholder')}
+                        required
+                      />
+                      <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>{t('login.pinHelp')}</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="udhr-form-group">
+                      <label className="udhr-label" htmlFor="staffNum">Staff Number</label>
+                      <input
+                        type="text"
+                        id="staffNum"
+                        className="udhr-input"
+                        value={staffNumber}
+                        onChange={(e) => setStaffNumber(e.target.value)}
+                        placeholder="e.g. DOC001 or NUR001"
+                        required
+                      />
+                    </div>
+                    <div className="udhr-form-group">
+                      <label className="udhr-label" htmlFor="staffPass">Password</label>
+                      <div className="udhr-password-field">
+                        <input
+                          type={showStaffPassword ? 'text' : 'password'}
+                          id="staffPass"
+                          className="udhr-input"
+                          value={staffPassword}
+                          onChange={(e) => setStaffPassword(e.target.value)}
+                          placeholder="••••••••"
+                          required
+                        />
+                        <button type="button" className="udhr-password-toggle" onClick={() => setShowStaffPassword(!showStaffPassword)} aria-label={showStaffPassword ? 'Hide password' : 'Show password'}>
+                          {showStaffPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
 
-              <button type="submit" className="udhr-btn-primary" disabled={loading}>
-                {loading ? t('login.submitting') : t('login.submit')}
-              </button>
-            </form>
+                <button type="submit" className="udhr-btn-primary" disabled={loading}>
+                  {loading ? t('login.submitting') : t('login.submit')}
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </div>
@@ -4079,6 +4304,8 @@ function App() {
     return (
       <div className="udhr-shell">
         {idleDialog}
+        {securityDialog}
+        {signInNoticeBox}
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
         <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
           <div className="udhr-sidebar-header">
@@ -4104,6 +4331,7 @@ function App() {
                 <p className="udhr-user-role">{roleLabel(userRole)}</p>
               </div>
             </div>
+            <button type="button" className="udhr-logout-link" onClick={() => setShowSecurity(true)}><Shield size={15} /> Sign-in security</button>
             <button type="button" className="udhr-logout-link" onClick={handleLogout}><LogOut size={15} /> Log out</button>
           </div>
         </aside>
@@ -4465,6 +4693,9 @@ function App() {
                       {member.mustChangePassword && (
                         <span className="udhr-tag warning" style={{ marginLeft: '6px' }}>MUST RESET</span>
                       )}
+                      {member.twoFactorEnabled && (
+                        <span className="udhr-tag info" style={{ marginLeft: '6px' }}>2-step on</span>
+                      )}
                     </p>
                     <p className="udhr-row-subtitle">{member.staffNumber} — {member.email}</p>
                   </div>
@@ -4479,6 +4710,9 @@ function App() {
                       <div className="udhr-menu-list">
                         <button type="button" onClick={(e) => { e.currentTarget.closest('details').open = false; handleResetStaffPassword(member); }}>Reset password</button>
                         <button type="button" onClick={(e) => { e.currentTarget.closest('details').open = false; handleForceLogout(member); }}>End all sessions</button>
+                        {member.twoFactorEnabled && (
+                          <button type="button" onClick={(e) => { e.currentTarget.closest('details').open = false; handleResetTwoFactor(member); }}>Reset sign-in app (lost phone)</button>
+                        )}
                         <button type="button" className={member.active ? 'udhr-menu-danger' : ''} onClick={(e) => { e.currentTarget.closest('details').open = false; handleToggleStaffActive(member); }}>
                           {member.active ? 'Deactivate account' : 'Reactivate account'}
                         </button>
@@ -4580,6 +4814,8 @@ function App() {
     return (
       <div className="udhr-shell">
         {idleDialog}
+        {securityDialog}
+        {signInNoticeBox}
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
         <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
           <div className="udhr-sidebar-header">
@@ -4609,6 +4845,7 @@ function App() {
                 <p className="udhr-user-role">SYSTEM ADMIN</p>
               </div>
             </div>
+            <button type="button" className="udhr-logout-link" onClick={() => setShowSecurity(true)}><Shield size={15} /> Sign-in security</button>
             <button type="button" className="udhr-logout-link" onClick={handleLogout}><LogOut size={15} /> Log out</button>
           </div>
         </aside>
@@ -4911,6 +5148,8 @@ function App() {
     return (
       <div className="udhr-shell">
         {idleDialog}
+        {securityDialog}
+        {signInNoticeBox}
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
         <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
           <div className="udhr-sidebar-header">
@@ -4935,6 +5174,7 @@ function App() {
                 <p className="udhr-user-role">{roleLabel(userRole)}</p>
               </div>
             </div>
+            <button type="button" className="udhr-logout-link" onClick={() => setShowSecurity(true)}><Shield size={15} /> Sign-in security</button>
             <button type="button" className="udhr-logout-link" onClick={handleLogout}><LogOut size={15} /> Log out</button>
           </div>
         </aside>
@@ -5302,6 +5542,8 @@ function App() {
     return (
       <div className="udhr-shell">
         {idleDialog}
+        {securityDialog}
+        {signInNoticeBox}
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
         <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
           <div className="udhr-sidebar-header">
@@ -5326,6 +5568,7 @@ function App() {
                 <p className="udhr-user-role">{roleLabel(userRole)}</p>
               </div>
             </div>
+            <button type="button" className="udhr-logout-link" onClick={() => setShowSecurity(true)}><Shield size={15} /> Sign-in security</button>
             <button type="button" className="udhr-logout-link" onClick={handleLogout}><LogOut size={15} /> Log out</button>
           </div>
         </aside>

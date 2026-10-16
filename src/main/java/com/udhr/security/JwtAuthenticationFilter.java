@@ -40,7 +40,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
 
-            if (jwtUtil.validateToken(token)) {
+            // A two-step sign-in challenge only proves the password was right;
+            // it must never be accepted as a sign-in.
+            if (jwtUtil.validateToken(token) && jwtUtil.extractPurpose(token) == null) {
                 String staffNumber = jwtUtil.extractStaffNumber(token);
                 String role = jwtUtil.extractRole(token);
 
@@ -72,6 +74,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                     response.setContentType("application/json");
                     response.getWriter().write("\"Password change required before continuing.\"");
+                    return;
+                }
+
+                // Same idea when two-step sign-in is compulsory (STAFF_2FA=required)
+                // and this account hasn't set it up yet: only the setup works.
+                if (jwtUtil.extractTwoFactorSetup(token) && !request.getRequestURI().startsWith("/api/auth/2fa/")) {
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType("application/json");
+                    response.getWriter().write("\"Set up two-step sign-in before continuing.\"");
                     return;
                 }
 

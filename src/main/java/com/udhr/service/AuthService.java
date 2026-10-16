@@ -12,11 +12,14 @@ import com.udhr.repository.AuditLogRepository;
 import com.udhr.repository.StaffRepository;
 import com.udhr.security.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
 
 @Service
 public class AuthService {
@@ -38,6 +41,17 @@ public class AuthService {
 
     @Autowired
     private LoginAttemptService loginAttemptService;
+
+    @Autowired
+    private AuditService auditService;
+
+    @Autowired
+    private TotpService totpService;
+
+    // "required": every staff account must set up an authenticator app at its
+    // next sign-in. "optional" (default): each person chooses.
+    @Value("${udhr.staff-2fa:optional}")
+    private String staffTwoFactor;
 
     // Lazy: PatientPortalService is a large service with its own dependencies,
     // and only refresh needs it.
@@ -94,9 +108,82 @@ public class AuthService {
             throw new RuntimeException("Account is inactive");
         }
 
+        // With an authenticator app set up, the password alone isn't enough.
+        // The failure counter is not reset here: someone who knows the password
+        // still only gets 5 tries at the code.
+        if (staff.isTwoFactorEnabled()) {
+            recordSecurityEvent(staff, "LOGIN_PASSWORD_OK", "Password accepted; waiting for the authenticator code");
+            LoginResponse challenge = new LoginResponse();
+            challenge.setTwoFactorRequired(true);
+            challenge.setChallengeToken(jwtUtil.generateTwoFactorChallenge(staff.getStaffNumber()));
+            return challenge;
+        }
+
         loginAttemptService.reset(accountKey);
-        recordSecurityEvent(staff, "LOGIN_SUCCESS", "Signed in");
-        return buildSession(staff);
+        return signedIn(staff, "Signed in");
+    }
+
+    /**
+     * Second step of signing in: the 6-digit code from the authenticator app,
+     * with the challenge from the first step. Wrong codes count towards the
+     * same lockout as wrong passwords.
+     */
+    public LoginResponse verifyTwoFactor(String challengeToken, String code, String clientAddress) {
+        String staffNumber;
+        try {
+            if (!jwtUtil.validateToken(challengeToken)
+                    || !JwtUtil.TWO_FACTOR_CHALLENGE.equals(jwtUtil.extractPurpose(challengeToken))) {
+                throw new RuntimeException();
+            }
+            staffNumber = jwtUtil.extractStaffNumber(challengeToken);
+        } catch (Exception e) {
+            throw new RuntimeException("Sign-in timed out. Enter your staff number and password again.");
+        }
+
+        String accountKey = LoginAttemptService.accountKey(staffNumber);
+        String addressKey = LoginAttemptService.addressKey(clientAddress);
+        Instant lockedUntil = latest(loginAttemptService.lockedUntil(accountKey), loginAttemptService.lockedUntil(addressKey));
+        if (lockedUntil != null) {
+            throw new LoginLockedException("Too many failed sign-in attempts. Try again "
+                    + LoginAttemptService.waitText(lockedUntil) + ".");
+        }
+
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .filter(s -> Boolean.TRUE.equals(s.getActive()) && s.isTwoFactorEnabled())
+                .orElseThrow(() -> new RuntimeException("Sign-in timed out. Enter your staff number and password again."));
+
+        long step = totpService.verify(totpService.decrypt(staff.getTotpSecret()), code, staff.getTotpLastStep());
+        if (step < 0) {
+            recordSecurityEvent(staff, "LOGIN_2FA_FAILED", "Wrong authenticator code");
+            if (loginAttemptService.recordFailure(accountKey, LoginAttemptService.MAX_ACCOUNT_FAILURES)) {
+                recordSecurityEvent(staff, "LOGIN_LOCKED", "Sign-in locked for 15 minutes after "
+                        + LoginAttemptService.MAX_ACCOUNT_FAILURES + " failed attempts on staff number " + staffNumber);
+            }
+            loginAttemptService.recordFailure(addressKey, LoginAttemptService.MAX_ADDRESS_FAILURES);
+            throw new RuntimeException("That code isn't right. Check the code in your authenticator app and try again.");
+        }
+
+        staff.setTotpLastStep(step);
+        staffRepository.save(staff);
+        loginAttemptService.reset(accountKey);
+        return signedIn(staff, "Signed in (password and authenticator code)");
+    }
+
+    // A completed sign-in, with the previous one attached so the person can
+    // spot use of their account they don't recognise.
+    private LoginResponse signedIn(Staff staff, String description) {
+        Optional<AuditLog> previous = auditLogRepository.findFirstByStaffIdAndActionOrderByCreatedAtDesc(staff.getId(), "LOGIN_SUCCESS");
+        long failedSince = previous.map(p -> auditLogRepository.countByStaffIdAndActionInAndCreatedAtAfter(
+                staff.getId(), List.of("LOGIN_FAILED", "LOGIN_2FA_FAILED"), p.getCreatedAt())).orElse(0L);
+
+        recordSecurityEvent(staff, "LOGIN_SUCCESS", description);
+        LoginResponse session = buildSession(staff);
+        previous.ifPresent(p -> {
+            session.setLastSignInAt(p.getCreatedAt());
+            session.setLastSignInFrom(p.getIpAddress());
+        });
+        session.setFailedAttemptsSinceLastSignIn(failedSince);
+        return session;
     }
 
     /**
@@ -173,14 +260,15 @@ public class AuthService {
         return buildSession(staff);
     }
 
-    private LoginResponse buildSession(Staff staff) {
+    public LoginResponse buildSession(Staff staff) {
         boolean mustChangePassword = staff.getMustChangePassword() != null && staff.getMustChangePassword();
-        String token = jwtUtil.generateToken(staff.getStaffNumber(), staff.getRole(), mustChangePassword);
+        boolean twoFactorSetup = "required".equalsIgnoreCase(staffTwoFactor) && !staff.isTwoFactorEnabled();
+        String token = jwtUtil.generateToken(staff.getStaffNumber(), staff.getRole(), mustChangePassword, twoFactorSetup);
         String refreshToken = tokenService.issueRefreshToken(staff);
         String fullName = staff.getFirstName() + " " + staff.getLastName();
         Long facilityId = staff.getFacility() != null ? staff.getFacility().getId() : null;
 
-        return new LoginResponse(
+        LoginResponse session = new LoginResponse(
                 token,
                 refreshToken,
                 staff.getStaffNumber(),
@@ -189,21 +277,16 @@ public class AuthService {
                 facilityId,
                 mustChangePassword
         );
+        session.setTwoFactorSetupRequired(twoFactorSetup);
+        return session;
     }
 
     // Security events belong in the same audit trail as clinical actions, so a
     // system administrator reviewing an incident sees sign-ins, failures and
-    // record access in one place rather than three.
+    // record access in one place rather than three. Written through
+    // AuditService so each entry carries the caller's IP address, which is how
+    // an attacker's sign-ins are told apart from the real person's.
     private void recordSecurityEvent(Staff staff, String action, String description) {
-        try {
-            AuditLog log = new AuditLog();
-            log.setStaff(staff);
-            log.setAction(action);
-            log.setDescription(description);
-            auditLogRepository.save(log);
-        } catch (Exception e) {
-            // Never let audit logging block a sign-in.
-            System.out.println("[AuthService] Could not write audit entry: " + e.getMessage());
-        }
+        auditService.recordSecurityEvent(staff, action, description);
     }
 }

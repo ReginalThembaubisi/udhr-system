@@ -100,7 +100,7 @@ class PopiaProtectionTest {
 
     @Test
     void managementReportsCarryNoPatientIdentity() throws Exception {
-        String admin = login("ADMIN001", "Admin@123");
+        String admin = login("SYSADMIN001", "SysAdmin@123");
         for (String path : new String[] {"/api/prescriptions/report", "/api/prescriptions/report/export",
                 "/api/dispensing/report", "/api/dispensing/report/export",
                 "/api/lab-results/report", "/api/lab-results/report/export"}) {

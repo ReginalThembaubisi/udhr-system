@@ -203,6 +203,58 @@ class AccessControlTest {
 
     // ---- helpers ------------------------------------------------------------------
 
+    // ---- Each job in the right portal ----------------------------------------------
+
+    @Test
+    void onlyTheSystemAdminAddsFacilities() throws Exception {
+        String admin = login("ADMIN001", "Admin@123");
+        String facility = json.writeValueAsString(Map.of("name", "Barberton Clinic", "type", "CLINIC", "province", "Mpumalanga", "address", "Barberton"));
+        mvc.perform(post("/api/facilities").header("Authorization", bearer(admin))
+                        .contentType(MediaType.APPLICATION_JSON).content(facility))
+                .andExpect(status().isForbidden());
+
+        String sysAdmin = login("SYSADMIN001", "SysAdmin@123");
+        mvc.perform(post("/api/facilities").header("Authorization", bearer(sysAdmin))
+                        .contentType(MediaType.APPLICATION_JSON).content(facility))
+                .andExpect(status().isCreated());
+        // The same name twice is refused.
+        mvc.perform(post("/api/facilities").header("Authorization", bearer(sysAdmin))
+                        .contentType(MediaType.APPLICATION_JSON).content(facility))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void onlyTheSystemAdminPostsNetworkWideAnnouncements() throws Exception {
+        String notice = json.writeValueAsString(Map.of("title", "Clinic closed", "message", "Closed on Friday", "active", true));
+        mvc.perform(post("/api/announcements").header("Authorization", bearer(login("ADMIN001", "Admin@123")))
+                        .contentType(MediaType.APPLICATION_JSON).content(notice))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/announcements").header("Authorization", bearer(login("SYSADMIN001", "SysAdmin@123")))
+                        .contentType(MediaType.APPLICATION_JSON).content(notice))
+                .andExpect(status().is2xxSuccessful());
+    }
+
+    @Test
+    void managementReportsAreForTheSystemAdminNotTheFrontDesk() throws Exception {
+        String admin = login("ADMIN001", "Admin@123");
+        for (String path : new String[] {"/api/prescriptions/report", "/api/dispensing/report", "/api/lab-results/report", "/api/stock/report"}) {
+            mvc.perform(get(path).header("Authorization", bearer(admin))).andExpect(status().isForbidden());
+        }
+        // The front desk keeps the referral report it uses for expected arrivals.
+        mvc.perform(get("/api/referrals/report").header("Authorization", bearer(admin))).andExpect(status().isOk());
+    }
+
+    @Test
+    void frontDeskAndPharmacistCannotMakeClinicalQueueDecisions() throws Exception {
+        for (String token : new String[] {login("ADMIN001", "Admin@123"), login("PHARM001", "Pharmacist@123")}) {
+            mvc.perform(post("/api/queue/1/urgency").header("Authorization", bearer(token))
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"urgency\":\"EMERGENCY\"}"))
+                    .andExpect(status().isForbidden());
+            mvc.perform(post("/api/queue/1/complete").header("Authorization", bearer(token)))
+                    .andExpect(status().isForbidden());
+        }
+    }
+
     private Prescription pendingPrescriptionAtHomeFacility() {
         return prescriptionRepository.findAll().stream()
                 .filter(p -> "PHARMACY".equals(p.getDispenseMethod()))

@@ -1744,3 +1744,13 @@
     font-size: 14.5px;
   }
 }
+
+/* System admin Reports: a row of numbers per report */
+.udhr-report-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 12px;
+}
+.udhr-report-stats .udhr-stat-label {
+  margin: 2px 0 0;
+}

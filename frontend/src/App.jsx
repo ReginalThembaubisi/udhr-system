@@ -342,6 +342,8 @@ function App() {
 
   // Admin: facility management (no patient data — admin isn't clinical staff)
   const [facilityList, setFacilityList] = useState([]);
+  // System admin Reports tab: { prescriptions, dispensing, labs, stock, referrals }
+  const [systemReports, setSystemReports] = useState(null);
   const [adminTab, setAdminTab] = useState('frontdesk'); // 'frontdesk', 'staff', 'facilities', or 'announcements'
   const [newStaffForm, setNewStaffForm] = useState({
     staffNumber: '', firstName: '', lastName: '', role: 'NURSE', facilityId: '', email: '', password: ''
@@ -634,9 +636,7 @@ function App() {
       } else if (userRole === 'PHARMACIST') {
         fetchPharmacyQueue();
       } else if (userRole === 'ADMIN') {
-        fetchFacilityList();
         fetchRecentCheckIns();
-        fetchAnnouncements();
       } else if (userRole === 'SYSTEM_ADMIN') {
         fetchSystemAdminStaff();
         // The create-account form needs the facility dropdown.
@@ -1314,7 +1314,44 @@ function App() {
     }
   };
 
-  // Facility list (admin Facilities tab, system admin create-account form)
+  // System admin: the facility's management reports, fetched together. A
+  // report that fails to load is left out rather than blanking the page.
+  const fetchSystemReports = async () => {
+    const paths = {
+      prescriptions: '/api/prescriptions/report',
+      dispensing: '/api/dispensing/report',
+      labs: '/api/lab-results/report',
+      stock: '/api/stock/report',
+      referrals: '/api/referrals/report',
+    };
+    const entries = await Promise.all(Object.entries(paths).map(async ([key, path]) => {
+      try {
+        const response = await apiFetch(path, { headers: getAuthHeaders() });
+        return [key, response.ok ? await response.json() : null];
+      } catch {
+        return [key, null];
+      }
+    }));
+    setSystemReports(Object.fromEntries(entries));
+  };
+
+  const downloadReportCsv = async (path, filename) => {
+    setErrorMessage('');
+    try {
+      const response = await apiFetch(path, { headers: getAuthHeaders() });
+      if (!response.ok) throw new Error('Could not download the report');
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  // Facility list (system admin Facilities tab and create-account form)
   const fetchFacilityList = async () => {
     setErrorMessage('');
     setLoading(true);
@@ -4148,13 +4185,18 @@ function App() {
   }
 
   // 3b. System administrator dashboard — oversight of the system itself, not of
-  // patients. Two jobs: keeping accounts under control (resetting passwords,
-  // ending sessions, deactivating people who have left) and reading the audit
-  // trail. Deliberately has no patient screens: this role manages access, it
+  // patients: accounts (resetting passwords, ending sessions, deactivating
+  // people who have left), the network's facilities, the public notices on
+  // the sign-in screen, and the audit trail. Facilities and notices used to sit
+  // with one clinic's front desk, though both affect the whole network.
+  // Deliberately has no patient screens: this role manages the system, it
   // does not get clinical data along with it.
   if (token && isSystemAdmin && !mustChangePassword) {
     const sysAdminNavItems = [
       { key: 'accounts', label: 'Accounts', icon: <Users size={17} /> },
+      { key: 'facilities', label: 'Facilities', icon: <Building2 size={17} /> },
+      { key: 'announcements', label: 'Announcements', icon: <Megaphone size={17} /> },
+      { key: 'reports', label: 'Reports', icon: <FileSpreadsheet size={17} /> },
       { key: 'audit', label: 'Audit trail', icon: <Clipboard size={17} /> },
     ];
 
@@ -4162,8 +4204,204 @@ function App() {
       setSystemAdminTab(key);
       setIsMobileNavOpen(false);
       if (key === 'accounts') fetchSystemAdminStaff();
+      if (key === 'facilities') fetchFacilityList();
+      if (key === 'announcements') fetchAnnouncements();
+      if (key === 'reports') fetchSystemReports();
       if (key === 'audit') fetchAuditLog();
     };
+
+    // Management numbers for the facility. These used to be open to the front
+    // desk; running the network is the system administrator's job.
+    const renderReportsPanel = () => {
+      const r = systemReports;
+      const card = (title, stats, top, exportPath, exportName) => (
+        <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+          <div className="udhr-record-body">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, margin: 0 }}>{title}</h3>
+              {exportPath && <button type="button" className="udhr-link-button" onClick={() => downloadReportCsv(exportPath, exportName)}>Download CSV</button>}
+            </div>
+            <div className="udhr-report-stats">
+              {stats.map(([label, value]) => (
+                <div key={label}>
+                  <p className="udhr-stat-value">{value ?? '—'}</p>
+                  <p className="udhr-stat-label">{label}</p>
+                </div>
+              ))}
+            </div>
+            {top && top.items?.length > 0 && (
+              <>
+                <p className="udhr-label" style={{ margin: '14px 0 6px' }}>{top.title}</p>
+                {top.items.slice(0, 5).map((item, i) => (
+                  <div key={i} className="udhr-list-row" style={{ padding: '6px 0' }}>
+                    <span style={{ fontSize: '13.5px' }}>{item[0]}</span>
+                    <span className="udhr-tag neutral">{item[1]}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+      );
+      return (
+        <>
+          <h1 className="udhr-page-title">Reports</h1>
+          <p className="udhr-page-subtitle">
+            How {r?.prescriptions?.facilityName || 'your facility'} is running. Counts only: no patient names appear here.
+          </p>
+          {!r ? (
+            <p className="udhr-empty-note">Loading reports...</p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+              {r.prescriptions && card('Prescriptions', [
+                ['Total', r.prescriptions.totalPrescriptions],
+                ['Issued today', r.prescriptions.issuedToday],
+                ['Active', r.prescriptions.activePrescriptions],
+                ['Patients', r.prescriptions.uniquePatientsPrescribed],
+              ], { title: 'Most prescribed', items: (r.prescriptions.topMedications || []).map(m => [m.medicationName, m.prescriptionCount]) },
+              '/api/prescriptions/report/export', 'prescriptions.csv')}
+              {r.dispensing && card('Dispensing', [
+                ['Total', r.dispensing.totalDispenseEvents],
+                ['Today', r.dispensing.dispensedToday],
+                ['Patients', r.dispensing.uniquePatientsServed],
+              ], { title: 'Most dispensed', items: (r.dispensing.topMedications || []).map(m => [m.medicationName, m.dispenseCount]) },
+              '/api/dispensing/report/export', 'dispensing.csv')}
+              {r.stock && card('Stock', [
+                ['Medicines tracked', r.stock.totalMedicationsTracked],
+                ['Low stock', r.stock.lowStockCount],
+                ['Expired', r.stock.expiredCount],
+                ['Expiring soon', r.stock.expiringSoonCount],
+              ], { title: 'Low stock', items: (r.stock.lowStockItems || []).map(item => [item.medicationName, `${item.quantityOnHand} ${item.unit}`]) },
+              '/api/stock/report/export', 'stock.csv')}
+              {r.labs && card('Lab results', [
+                ['Total', r.labs.totalLabResults],
+                ['Today', r.labs.resultsToday],
+                ['Test types', r.labs.uniqueTestTypes],
+              ], { title: 'Most common tests', items: (r.labs.topTestTypes || []).map(t => [t.testName, t.testCount]) },
+              '/api/lab-results/report/export', 'lab-results.csv')}
+              {r.referrals && card('Referrals', [
+                ['Outgoing', r.referrals.totalOutgoing],
+                ['Incoming', r.referrals.totalIncoming],
+                ['Waiting for reply', r.referrals.pendingIncoming],
+                ['Emergency', r.referrals.emergencyReferrals],
+              ], { title: 'Most referred to', items: (r.referrals.topDestinations || []).map(d => [d.facilityName, d.referralCount]) },
+              '/api/referrals/report/export', 'referrals.csv')}
+            </div>
+          )}
+        </>
+      );
+    };
+
+    const renderFacilitiesPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Facilities</h1>
+        <p className="udhr-page-subtitle">Clinics and hospitals in the network.</p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px' }}>
+          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+            <div className="udhr-record-body">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Add facility</h3>
+              <form onSubmit={handleAddFacility}>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Name</label>
+                  <input type="text" className="udhr-input" value={newFacilityForm.name} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, name: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Type</label>
+                  <select className="udhr-input" value={newFacilityForm.type} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, type: e.target.value })}>
+                    <option value="CLINIC">Clinic</option>
+                    <option value="HOSPITAL">Hospital</option>
+                  </select>
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Province</label>
+                  <input type="text" className="udhr-input" value={newFacilityForm.province} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, province: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Address</label>
+                  <textarea className="udhr-textarea" value={newFacilityForm.address} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, address: e.target.value })} rows={2} />
+                </div>
+                <button type="submit" className="udhr-btn-primary">Add facility</button>
+              </form>
+            </div>
+          </div>
+
+          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+            <div className="udhr-record-body">
+              {facilityList.length === 0 ? (
+                <p className="udhr-empty-note">{loading ? 'Loading...' : 'No facilities yet.'}</p>
+              ) : (
+                facilityList.map(f => (
+                  <div key={f.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <p className="udhr-row-title">{f.name} <span className="udhr-tag neutral" style={{ marginLeft: '6px' }}>{f.type === 'HOSPITAL' ? 'Hospital' : 'Clinic'}</span></p>
+                    <p className="udhr-row-subtitle">{f.province} — {f.address}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+
+    const renderAnnouncementsPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Public Announcements</h1>
+        <p className="udhr-page-subtitle">
+          Published ones rotate as a slideshow on the sign-in screen — use them for vaccination drives, clinic closures, outbreak notices.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px' }}>
+          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+            <div className="udhr-record-body">
+              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Add announcement</h3>
+              <form onSubmit={handleCreateAnnouncement}>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Title</label>
+                  <input type="text" className="udhr-input" value={newAnnouncementForm.title} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, title: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Message</label>
+                  <textarea className="udhr-textarea" rows={3} value={newAnnouncementForm.message} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, message: e.target.value })} required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label">Photo URL (optional)</label>
+                  <input type="text" className="udhr-input" placeholder="https://..." value={newAnnouncementForm.photoUrl} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, photoUrl: e.target.value })} />
+                </div>
+                <button type="submit" className="udhr-btn-primary">Publish announcement</button>
+              </form>
+            </div>
+          </div>
+
+          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+            <div className="udhr-record-body">
+              {announcements.length === 0 ? (
+                <p className="udhr-empty-note">{loading ? 'Loading...' : 'No announcements yet.'}</p>
+              ) : (
+                announcements.map(a => (
+                  <div key={a.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'flex-start', gap: '10px' }}>
+                      <div>
+                        <p className="udhr-row-title">{a.title}</p>
+                        <p className="udhr-row-subtitle">{a.message}</p>
+                      </div>
+                      <span className={`udhr-tag ${a.active ? 'info' : 'warning'}`} style={{ flexShrink: 0 }}>{a.active ? 'Published' : 'Unpublished'}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+                      <button type="button" className="udhr-btn-neutral" onClick={() => handleToggleAnnouncement(a.id, !a.active)}>
+                        {a.active ? 'Unpublish' : 'Publish'}
+                      </button>
+                      <button type="button" className="udhr-btn-soft-danger" onClick={() => handleDeleteAnnouncement(a.id)}>Delete</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+
 
     const renderAccountsPanel = () => (
       <>
@@ -4441,7 +4679,11 @@ function App() {
             </div>
           )}
 
-          {systemAdminTab === 'accounts' ? renderAccountsPanel() : renderAuditPanel()}
+          {systemAdminTab === 'accounts' && renderAccountsPanel()}
+          {systemAdminTab === 'facilities' && renderFacilitiesPanel()}
+          {systemAdminTab === 'announcements' && renderAnnouncementsPanel()}
+          {systemAdminTab === 'reports' && renderReportsPanel()}
+          {systemAdminTab === 'audit' && renderAuditPanel()}
         </main>
       </div>
     );
@@ -4779,18 +5021,14 @@ function App() {
     const adminNavItems = [
       { key: 'frontdesk', label: 'Front Desk', icon: <Clipboard size={17} /> },
       { key: 'visitors', label: 'Visitors', icon: <Clock size={17} /> },
-      { key: 'facilities', label: 'Facilities', icon: <Building2 size={17} /> },
-      { key: 'referrals', label: 'Referrals', icon: <CornerUpRight size={17} /> },
-      { key: 'announcements', label: 'Announcements', icon: <Megaphone size={17} /> },
+      { key: 'referrals', label: 'Incoming referrals', icon: <CornerUpRight size={17} /> },
     ];
 
     const selectAdminNavTab = (key) => {
       setAdminTab(key);
       setIsMobileNavOpen(false);
       if (key === 'visitors') fetchRecentCheckIns();
-      if (key === 'facilities') fetchFacilityList();
       if (key === 'referrals') fetchReferralReport();
-      if (key === 'announcements') fetchAnnouncements();
     };
 
     const renderFrontDeskPanel = () => (
@@ -5073,201 +5311,39 @@ function App() {
       </>
     );
 
-    const renderFacilitiesPanel = () => (
-      <>
-        <h1 className="udhr-page-title">Facilities</h1>
-        <p className="udhr-page-subtitle">Clinics and hospitals in the network.</p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px' }}>
-          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
-            <div className="udhr-record-body">
-              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Add facility</h3>
-              <form onSubmit={handleAddFacility}>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Name</label>
-                  <input type="text" className="udhr-input" value={newFacilityForm.name} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, name: e.target.value })} required />
+    // What reception needs from referrals: who is being sent to this clinic,
+    // so they can expect them and check them in. The totals and top
+    // destinations are management numbers, now under the system admin's Reports.
+    const renderReferralsPanel = () => {
+      const incoming = (referralReport?.recentActivity || [])
+        .filter(r => r.toFacility?.name === referralReport.facilityName && ['PENDING', 'ACCEPTED'].includes(r.status));
+      return (
+        <>
+          <h1 className="udhr-page-title">Incoming referrals</h1>
+          <p className="udhr-page-subtitle">
+            Patients other facilities are sending to {referralReport?.facilityName || 'your facility'}. When one arrives, find them on the Front Desk tab and check them in.
+          </p>
+          {!referralReport ? (
+            <p className="udhr-empty-note">Loading...</p>
+          ) : incoming.length === 0 ? (
+            <p className="udhr-empty-note">No one is being referred to you right now.</p>
+          ) : (
+            incoming.map((r) => (
+              <div key={r.id} className="udhr-card" style={{ maxWidth: '720px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '4px' }}>
+                  <p className="udhr-row-title">{r.patient.firstName} {r.patient.lastName}</p>
+                  <span className={`udhr-tag ${r.urgency === 'EMERGENCY' ? 'danger' : r.urgency === 'URGENT' ? 'warning' : 'info'}`}>
+                    {r.urgency === 'EMERGENCY' ? 'Emergency' : r.urgency === 'URGENT' ? 'Urgent' : 'Routine'}
+                  </span>
                 </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Type</label>
-                  <select className="udhr-input" value={newFacilityForm.type} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, type: e.target.value })}>
-                    <option value="CLINIC">Clinic</option>
-                    <option value="HOSPITAL">Hospital</option>
-                  </select>
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Province</label>
-                  <input type="text" className="udhr-input" value={newFacilityForm.province} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, province: e.target.value })} required />
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Address</label>
-                  <textarea className="udhr-textarea" value={newFacilityForm.address} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, address: e.target.value })} rows={2} />
-                </div>
-                <button type="submit" className="udhr-btn-primary">Add facility</button>
-              </form>
-            </div>
-          </div>
-
-          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
-            <div className="udhr-record-body">
-              {facilityList.length === 0 ? (
-                <p className="udhr-empty-note">{loading ? 'Loading...' : 'No facilities yet.'}</p>
-              ) : (
-                facilityList.map(f => (
-                  <div key={f.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                    <p className="udhr-row-title">{f.name} <span className="udhr-row-subtitle">({f.type})</span></p>
-                    <p className="udhr-row-subtitle">{f.province} — {f.address}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </>
-    );
-
-    const renderReferralsPanel = () => (
-      <>
-        <h1 className="udhr-page-title">Referrals</h1>
-        <p className="udhr-page-subtitle">
-          Incoming and outgoing referrals for {referralReport?.facilityName || 'your facility'}.
-        </p>
-
-        {!referralReport ? (
-          <p className="udhr-empty-note">Loading...</p>
-        ) : (
-          <>
-            <div className="udhr-stat-grid">
-              <div className="udhr-stat-card">
-                <p className="udhr-stat-label">Outgoing</p>
-                <p className="udhr-stat-value">{referralReport.totalOutgoing}</p>
+                <p className="udhr-row-subtitle">From {r.fromFacility.name} · referred {formatDate(r.referredAt)}</p>
+                <p className="udhr-row-subtitle">{r.status === 'ACCEPTED' ? 'Accepted, expected soon' : 'Waiting for a clinician to accept'}</p>
               </div>
-              <div className="udhr-stat-card">
-                <p className="udhr-stat-label">Incoming</p>
-                <p className="udhr-stat-value">{referralReport.totalIncoming}</p>
-              </div>
-              <div className="udhr-stat-card">
-                <p className="udhr-stat-label">Pending incoming</p>
-                <p className="udhr-stat-value" style={{ color: referralReport.pendingIncoming > 0 ? 'var(--udhr-warning)' : undefined }}>
-                  {referralReport.pendingIncoming}
-                </p>
-              </div>
-              <div className="udhr-stat-card">
-                <p className="udhr-stat-label">Emergency referrals</p>
-                <p className="udhr-stat-value" style={{ color: referralReport.emergencyReferrals > 0 ? 'var(--udhr-danger)' : undefined }}>
-                  {referralReport.emergencyReferrals}
-                </p>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px,1fr))', gap: '20px', marginBottom: '20px' }}>
-              <div>
-                <h2 className="udhr-section-title">Top destinations</h2>
-                {referralReport.topDestinations.length === 0 ? (
-                  <p className="udhr-empty-note">No outgoing referrals yet.</p>
-                ) : (
-                  referralReport.topDestinations.map((t, i) => (
-                    <div key={i} className="udhr-row-card">
-                      <p className="udhr-row-title">{t.facilityName}</p>
-                      <span className="udhr-tag info">{t.referralCount}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-              <div>
-                <h2 className="udhr-section-title">Top sources</h2>
-                {referralReport.topSources.length === 0 ? (
-                  <p className="udhr-empty-note">No incoming referrals yet.</p>
-                ) : (
-                  referralReport.topSources.map((t, i) => (
-                    <div key={i} className="udhr-row-card">
-                      <p className="udhr-row-title">{t.facilityName}</p>
-                      <span className="udhr-tag info">{t.referralCount}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <h2 className="udhr-section-title">Recent activity</h2>
-            {referralReport.recentActivity.length === 0 ? (
-              <p className="udhr-empty-note">No referral activity yet.</p>
-            ) : (
-              referralReport.recentActivity.map((r) => (
-                <div key={r.id} className="udhr-card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '4px' }}>
-                    <p className="udhr-row-title">{r.patient.firstName} {r.patient.lastName}</p>
-                    <span className={`udhr-tag ${r.urgency === 'EMERGENCY' ? 'danger' : r.urgency === 'URGENT' ? 'warning' : 'info'}`}>{r.urgency}</span>
-                  </div>
-                  <p className="udhr-row-subtitle">{r.fromFacility.name} → {r.toFacility.name} · {r.reason}</p>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-                    <span className="udhr-tag neutral">{r.status}</span>
-                    <span className="udhr-row-subtitle">{formatDate(r.referredAt)}</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </>
-        )}
-      </>
-    );
-
-    const renderAnnouncementsPanel = () => (
-      <>
-        <h1 className="udhr-page-title">Public Announcements</h1>
-        <p className="udhr-page-subtitle">
-          Published ones rotate as a slideshow on the sign-in screen — use them for vaccination drives, clinic closures, outbreak notices.
-        </p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px' }}>
-          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
-            <div className="udhr-record-body">
-              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Add announcement</h3>
-              <form onSubmit={handleCreateAnnouncement}>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Title</label>
-                  <input type="text" className="udhr-input" value={newAnnouncementForm.title} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, title: e.target.value })} required />
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Message</label>
-                  <textarea className="udhr-textarea" rows={3} value={newAnnouncementForm.message} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, message: e.target.value })} required />
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Photo URL (optional)</label>
-                  <input type="text" className="udhr-input" placeholder="https://..." value={newAnnouncementForm.photoUrl} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, photoUrl: e.target.value })} />
-                </div>
-                <button type="submit" className="udhr-btn-primary">Publish announcement</button>
-              </form>
-            </div>
-          </div>
-
-          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
-            <div className="udhr-record-body">
-              {announcements.length === 0 ? (
-                <p className="udhr-empty-note">{loading ? 'Loading...' : 'No announcements yet.'}</p>
-              ) : (
-                announcements.map(a => (
-                  <div key={a.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'flex-start', gap: '10px' }}>
-                      <div>
-                        <p className="udhr-row-title">{a.title}</p>
-                        <p className="udhr-row-subtitle">{a.message}</p>
-                      </div>
-                      <span className={`udhr-tag ${a.active ? 'info' : 'warning'}`} style={{ flexShrink: 0 }}>{a.active ? 'Published' : 'Unpublished'}</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-                      <button type="button" className="udhr-btn-neutral" onClick={() => handleToggleAnnouncement(a.id, !a.active)}>
-                        {a.active ? 'Unpublish' : 'Publish'}
-                      </button>
-                      <button type="button" className="udhr-btn-soft-danger" onClick={() => handleDeleteAnnouncement(a.id)}>Delete</button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </>
-    );
+            ))
+          )}
+        </>
+      );
+    };
 
     return (
       <div className="udhr-shell">
@@ -5322,9 +5398,7 @@ function App() {
 
           {adminTab === 'frontdesk' && renderFrontDeskPanel()}
           {adminTab === 'visitors' && renderVisitorsPanel()}
-          {adminTab === 'facilities' && renderFacilitiesPanel()}
           {adminTab === 'referrals' && renderReferralsPanel()}
-          {adminTab === 'announcements' && renderAnnouncementsPanel()}
         </main>
       </div>
     );

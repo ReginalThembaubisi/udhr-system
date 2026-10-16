@@ -80,7 +80,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/system-admin/**").hasRole("SYSTEM_ADMIN")
                 // The login screen fetches this before anyone has signed in.
                 .requestMatchers(HttpMethod.GET, "/api/announcements/public").permitAll()
-                .requestMatchers("/api/announcements/**").hasRole("ADMIN")
+                // Public notices show on every patient's sign-in screen across the
+                // network, so they belong to the system administrator, not one
+                // clinic's front desk.
+                .requestMatchers("/api/announcements/**").hasRole("SYSTEM_ADMIN")
                 .requestMatchers("/api/patient/me/**").hasRole("PATIENT")
                 .requestMatchers("/api/patient/chatbot/**").hasRole("PATIENT")
                 .requestMatchers("/api/symptom-checker/**").hasRole("PATIENT")
@@ -104,9 +107,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/patients/*").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/checkin/**").hasRole("ADMIN")
                 .requestMatchers("/api/diagnoses/**").hasRole("DOCTOR")
-                .requestMatchers("/api/prescriptions/report/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
+                // Management reports are for running the network, not reception.
+                .requestMatchers("/api/prescriptions/report/**").hasRole("SYSTEM_ADMIN")
                 .requestMatchers("/api/prescriptions/**").hasRole("DOCTOR")
-                .requestMatchers("/api/lab-results/report/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
+                .requestMatchers("/api/lab-results/report/**").hasRole("SYSTEM_ADMIN")
                 .requestMatchers("/api/lab-results/my-results").hasRole("PATIENT")
                 .requestMatchers("/api/lab-results/**").hasAnyRole("DOCTOR", "NURSE")
                 // Discharge is the clinical decision that closes a visit out — same footing as
@@ -129,6 +133,13 @@ public class SecurityConfig {
                 // complete/cancel/urgency) stays open to ADMIN/PHARMACIST as shared/read.
                 .requestMatchers(HttpMethod.POST, "/api/queue/check-in").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers(HttpMethod.POST, "/api/queue/*/call").hasAnyRole("DOCTOR", "NURSE")
+                // Urgency, sending to pharmacy and completing a visit are clinical
+                // calls; the front desk and pharmacist used to be able to make them.
+                .requestMatchers(HttpMethod.POST, "/api/queue/*/urgency", "/api/queue/*/send-to-pharmacy", "/api/queue/*/complete").hasAnyRole("DOCTOR", "NURSE")
+                // The front desk may cancel a check-in when someone leaves.
+                .requestMatchers(HttpMethod.POST, "/api/queue/*/cancel").hasAnyRole("DOCTOR", "NURSE", "ADMIN")
+                .requestMatchers(HttpMethod.GET, "/api/queue/pharmacy").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
+                .requestMatchers(HttpMethod.GET, "/api/queue/patient/*").hasAnyRole("DOCTOR", "NURSE")
                 .requestMatchers("/api/queue/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST", "ADMIN")
 
                 // Referral creation/response is a clinical judgement call; the inbox/outgoing/report
@@ -141,15 +152,17 @@ public class SecurityConfig {
                 .requestMatchers("/api/referrals/**").hasAnyRole("DOCTOR", "NURSE")
 
                 // ---- Dispensing/stock: DOCTOR + NURSE + PHARMACIST, never ADMIN ----
-                .requestMatchers("/api/dispensing/report/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
+                .requestMatchers("/api/dispensing/report/**").hasRole("SYSTEM_ADMIN")
                 .requestMatchers("/api/dispensing/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
-                .requestMatchers("/api/stock/report/**").hasAnyRole("ADMIN", "SYSTEM_ADMIN")
+                .requestMatchers("/api/stock/report/**").hasRole("SYSTEM_ADMIN")
                 .requestMatchers("/api/stock/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
 
                 // Facility creation is administrative; listing facilities (needed for the
                 // referral-destination dropdown) is shared/read with DOCTOR/NURSE too.
-                .requestMatchers(HttpMethod.POST, "/api/facilities").hasRole("ADMIN")
-                .requestMatchers("/api/facilities/**").hasAnyRole("DOCTOR", "NURSE", "ADMIN", "SYSTEM_ADMIN")
+                // Adding a facility puts it in every clinician's referral list, so
+                // it is the system administrator's job, not the front desk's.
+                .requestMatchers(HttpMethod.POST, "/api/facilities").hasRole("SYSTEM_ADMIN")
+                .requestMatchers("/api/facilities/**").hasAnyRole("DOCTOR", "NURSE", "SYSTEM_ADMIN")
                 // Creating and deactivating accounts decides who can see patient
                 // data, so it belongs to the system administrator alone. The front
                 // desk (ADMIN) used to have this too, which let a clerk create a

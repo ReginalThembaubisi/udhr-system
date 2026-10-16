@@ -255,6 +255,20 @@ class AccessControlTest {
         }
     }
 
+    @Test
+    void onlyTheFrontDeskRegistersPatients() throws Exception {
+        String patient = json.writeValueAsString(Map.of("idNumber", "7008085000081", "firstName", "Walk", "lastName", "In",
+                "dateOfBirth", "1970-08-08", "gender", "MALE", "privacyNoticeAccepted", true));
+        for (String[] staff : new String[][] {{"NUR001", "Nurse@123"}, {"DOC001", "Doctor@123"}}) {
+            mvc.perform(post("/api/patients").header("Authorization", bearer(login(staff[0], staff[1])))
+                            .contentType(MediaType.APPLICATION_JSON).content(patient))
+                    .andExpect(status().isForbidden());
+        }
+        mvc.perform(post("/api/patients").header("Authorization", bearer(login("ADMIN001", "Admin@123")))
+                        .contentType(MediaType.APPLICATION_JSON).content(patient))
+                .andExpect(status().isCreated());
+    }
+
     private Prescription pendingPrescriptionAtHomeFacility() {
         return prescriptionRepository.findAll().stream()
                 .filter(p -> "PHARMACY".equals(p.getDispenseMethod()))

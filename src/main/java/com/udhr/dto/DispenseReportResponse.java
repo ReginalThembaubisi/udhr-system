@@ -1,6 +1,5 @@
 package com.udhr.dto;
 
-import com.udhr.model.Dispense;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -15,5 +14,5 @@ public class DispenseReportResponse {
     private int dispensedToday;
     private int uniquePatientsServed;
     private List<MedicationDispenseTally> topMedications;
-    private List<Dispense> recentDispenses;
+    private List<ReportActivityItem> recentDispenses;
 }

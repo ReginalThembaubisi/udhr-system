@@ -1,5 +1,6 @@
 package com.udhr.service;
 
+import com.udhr.dto.ReportActivityItem;
 import com.udhr.dto.MedicationPrescriptionTally;
 import com.udhr.dto.PrescriberTally;
 import com.udhr.dto.PrescriptionReportResponse;
@@ -228,7 +229,7 @@ public class PrescriptionService {
                 .limit(5)
                 .collect(Collectors.toList());
 
-        List<Prescription> recent = all.stream().limit(10).collect(Collectors.toList());
+        List<ReportActivityItem> recent = all.stream().limit(10).map(ReportActivityItem::from).collect(Collectors.toList());
 
         return new PrescriptionReportResponse(
                 facility.getName(),
@@ -254,19 +255,19 @@ public class PrescriptionService {
                 .filter(p -> DateRangeUtil.isWithinRange(p.getCreatedAt(), startDate, endDate))
                 .collect(Collectors.toList());
 
-        List<String> headers = List.of("Date", "Medication", "Dosage", "Frequency", "Patient", "Doctor", "Active", "Start Date", "End Date", "Notes");
+        // No patient names or clinical notes: this export is for running the
+        // facility, not treating anyone (POPIA section 10).
+        List<String> headers = List.of("Date", "Medication", "Dosage", "Frequency", "Doctor", "Active", "Start Date", "End Date");
         List<List<String>> rows = prescriptions.stream()
                 .map(p -> List.of(
                         p.getCreatedAt().toString(),
                         p.getMedication(),
                         p.getDosage() != null ? p.getDosage() : "",
                         p.getFrequency() != null ? p.getFrequency() : "",
-                        p.getPatient().getFirstName() + " " + p.getPatient().getLastName(),
                         p.getDoctor().getFirstName() + " " + p.getDoctor().getLastName(),
                         p.getActive() ? "Yes" : "No",
                         p.getStartDate() != null ? p.getStartDate().toString() : "",
-                        p.getEndDate() != null ? p.getEndDate().toString() : "",
-                        p.getNotes() != null ? p.getNotes() : ""
+                        p.getEndDate() != null ? p.getEndDate().toString() : ""
                 ))
                 .collect(Collectors.toList());
 

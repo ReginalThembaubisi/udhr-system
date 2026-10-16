@@ -57,7 +57,7 @@ class FrontDeskAndVitalsTest {
         mvc.perform(post("/api/patients").header("Authorization", bearer(admin))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("idNumber", "7707075000083", "firstName", "Lerato",
-                                "lastName", "Mokoena", "dateOfBirth", "1977-07-07", "gender", "FEMALE"))))
+                                "lastName", "Mokoena", "dateOfBirth", "1977-07-07", "gender", "FEMALE", "privacyNoticeAccepted", true))))
                 .andExpect(status().isCreated());
 
         JsonNode first = checkIn(admin, "Headache", 201);
@@ -89,7 +89,8 @@ class FrontDeskAndVitalsTest {
         mvc.perform(post("/api/patients").header("Authorization", bearer(admin))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("idNumber", "6606065000084", "firstName", "Thandi",
-                                "lastName", "Zulu", "dateOfBirth", "1966-06-06", "gender", "FEMALE", "portalPin", "583920"))))
+                                "lastName", "Zulu", "dateOfBirth", "1966-06-06", "gender", "FEMALE", "portalPin", "583920",
+                                "privacyNoticeAccepted", true))))
                 .andExpect(status().isCreated());
         String body = mvc.perform(post("/api/auth/patient/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -118,6 +119,7 @@ class FrontDeskAndVitalsTest {
         body.put("lastName", "Dlamini");
         body.put("dateOfBirth", "1985-05-05");
         body.put("gender", "MALE");
+        body.put("privacyNoticeAccepted", true);
         if (confirmNotDuplicate != null) {
             body.put("confirmNotDuplicate", confirmNotDuplicate);
         }

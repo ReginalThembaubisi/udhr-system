@@ -1,6 +1,5 @@
 package com.udhr.dto;
 
-import com.udhr.model.LabResult;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -17,5 +16,5 @@ public class LabResultReportResponse {
     private int uniqueTestTypes;
     private List<TestTypeTally> topTestTypes;
     private List<LabStaffTally> topOrderingStaff;
-    private List<LabResult> recentResults;
+    private List<ReportActivityItem> recentResults;
 }

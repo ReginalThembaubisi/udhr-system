@@ -1,5 +1,6 @@
 package com.udhr.service;
 
+import com.udhr.dto.ReportActivityItem;
 import com.udhr.dto.DispenseReportResponse;
 import com.udhr.dto.DispenseRequest;
 import com.udhr.dto.MedicationDispenseTally;
@@ -117,7 +118,7 @@ public class DispenseService {
                 .limit(5)
                 .collect(Collectors.toList());
 
-        List<Dispense> recent = all.stream().limit(10).collect(Collectors.toList());
+        List<ReportActivityItem> recent = all.stream().limit(10).map(ReportActivityItem::from).collect(Collectors.toList());
 
         return new DispenseReportResponse(
                 facility.getName(),
@@ -139,16 +140,15 @@ public class DispenseService {
         List<Dispense> dispenses = filterByRange(
                 dispenseRepository.findByFacilityIdOrderByDispensedAtDesc(facility.getId()), startDate, endDate);
 
-        List<String> headers = List.of("Date", "Medication", "Quantity Dispensed", "Days Supply", "Patient", "Dispensed By", "Pharmacy Notes");
+        // No patient names or pharmacy notes (POPIA section 10).
+        List<String> headers = List.of("Date", "Medication", "Quantity Dispensed", "Days Supply", "Dispensed By");
         List<List<String>> rows = dispenses.stream()
                 .map(d -> List.of(
                         d.getDispensedAt().toString(),
                         d.getPrescription().getMedication(),
                         d.getQuantityDispensed() != null ? d.getQuantityDispensed() : "",
                         d.getDaysSupply() != null ? String.valueOf(d.getDaysSupply()) : "",
-                        d.getPatient().getFirstName() + " " + d.getPatient().getLastName(),
-                        d.getDispensedBy().getFirstName() + " " + d.getDispensedBy().getLastName(),
-                        d.getPharmacyNotes() != null ? d.getPharmacyNotes() : ""
+                        d.getDispensedBy().getFirstName() + " " + d.getDispensedBy().getLastName()
                 ))
                 .collect(Collectors.toList());
 

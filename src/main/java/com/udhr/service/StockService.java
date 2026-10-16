@@ -321,8 +321,7 @@ public class StockService {
                 africasTalkingService.sendSMS(admin.getContactNumber(), message);
             }
             if (admin.getEmail() != null && !admin.getEmail().isBlank()) {
-                System.out.println(String.format("[Email Dispatcher] Sending email reorder alert to: %s | Subject: %s | Body: %s",
-                        admin.getEmail(), subject, message));
+                System.out.println("[Email Dispatcher] Reorder alert queued for " + admin.getStaffNumber() + ": " + subject);
             }
         }
     }

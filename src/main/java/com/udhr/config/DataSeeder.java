@@ -3,7 +3,9 @@ package com.udhr.config;
 import com.udhr.model.*;
 import com.udhr.repository.*;
 import com.udhr.service.ReminderService;
+import com.udhr.service.TokenService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -64,6 +66,26 @@ public class DataSeeder implements CommandLineRunner {
 
     @Autowired
     private BCryptPasswordEncoder passwordEncoder;
+
+    @Autowired
+    private TokenService tokenService;
+
+    // "enabled" only for a demo holding made-up data (DEMO_ACCOUNTS=enabled).
+    // Anywhere else the demo logins below are public knowledge, being written
+    // in this file, so they are switched off.
+    @Value("${udhr.demo-accounts:disabled}")
+    private String demoAccounts;
+
+    // The seeded logins and the demo patient's portal PIN, all published in
+    // this file and the README.
+    private static final Map<String, String> DEMO_LOGINS = Map.of(
+            "ADMIN001", "Admin@123",
+            "DOC001", "Doctor@123",
+            "NUR001", "Nurse@123",
+            "PHARM001", "Pharmacist@123",
+            "SYSADMIN001", "SysAdmin@123");
+    private static final String DEMO_PATIENT_ID = "9001015000083";
+    private static final String DEMO_PATIENT_PIN = "246810";
 
     @Override
     public void run(String... args) throws Exception {
@@ -199,6 +221,10 @@ public class DataSeeder implements CommandLineRunner {
             // Documented demo PIN for the portal. Only set on a brand-new
             // database: on an existing one the front desk sets PINs in person.
             patient.setPortalPinHash(passwordEncoder.encode("246810"));
+            patient.setPrivacyNoticeAcceptedAt(LocalDateTime.now());
+            patient.setPrivacyNoticeVersion(com.udhr.service.PatientService.PRIVACY_NOTICE_VERSION);
+            patient.setConsentGivenBy("Patient");
+            patient.setSmsRemindersConsent(true);
             patient.setAddress("123 Mandela Drive, Nelspruit, Mpumalanga");
             patient = patientRepository.save(patient);
 
@@ -297,6 +323,12 @@ public class DataSeeder implements CommandLineRunner {
 
         // 6. Seed Public Announcements (real, freely-usable Unsplash photos — no license required)
         seedAnnouncements();
+
+        // 7. Last, once everything above exists: outside a demo, switch off
+        // the logins published in this file.
+        if (!"enabled".equalsIgnoreCase(demoAccounts)) {
+            disablePublishedDemoLogins();
+        }
     }
 
     private void seedAnnouncements() {
@@ -553,6 +585,48 @@ public class DataSeeder implements CommandLineRunner {
         warning.setSeverity(severity);
         warning.setReason(reason);
         ingredientWarningRepository.save(warning);
+    }
+
+    /**
+     * Anyone who has read this file can sign in with the seeded passwords, so
+     * outside a demo every seeded account still using its published password
+     * is switched off and its sessions ended, and the demo patient's published
+     * portal PIN is cleared (POPIA section 19: reasonable security safeguards).
+     * An account whose password has been changed is left alone.
+     *
+     * The system administrator is the exception that matters: rather than
+     * leave nobody able to manage accounts, it is given SYSADMIN_INITIAL_PASSWORD
+     * when that is set (still to be changed at first sign-in).
+     */
+    private void disablePublishedDemoLogins() {
+        String sysadminPassword = System.getenv("SYSADMIN_INITIAL_PASSWORD");
+        DEMO_LOGINS.forEach((staffNumber, published) -> staffRepository.findByStaffNumber(staffNumber).ifPresent(staff -> {
+            if (!Boolean.TRUE.equals(staff.getActive()) || !passwordEncoder.matches(published, staff.getPassword())) {
+                return;
+            }
+            if ("SYSADMIN001".equals(staffNumber) && sysadminPassword != null && !sysadminPassword.isBlank()
+                    && !sysadminPassword.equals(published)) {
+                staff.setPassword(passwordEncoder.encode(sysadminPassword));
+                staff.setMustChangePassword(true);
+                staffRepository.save(staff);
+                tokenService.revokeAllSessions(staff, "DEMO_PASSWORD_REPLACED");
+                System.out.println("SYSADMIN001 still had its published demo password; replaced with SYSADMIN_INITIAL_PASSWORD.");
+                return;
+            }
+            staff.setActive(false);
+            staffRepository.save(staff);
+            tokenService.revokeAllSessions(staff, "DEMO_ACCOUNT_DISABLED");
+            System.out.println("Disabled " + staffNumber + ": it still used its published demo password."
+                    + ("SYSADMIN001".equals(staffNumber) ? " Set SYSADMIN_INITIAL_PASSWORD and restart to bring it back." : ""));
+        }));
+
+        patientRepository.findByIdNumber(DEMO_PATIENT_ID).ifPresent(patient -> {
+            if (patient.getPortalPinHash() != null && passwordEncoder.matches(DEMO_PATIENT_PIN, patient.getPortalPinHash())) {
+                patient.setPortalPinHash(null);
+                patientRepository.save(patient);
+                System.out.println("Cleared the demo patient's published portal PIN.");
+            }
+        });
     }
 
     /**

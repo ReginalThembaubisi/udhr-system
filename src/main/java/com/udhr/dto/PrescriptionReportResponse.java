@@ -1,6 +1,5 @@
 package com.udhr.dto;
 
-import com.udhr.model.Prescription;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -17,5 +16,5 @@ public class PrescriptionReportResponse {
     private int uniquePatientsPrescribed;
     private List<MedicationPrescriptionTally> topMedications;
     private List<PrescriberTally> topPrescribers;
-    private List<Prescription> recentPrescriptions;
+    private List<ReportActivityItem> recentPrescriptions;
 }

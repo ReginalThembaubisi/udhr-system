@@ -92,6 +92,23 @@ public class CheckInController {
         }
     }
 
+    // Front desk records that the privacy notice was explained and agreed to,
+    // for patients registered before consent was captured (POPIA sections 18, 26-27).
+    @PostMapping("/consent")
+    public ResponseEntity<?> recordConsent(@RequestBody com.udhr.dto.ConsentRequest consentRequest, HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+        try {
+            Patient patient = patientService.recordConsent(consentRequest.getIdentifier(), consentRequest.getConsentGivenBy(),
+                    consentRequest.getSmsRemindersConsent(), staffNumber);
+            return ResponseEntity.ok(patient);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
+        }
+    }
+
     // Front desk sets or resets a patient's portal PIN after checking ID in person.
     @PostMapping("/portal-pin")
     public ResponseEntity<?> setPortalPin(@RequestBody PortalPinRequest pinRequest, HttpServletRequest request) {

@@ -108,6 +108,25 @@ public class Patient {
     @Column(name = "login_locked_until")
     private LocalDateTime loginLockedUntil;
 
+    // POPIA sections 18 and 26-27: the patient (or, for a child, a parent or
+    // guardian, section 35) was told what is collected, why and who it is
+    // shared with, and agreed. Recorded once with the notice version shown,
+    // so the clinic can prove it later.
+    @Column(name = "privacy_notice_accepted_at")
+    private LocalDateTime privacyNoticeAcceptedAt;
+
+    @Column(name = "privacy_notice_version", length = 20)
+    private String privacyNoticeVersion;
+
+    // "Patient" or the parent/guardian who agreed, e.g. "Mother: Thandi Zulu".
+    @Column(name = "consent_given_by", length = 120)
+    private String consentGivenBy;
+
+    // Medication reminders go out by SMS through an outside provider, so they
+    // need their own yes. Null (never asked) counts as no.
+    @Column(name = "sms_reminders_consent")
+    private Boolean smsRemindersConsent;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 

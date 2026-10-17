@@ -17,6 +17,8 @@ COPY --from=frontend-build /frontend/dist ./src/main/resources/static
 RUN mvn -q -DskipTests package
 
 FROM eclipse-temurin:17-jre-alpine
+# Tesseract reads the ingredients off food label photos (OcrService).
+RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-eng
 WORKDIR /app
 COPY --from=backend-build /app/target/*.jar app.jar
 EXPOSE 8085

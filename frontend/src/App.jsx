@@ -197,6 +197,24 @@ const parseResponseBody = async (response) => {
 // Two-step sign-in for staff: shows whether it is on, sets it up with a QR
 // code for an authenticator app, and turns it off. onSession receives the
 // fresh session handed back when it is turned on (all others are ended).
+// Phone photos run to several MB. A JPEG at most 2000px on its longest side
+// reads just as well, uploads in a moment, and turns formats the server can't
+// read (HEIC on iPhones) into JPEG.
+async function shrinkImage(file, maxSide = 2000) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+    return blob || file;
+  } catch {
+    return file;
+  }
+}
+
 function TwoFactorSettings({ required, onSession }) {
   const [status, setStatus] = useState(null);
   const [setup, setSetup] = useState(null); // { secret, qr }
@@ -369,6 +387,10 @@ function App() {
   const [productQuery, setProductQuery] = useState('737628064502'); // Preset barcode
   const [lookupType, setLookupType] = useState('barcode'); // 'barcode' or 'search'
   const [checkResults, setCheckResults] = useState([]);
+  const [ocrNote, setOcrNote] = useState(null);
+  // A result belongs to the text it was checked against: new or edited text
+  // clears it, so an old "Rice Noodles" result never sits under a new label.
+  useEffect(() => { setCheckResults([]); }, [ingredientsInput]);
 
   // Feature 4: Medication Reminders & Adherence State
   const [reminderData, setReminderData] = useState(null);
@@ -1871,23 +1893,28 @@ function App() {
   // Feature 3: OCR File Upload Handler
   const handleOcrUpload = async (e) => {
     const file = e.target.files[0];
+    e.target.value = ''; // so choosing the same photo again still uploads it
     if (!file) return;
     setErrorMessage('');
     setSuccessMessage('');
+    setOcrNote(null);
+    setCheckResults([]);
     setLoading(true);
-    
-    const formData = new FormData();
-    formData.append('file', file);
-    
+
     try {
+      const formData = new FormData();
+      formData.append('file', await shrinkImage(file), 'label.jpg');
       const response = await apiFetch('/api/food-checker/ocr', {
         method: 'POST',
         body: formData
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.message || 'OCR extraction failed');
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Could not read the label');
       setIngredientsInput(data.extractedText);
-      setSuccessMessage(`Ingredients read from '${file.name}' successfully!`);
+      if (!data.foundIngredientsList) {
+        setOcrNote('The word "Ingredients" wasn\'t found on the photo, so this is all the text that was read. Delete anything that isn\'t an ingredient before checking.');
+      }
+      setSuccessMessage('Label read. Check the text below and fix any mistakes before checking.');
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -3199,18 +3226,19 @@ function App() {
                   <label className="udhr-label">Upload food label photo</label>
                   <div style={{ border: '2px dashed var(--udhr-border)', borderRadius: '12px', padding: '24px', textAlign: 'center', background: '#f8fafc', position: 'relative', cursor: 'pointer' }}>
                     <Upload size={28} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
-                    <p style={{ fontSize: '13.5px', color: 'var(--udhr-text-muted)', margin: 0 }}>Choose label file or drag it here</p>
-                    <p style={{ fontSize: '12px', color: 'var(--udhr-text-muted-2)', marginTop: '4px' }}>PNG, JPG or JPEG. Max size 5MB.</p>
+                    <p style={{ fontSize: '13.5px', color: 'var(--udhr-text-muted)', margin: 0 }}>{loading ? 'Reading the label...' : 'Take or choose a photo of the label'}</p>
+                    <p style={{ fontSize: '12px', color: 'var(--udhr-text-muted-2)', marginTop: '4px' }}>Phone photos are fine.</p>
                     <input type="file" accept="image/*" onChange={handleOcrUpload} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} />
                   </div>
                   {ingredientsInput && (
                     <div className="udhr-form-group">
-                      <label className="udhr-label">Extracted ingredients (OCR text)</label>
-                      <textarea className="udhr-textarea" value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} />
+                      <label className="udhr-label">Ingredients read from the photo</label>
+                      {ocrNote && <p className="udhr-row-subtitle" style={{ margin: '0 0 6px' }}>{ocrNote}</p>}
+                      <textarea className="udhr-textarea" value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={4} />
                     </div>
                   )}
                   <p style={{ fontSize: '12.5px', color: 'var(--udhr-text-muted)' }}>
-                    💡 Demo trigger: pick any file whose name contains <code>juice</code>, <code>chips</code>, or <code>bread</code> to auto-extract matching ingredients.
+                    For the best result, photograph just the ingredients list, flat and in good light. Photo reading can make mistakes, so check the text before you rely on it.
                   </p>
                 </div>
               )}

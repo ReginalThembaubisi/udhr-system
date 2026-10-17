@@ -153,7 +153,7 @@ public class FoodIngredientService {
         }
 
         // 4. Default Safe response
-        return new IngredientCheckResult(name, "SAFE", "✅ Safe: Fine for your medical conditions.");
+        return new IngredientCheckResult(name, "SAFE", "✅ No problem found for the allergies and conditions on your record.");
     }
 
     private int getSeverityWeight(String severity) {

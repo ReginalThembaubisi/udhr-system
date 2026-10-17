@@ -31,7 +31,10 @@ public class OcrService {
     private static final Set<String> IMAGE_TYPES = Set.of("image/jpeg", "image/jpg", "image/png", "image/webp");
     private static final long TIMEOUT_SECONDS = 40;
 
-    private static final Pattern INGREDIENTS_HEADING = Pattern.compile("(?i)\\bingred[il1]ents?\\b\\s*[:;.\\-]?");
+    // A heading with a colon ("Ingredients:") wins over the word in a sentence
+    // ("an ingredients list"); without one, the first mention is used.
+    private static final Pattern INGREDIENTS_HEADING = Pattern.compile("(?i)\\bingred[il1]ents?\\s*[:;]");
+    private static final Pattern INGREDIENTS_WORD = Pattern.compile("(?i)\\bingred[il1]ents?\\b\\s*[.\\-]?");
     // Where an ingredients list usually ends on a label. "Contains" and "may
     // contain" are kept: allergen statements are what an allergy check needs.
     private static final Pattern LIST_END = Pattern.compile(
@@ -62,7 +65,10 @@ public class OcrService {
 
         Matcher heading = INGREDIENTS_HEADING.matcher(text);
         if (!heading.find()) {
-            return new Result(text, false);
+            heading = INGREDIENTS_WORD.matcher(text);
+            if (!heading.find()) {
+                return new Result(text, false);
+            }
         }
         String list = text.substring(heading.end()).trim();
         Matcher end = LIST_END.matcher(list);

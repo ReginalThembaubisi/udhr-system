@@ -32,12 +32,13 @@ public class FoodIngredientController {
     @PostMapping("/ocr")
     public ResponseEntity<?> parseImageLabel(@RequestParam("file") MultipartFile file) {
         try {
-            String extractedText = ocrService.extractTextFromImage(file);
-            Map<String, String> response = new HashMap<>();
-            response.put("extractedText", extractedText);
+            OcrService.Result result = ocrService.extractIngredients(file);
+            Map<String, Object> response = new HashMap<>();
+            response.put("extractedText", result.text());
+            response.put("foundIngredientsList", result.foundIngredientsList());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
         }
     }
 

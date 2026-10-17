@@ -75,6 +75,7 @@ public class StaffService {
     public Staff deactivateStaff(Long id) {
         Staff staff = staffRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
+        AdminSafeguards.checkCanDeactivate(staff, auditService.currentStaff(), staffRepository);
 
         staff.setActive(false);
         Staff saved = staffRepository.save(staff);

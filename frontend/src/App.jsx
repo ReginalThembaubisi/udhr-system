@@ -251,7 +251,9 @@ function TwoFactorSettings({ required, onSession }) {
       {status.enabled ? (
         <>
           <p><span className="udhr-tag info">On</span> Signing in needs your password and a code from your authenticator app.</p>
-          {!required && (
+          {required || status.required ? (
+            <p className="udhr-empty-note" style={{ marginTop: '10px' }}>Two-step sign-in is compulsory for your account, so it can't be turned off.</p>
+          ) : (
             <form onSubmit={disable}>
               <p className="udhr-label" style={{ marginTop: '14px' }}>Turn it off</p>
               <input type="password" className="udhr-input" aria-label="Your password" placeholder="Your password" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ marginBottom: '8px' }} />

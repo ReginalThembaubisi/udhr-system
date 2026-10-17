@@ -7,6 +7,7 @@ import com.udhr.service.TokenService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 import java.io.BufferedReader;
@@ -17,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 @Component
+@Order(10) // before EmergencyRecovery
 public class DataSeeder implements CommandLineRunner {
 
     @Autowired

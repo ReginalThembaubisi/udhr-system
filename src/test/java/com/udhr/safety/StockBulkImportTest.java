@@ -20,7 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** A pharmacist loads a whole stock list at once instead of item by item. */
+/**
+ * A pharmacist loads a whole stock list at once instead of item by item.
+ * Item names are made up on purpose: the tests share one database, and a real
+ * medicine added here would change what StockAvailabilityTest sees.
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 class StockBulkImportTest {
@@ -37,17 +41,17 @@ class StockBulkImportTest {
         String expiry = LocalDate.now().plusYears(1).toString();
 
         JsonNode first = json.readTree(send(pharmacist, List.of(
-                row("Bulk Test Paracetamol 500mg", "tablets", 1000, 200, expiry),
-                row("Bulk Test Amoxicillin 500mg", "capsules", 0, 50, null)), 200));
+                row("Zz Bulk Alpha 500mg", "tablets", 1000, 200, expiry),
+                row("Zz Bulk Beta 500mg", "capsules", 0, 50, null)), 200));
         assertThat(first.get("created").asInt()).isEqualTo(2);
 
         // The same medicine again (any case) adds to it rather than duplicating it.
         JsonNode second = json.readTree(send(pharmacist, List.of(
-                row("bulk test paracetamol 500mg", null, 500, null, null),
-                row("Bulk Test Cetirizine 10mg", "tablets", 60, null, null)), 200));
+                row("zz bulk alpha 500mg", null, 500, null, null),
+                row("Zz Bulk Gamma 10mg", "tablets", 60, null, null)), 200));
         assertThat(second.get("created").asInt()).isEqualTo(1);
         assertThat(second.get("toppedUp").asInt()).isEqualTo(1);
-        var paracetamol = stockItemRepository.findByFacilityIdAndMedicationNameIgnoreCase(facilityId, "Bulk Test Paracetamol 500mg").orElseThrow();
+        var paracetamol = stockItemRepository.findByFacilityIdAndMedicationNameIgnoreCase(facilityId, "Zz Bulk Alpha 500mg").orElseThrow();
         assertThat(paracetamol.getQuantityOnHand()).isEqualTo(1500);
         assertThat(paracetamol.getReorderLevel()).isEqualTo(200);
         assertThat(paracetamol.getExpiryDate()).isEqualTo(LocalDate.parse(expiry));
@@ -59,16 +63,16 @@ class StockBulkImportTest {
         Long facilityId = staffRepository.findByStaffNumber("PHARM001").orElseThrow().getFacility().getId();
 
         JsonNode refused = json.readTree(send(pharmacist, List.of(
-                row("Bulk Bad Ibuprofen 400mg", "tablets", 100, 20, null),
+                row("Zz Bulk Bad One", "tablets", 100, 20, null),
                 row("", "tablets", 5, null, null),
                 row("Bulk Bad Expired", "tablets", 10, null, LocalDate.now().minusDays(3).toString()),
-                row("bulk bad ibuprofen 400mg", "tablets", 1, null, null),
+                row("zz bulk bad one", "tablets", 1, null, null),
                 row("Bulk Bad Negative", "tablets", -4, null, null)), 400));
         assertThat(refused.get("errors")).hasSize(4);
         assertThat(refused.get("errors").toString())
                 .contains("Row 2").contains("missing").contains("expired").contains("already in row 1").contains("negative");
         // Nothing was saved, not even the good first row.
-        assertThat(stockItemRepository.findByFacilityIdAndMedicationNameIgnoreCase(facilityId, "Bulk Bad Ibuprofen 400mg")).isEmpty();
+        assertThat(stockItemRepository.findByFacilityIdAndMedicationNameIgnoreCase(facilityId, "Zz Bulk Bad One")).isEmpty();
     }
 
     @Test

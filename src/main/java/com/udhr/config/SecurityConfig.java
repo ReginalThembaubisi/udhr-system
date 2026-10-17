@@ -161,6 +161,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/dispensing/report/**").hasRole("SYSTEM_ADMIN")
                 .requestMatchers("/api/dispensing/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
                 .requestMatchers("/api/stock/report/**").hasRole("SYSTEM_ADMIN")
+                // Loading a whole stock list is the pharmacist's job.
+                .requestMatchers(HttpMethod.POST, "/api/stock/bulk").hasRole("PHARMACIST")
                 .requestMatchers("/api/stock/**").hasAnyRole("DOCTOR", "NURSE", "PHARMACIST")
 
                 // Facility creation is administrative; listing facilities (needed for the

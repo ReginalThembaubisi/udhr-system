@@ -13,8 +13,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -63,6 +67,116 @@ public class StockService {
             applyTransaction(saved, StockTransaction.Type.RECEIVED, initialQuantity, staff, "Initial stock on hand");
         }
         return saved;
+    }
+
+    /** How many rows one bulk import may hold. */
+    public static final int MAX_BULK_ROWS = 500;
+
+    /** Every problem in a bulk import, so the pharmacist can fix them all at once. */
+    public static class BulkImportException extends RuntimeException {
+        private final List<String> errors;
+
+        public BulkImportException(List<String> errors) {
+            super(errors.size() == 1 ? errors.get(0) : errors.size() + " rows need fixing before anything is added");
+            this.errors = errors;
+        }
+
+        public List<String> getErrors() {
+            return errors;
+        }
+    }
+
+    public record BulkImportResult(int created, int toppedUp) {}
+
+    /**
+     * Adds a whole stock list at once, e.g. pasted from a spreadsheet. A new
+     * medicine becomes a stock item; one already tracked here has the quantity
+     * received into it (and its expiry date and reorder level updated when
+     * given). Every row is checked first and nothing is saved unless all of them
+     * are fine, so a typo in row 40 never leaves half a list behind.
+     */
+    @Transactional
+    public BulkImportResult bulkImport(List<StockItemRequest> rows, String staffNumber) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        Facility facility = staff.getFacility();
+
+        List<String> errors = new ArrayList<>();
+        if (rows == null || rows.isEmpty()) {
+            throw new BulkImportException(List.of("There are no rows to add."));
+        }
+        if (rows.size() > MAX_BULK_ROWS) {
+            throw new BulkImportException(List.of("Add at most " + MAX_BULK_ROWS + " rows at a time (this list has " + rows.size() + ")."));
+        }
+        Map<String, Integer> firstRowByName = new HashMap<>();
+        for (int i = 0; i < rows.size(); i++) {
+            StockItemRequest row = rows.get(i);
+            int number = i + 1;
+            String name = row.getMedicationName() == null ? "" : row.getMedicationName().trim();
+            if (name.isEmpty()) {
+                errors.add("Row " + number + ": the medication name is missing.");
+                continue;
+            }
+            if (name.length() > 100) {
+                errors.add("Row " + number + ": the medication name is longer than 100 characters.");
+            }
+            Integer earlier = firstRowByName.putIfAbsent(name.toLowerCase(Locale.ROOT), number);
+            if (earlier != null) {
+                errors.add("Row " + number + ": " + name + " is already in row " + earlier + ".");
+            }
+            if (row.getQuantityOnHand() != null && row.getQuantityOnHand() < 0) {
+                errors.add("Row " + number + ": the quantity for " + name + " can't be negative.");
+            }
+            if (row.getReorderLevel() != null && row.getReorderLevel() < 0) {
+                errors.add("Row " + number + ": the reorder level for " + name + " can't be negative.");
+            }
+            if (row.getExpiryDate() != null && row.getExpiryDate().isBefore(LocalDate.now())) {
+                errors.add("Row " + number + ": " + name + " expired on " + row.getExpiryDate() + ", so it can't be added.");
+            }
+        }
+        if (!errors.isEmpty()) {
+            throw new BulkImportException(errors);
+        }
+
+        int created = 0;
+        int toppedUp = 0;
+        for (StockItemRequest row : rows) {
+            String name = row.getMedicationName().trim();
+            int quantity = row.getQuantityOnHand() != null ? row.getQuantityOnHand() : 0;
+            StockItem existing = stockItemRepository.findByFacilityIdAndMedicationNameIgnoreCase(facility.getId(), name).orElse(null);
+            if (existing == null) {
+                StockItem item = new StockItem();
+                item.setFacility(facility);
+                item.setMedicationName(name);
+                item.setUnit(row.getUnit() != null && !row.getUnit().isBlank() ? row.getUnit().trim() : "units");
+                item.setReorderLevel(row.getReorderLevel() != null ? row.getReorderLevel() : 0);
+                item.setExpiryDate(row.getExpiryDate());
+                item.setQuantityOnHand(0);
+                StockItem saved = stockItemRepository.save(item);
+                if (quantity > 0) {
+                    applyTransaction(saved, StockTransaction.Type.RECEIVED, quantity, staff, "Initial stock on hand (bulk import)");
+                }
+                created++;
+            } else {
+                if (row.getExpiryDate() != null) {
+                    existing.setExpiryDate(row.getExpiryDate());
+                }
+                if (row.getReorderLevel() != null) {
+                    existing.setReorderLevel(row.getReorderLevel());
+                }
+                if (quantity > 0) {
+                    applyTransaction(existing, StockTransaction.Type.RECEIVED, quantity, staff, "Received (bulk import)");
+                } else {
+                    stockItemRepository.save(existing);
+                }
+                toppedUp++;
+            }
+        }
+        // Each quantity received is already audited by applyTransaction; this
+        // entry records the import as one action.
+        auditService.recordCreate(staff, null, "STOCK_BULK_IMPORT", "Imported a stock list at " + facility.getName(),
+                created + " new item(s), " + toppedUp + " existing item(s) updated");
+        return new BulkImportResult(created, toppedUp);
     }
 
     @Transactional

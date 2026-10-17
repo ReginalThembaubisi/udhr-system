@@ -95,6 +95,23 @@ public class StockController {
         }
     }
 
+    /** A whole stock list at once (pasted from a spreadsheet or a CSV file). */
+    @PostMapping("/bulk")
+    public ResponseEntity<?> bulkImport(@RequestBody java.util.List<com.udhr.dto.StockItemRequest> rows, HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+        try {
+            return ResponseEntity.ok(stockService.bulkImport(rows, staffNumber));
+        } catch (StockService.BulkImportException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(java.util.Map.of("message", e.getMessage(), "errors", e.getErrors()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
+        }
+    }
+
     @PostMapping("/receive")
     public ResponseEntity<?> receiveStock(@RequestBody StockAdjustmentRequest adjustmentRequest, HttpServletRequest request) {
         String staffNumber = extractStaffNumber(request);

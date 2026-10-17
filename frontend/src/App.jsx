@@ -215,6 +215,222 @@ async function shrinkImage(file, maxSide = 2000) {
   }
 }
 
+// ---- Adding a whole stock list at once (pharmacist) ----------------------------
+
+const STOCK_TEMPLATE_HEADER = 'Medication name,Unit,Quantity,Reorder level,Expiry date (YYYY-MM-DD)';
+
+// Medicines most South African clinics keep, to start a stock list from:
+// the pharmacist fills in quantities rather than typing every name.
+const COMMON_CLINIC_MEDICINES = [
+  ['Paracetamol 500mg', 'tablets', 200], ['Ibuprofen 400mg', 'tablets', 100], ['Amoxicillin 500mg', 'capsules', 100],
+  ['Amoxicillin 250mg/5ml suspension', 'bottles', 10], ['Flucloxacillin 500mg', 'capsules', 50], ['Azithromycin 500mg', 'tablets', 30],
+  ['Metronidazole 400mg', 'tablets', 50], ['Co-trimoxazole 480mg', 'tablets', 100], ['Ciprofloxacin 500mg', 'tablets', 30],
+  ['Metformin 500mg', 'tablets', 300], ['Gliclazide 80mg', 'tablets', 100], ['Insulin (Actraphane)', 'vials', 10],
+  ['Amlodipine 5mg', 'tablets', 300], ['Enalapril 10mg', 'tablets', 200], ['Hydrochlorothiazide 12.5mg', 'tablets', 200],
+  ['Simvastatin 20mg', 'tablets', 100], ['Aspirin 100mg', 'tablets', 100], ['Salbutamol inhaler', 'inhalers', 10],
+  ['Budesonide inhaler', 'inhalers', 10], ['Prednisone 5mg', 'tablets', 50], ['Chlorphenamine 4mg', 'tablets', 50],
+  ['Cetirizine 10mg', 'tablets', 50], ['Omeprazole 20mg', 'capsules', 100], ['Metoclopramide 10mg', 'tablets', 30],
+  ['Loperamide 2mg', 'capsules', 30], ['Oral rehydration salts', 'sachets', 50], ['Fluconazole 150mg', 'capsules', 20],
+  ['Mebendazole 100mg', 'tablets', 30], ['TLD (tenofovir/lamivudine/dolutegravir)', 'tablets', 300],
+  ['Ferrous sulphate 200mg', 'tablets', 100], ['Folic acid 5mg', 'tablets', 100],
+];
+
+function splitStockLine(line, delimiter) {
+  if (delimiter === '\t') return line.split('\t');
+  // CSV: a quoted field may hold the delimiter ("Amoxicillin, 500mg").
+  const cells = [];
+  let cell = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"' && line[i + 1] === '"' && quoted) { cell += '"'; i++; }
+    else if (c === '"') quoted = !quoted;
+    else if (c === delimiter && !quoted) { cells.push(cell); cell = ''; }
+    else cell += c;
+  }
+  cells.push(cell);
+  return cells;
+}
+
+// Spreadsheets give dates in many shapes; South Africa writes day first.
+function toIsoDate(text) {
+  const t = text.trim();
+  if (!t) return '';
+  let m = t.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+  m = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  return null;
+}
+
+function parseStockList(text, stockItems) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length === 0) return [];
+  const delimiter = lines.some(l => l.includes('\t')) ? '\t'
+    : (lines[0].split(';').length > lines[0].split(',').length ? ';' : ',');
+  const today = new Date().toISOString().slice(0, 10);
+  const seen = new Map();
+  const rows = [];
+  lines.forEach((line, index) => {
+    const cells = splitStockLine(line, delimiter).map(c => c.trim());
+    // A header row ("Medication name, Unit, ...") is skipped.
+    if (index === 0 && /medic|name|item|product/i.test(cells[0]) && !/^\d/.test(cells[2] || '')) return;
+    const [name = '', unit = '', qtyText = '', reorderText = '', expiryText = ''] = cells;
+    const existing = stockItems.find(item => item.medicationName.toLowerCase() === name.toLowerCase());
+    const quantity = qtyText.replace(/[\s,]/g, '') === '' ? 0 : Number(qtyText.replace(/[\s,]/g, ''));
+    const reorder = reorderText.replace(/\s/g, '') === '' ? null : Number(reorderText.replace(/\s/g, ''));
+    const expiry = toIsoDate(expiryText);
+    let problem = null;
+    if (!name) problem = 'Medication name is missing';
+    else if (seen.has(name.toLowerCase())) problem = `Already listed above (${seen.get(name.toLowerCase())})`;
+    else if (!Number.isInteger(quantity) || quantity < 0) problem = `Quantity "${qtyText}" isn't a whole number`;
+    else if (reorder !== null && (!Number.isInteger(reorder) || reorder < 0)) problem = `Reorder level "${reorderText}" isn't a whole number`;
+    else if (expiry === null) problem = `Expiry date "${expiryText}" isn't a date (use 2027-06-30)`;
+    else if (expiry && expiry < today) problem = `Expired on ${expiry}`;
+    if (name) seen.set(name.toLowerCase(), name);
+    rows.push({
+      medicationName: name,
+      unit: unit || (existing ? existing.unit : 'tablets'),
+      quantityOnHand: Number.isInteger(quantity) ? quantity : 0,
+      reorderLevel: reorder !== null && Number.isInteger(reorder) ? reorder : (existing ? null : 10),
+      expiryDate: expiry || null,
+      existing,
+      problem,
+    });
+  });
+  return rows;
+}
+
+function BulkStockImport({ stockItems, onDone }) {
+  const [text, setText] = useState('');
+  const [message, setMessage] = useState(null); // { type, text, errors? }
+  const [saving, setSaving] = useState(false);
+  const rows = parseStockList(text, stockItems);
+  const problems = rows.filter(r => r.problem).length;
+
+  const downloadTemplate = () => {
+    const csv = `${STOCK_TEMPLATE_HEADER}\nParacetamol 500mg,tablets,1000,200,2027-06-30\nAmoxicillin 500mg,capsules,500,100,2027-03-31\n`;
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    link.download = 'stock-list-template.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
+  const loadCommonList = () => {
+    setMessage(null);
+    setText([STOCK_TEMPLATE_HEADER, ...COMMON_CLINIC_MEDICINES.map(([name, unit, reorder]) => `"${name}",${unit},0,${reorder},`)].join('\n'));
+  };
+
+  const readFile = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    setMessage(null);
+    setText(await file.text());
+  };
+
+  const submit = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const response = await apiFetch('/api/stock/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getAccessToken()}` },
+        body: JSON.stringify(rows.map(({ medicationName, unit, quantityOnHand, reorderLevel, expiryDate }) =>
+          ({ medicationName, unit, quantityOnHand, reorderLevel, expiryDate }))),
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) {
+        setMessage({ type: 'error', text: data.message || 'Could not add the list', errors: data.errors });
+        return;
+      }
+      const parts = [];
+      if (data.created) parts.push(`added ${data.created} new item${data.created === 1 ? '' : 's'}`);
+      if (data.toppedUp) parts.push(`updated ${data.toppedUp} you already stock`);
+      const summary = parts.join(' and ');
+      setMessage({ type: 'success', text: `Done: ${summary}.` });
+      setText('');
+      onDone();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <p className="udhr-row-subtitle" style={{ margin: '0 0 10px' }}>
+        Copy the rows from Excel or Google Sheets and paste them here, or upload a CSV file. Columns in this order:
+        <strong> medication name, unit, quantity, reorder level, expiry date</strong> (the date is optional). A header row is fine.
+        A medicine you already stock has the quantity added to it.
+      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+        <button type="button" className="udhr-btn-compact" onClick={loadCommonList}>Start from common clinic medicines</button>
+        <button type="button" className="udhr-btn-compact" onClick={downloadTemplate}>Download template</button>
+        <label className="udhr-btn-compact" style={{ cursor: 'pointer' }}>
+          Upload CSV
+          <input type="file" accept=".csv,.txt,text/csv,text/plain" onChange={readFile} style={{ display: 'none' }} />
+        </label>
+      </div>
+      <textarea
+        className="udhr-textarea"
+        rows={6}
+        value={text}
+        onChange={(e) => { setText(e.target.value); setMessage(null); }}
+        placeholder="Paste your rows here"
+        aria-label="Stock list"
+      />
+      {rows.length > 0 && (
+        <div style={{ overflowX: 'auto', marginTop: '12px' }}>
+          <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ textAlign: 'left' }}>
+                <th style={{ padding: '6px' }}>Medication</th><th style={{ padding: '6px' }}>Unit</th>
+                <th style={{ padding: '6px' }}>Quantity</th><th style={{ padding: '6px' }}>Reorder at</th>
+                <th style={{ padding: '6px' }}>Expiry</th><th style={{ padding: '6px' }}>What happens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, i) => (
+                <tr key={i} style={{ borderTop: '1px solid var(--udhr-border)' }}>
+                  <td style={{ padding: '6px' }}>{row.medicationName || '—'}</td>
+                  <td style={{ padding: '6px' }}>{row.unit}</td>
+                  <td style={{ padding: '6px' }}>{row.quantityOnHand}</td>
+                  <td style={{ padding: '6px' }}>{row.reorderLevel ?? 'unchanged'}</td>
+                  <td style={{ padding: '6px' }}>{row.expiryDate || '—'}</td>
+                  <td style={{ padding: '6px' }}>
+                    {row.problem
+                      ? <span className="udhr-tag danger">{row.problem}</span>
+                      : row.existing
+                        ? <span className="udhr-tag info">Adds {row.quantityOnHand} to current {row.existing.quantityOnHand}</span>
+                        : <span className="udhr-tag info">New item</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {message && (
+        <div className={`udhr-two-factor-message ${message.type}`} style={{ marginTop: '10px' }}>
+          <p style={{ margin: 0 }}>{message.text}</p>
+          {message.errors && message.errors.length > 1 && (
+            <ul style={{ margin: '6px 0 0', paddingLeft: '18px' }}>{message.errors.map((err, i) => <li key={i}>{err}</li>)}</ul>
+          )}
+        </div>
+      )}
+      {rows.length > 0 && (
+        <button type="button" className="udhr-btn-primary" style={{ marginTop: '12px', width: 'auto', padding: '10px 18px' }}
+          disabled={saving || problems > 0} onClick={submit}>
+          {saving ? 'Adding...' : problems > 0 ? `Fix ${problems} row${problems === 1 ? '' : 's'} first` : `Add ${rows.length} item${rows.length === 1 ? '' : 's'}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function TwoFactorSettings({ required, onSession }) {
   const [status, setStatus] = useState(null);
   const [setup, setSetup] = useState(null); // { secret, qr }
@@ -536,6 +752,7 @@ function App() {
   // Restored feature: Pharmacist stock/inventory tracking and a dispense event log
   const [pharmacistTab, setPharmacistTab] = useState('dispense'); // 'dispense' or 'stock'
   const [stockItems, setStockItems] = useState([]);
+  const [stockAddMode, setStockAddMode] = useState('one'); // 'one' | 'bulk'
   const [newStockItemForm, setNewStockItemForm] = useState({ medicationName: '', unit: 'tablets', quantityOnHand: 0, reorderLevel: 10, expiryDate: '' });
   const [stockAdjustAmount, setStockAdjustAmount] = useState({});
 
@@ -5092,9 +5309,18 @@ function App() {
         <h1 className="udhr-page-title">Stock</h1>
         <p className="udhr-page-subtitle">Inventory levels across the pharmacy.</p>
 
-        <div className="udhr-record-card" style={{ marginBottom: '20px', maxWidth: '640px' }}>
+        <div className="udhr-record-card" style={{ marginBottom: '20px', maxWidth: stockAddMode === 'bulk' ? '900px' : '640px' }}>
           <div className="udhr-record-body">
-            <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Add stock item</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', margin: '0 0 14px', flexWrap: 'wrap' }}>
+              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0 }}>{stockAddMode === 'bulk' ? 'Add many at once' : 'Add stock item'}</h3>
+              <div className="udhr-segmented" role="tablist" aria-label="How to add stock">
+                <button type="button" className={`udhr-segmented-btn ${stockAddMode === 'one' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap' }} onClick={() => setStockAddMode('one')}>One item</button>
+                <button type="button" className={`udhr-segmented-btn ${stockAddMode === 'bulk' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap' }} onClick={() => setStockAddMode('bulk')}>Many at once</button>
+              </div>
+            </div>
+            {stockAddMode === 'bulk' ? (
+              <BulkStockImport stockItems={stockItems} onDone={fetchStockItems} />
+            ) : (
             <form onSubmit={handleAddStockItem} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '10px', alignItems: 'flex-end' }}>
               <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                 <label className="udhr-label">Medication name</label>
@@ -5124,6 +5350,7 @@ function App() {
               </div>
               <button type="submit" className="udhr-btn-neutral" style={{ gridColumn: '1 / -1' }}>Add item</button>
             </form>
+            )}
           </div>
         </div>
 

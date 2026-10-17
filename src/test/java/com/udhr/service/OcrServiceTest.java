@@ -28,6 +28,10 @@ class OcrServiceTest {
         assertThat(result.foundIngredientsList()).isTrue();
         assertThat(result.text()).isEqualTo("Wheat flour, sugar, peanuts, salt. Contains: peanuts, gluten.");
 
+        // The heading wins over the word earlier in a sentence.
+        assertThat(OcrService.pickIngredients("Type an ingredients list or scan a label. Ingredients: Maize, salt.").text())
+                .isEqualTo("Maize, salt.");
+
         OcrService.Result noHeading = OcrService.pickIngredients("Maize meal, salt\nvitamin A");
         assertThat(noHeading.foundIngredientsList()).isFalse();
         assertThat(noHeading.text()).isEqualTo("Maize meal, salt vitamin A");

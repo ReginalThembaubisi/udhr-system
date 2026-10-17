@@ -27,9 +27,22 @@ public class TwoFactorService {
     @Value("${udhr.staff-2fa:optional}")
     private String staffTwoFactor;
 
+    @Value("${udhr.sysadmin-2fa:required}")
+    private String sysadminTwoFactor;
+
     public Map<String, Object> status(String staffNumber) {
         Staff staff = find(staffNumber);
-        return Map.of("enabled", staff.isTwoFactorEnabled(), "required", "required".equalsIgnoreCase(staffTwoFactor));
+        return Map.of("enabled", staff.isTwoFactorEnabled(), "required", isRequiredFor(staff));
+    }
+
+    /**
+     * Compulsory for everyone with STAFF_2FA=required, and for system
+     * administrators unless SYSADMIN_2FA=optional: the account that can reset
+     * everyone else's must not fall to a password alone.
+     */
+    public boolean isRequiredFor(Staff staff) {
+        return "required".equalsIgnoreCase(staffTwoFactor)
+                || ("SYSTEM_ADMIN".equals(staff.getRole()) && !"optional".equalsIgnoreCase(sysadminTwoFactor));
     }
 
     /** Step 1: a new secret, shown once as a QR code (and as text to type in). */
@@ -69,10 +82,10 @@ public class TwoFactorService {
 
     /** Turning it off needs the password and a current code, and isn't allowed when it is compulsory. */
     public void disable(String staffNumber, String password, String code) {
-        if ("required".equalsIgnoreCase(staffTwoFactor)) {
-            throw new RuntimeException("Two-step sign-in is required for all staff and can't be turned off.");
-        }
         Staff staff = find(staffNumber);
+        if (isRequiredFor(staff)) {
+            throw new RuntimeException("Two-step sign-in is required for your account and can't be turned off.");
+        }
         if (password == null || !passwordEncoder.matches(password, staff.getPassword())) {
             throw new RuntimeException("Password is incorrect");
         }
@@ -90,6 +103,12 @@ public class TwoFactorService {
      */
     public Staff resetFor(Long staffId, String performedBy) {
         Staff staff = staffRepository.findById(staffId).orElseThrow(() -> new RuntimeException("Staff not found"));
+        // Someone signed in as you shouldn't be able to strip your second step.
+        // A system admin's own reset goes through another system admin, or the
+        // emergency recovery on Render (EmergencyRecovery).
+        if (staff.getStaffNumber().equalsIgnoreCase(performedBy)) {
+            throw new RuntimeException("You can't reset your own two-step sign-in. Ask another system administrator.");
+        }
         clear(staff);
         tokenService.revokeAllSessions(staff, "TWO_FACTOR_RESET");
         auditService.recordSecurityEvent(staffRepository.findByStaffNumber(performedBy).orElse(null), "TWO_FACTOR_RESET",

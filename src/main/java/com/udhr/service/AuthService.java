@@ -53,6 +53,10 @@ public class AuthService {
     @Value("${udhr.staff-2fa:optional}")
     private String staffTwoFactor;
 
+    // System administrators must use two-step sign-in unless this is "optional".
+    @Value("${udhr.sysadmin-2fa:required}")
+    private String sysadminTwoFactor;
+
     // Lazy: PatientPortalService is a large service with its own dependencies,
     // and only refresh needs it.
     @Lazy
@@ -262,7 +266,9 @@ public class AuthService {
 
     public LoginResponse buildSession(Staff staff) {
         boolean mustChangePassword = staff.getMustChangePassword() != null && staff.getMustChangePassword();
-        boolean twoFactorSetup = "required".equalsIgnoreCase(staffTwoFactor) && !staff.isTwoFactorEnabled();
+        boolean twoFactorSetup = !staff.isTwoFactorEnabled()
+                && ("required".equalsIgnoreCase(staffTwoFactor)
+                    || ("SYSTEM_ADMIN".equals(staff.getRole()) && !"optional".equalsIgnoreCase(sysadminTwoFactor)));
         String token = jwtUtil.generateToken(staff.getStaffNumber(), staff.getRole(), mustChangePassword, twoFactorSetup);
         String refreshToken = tokenService.issueRefreshToken(staff);
         String fullName = staff.getFirstName() + " " + staff.getLastName();

@@ -123,6 +123,9 @@ public class SystemAdminService {
         Staff target = staffRepository.findById(staffId)
                 .orElseThrow(() -> new RuntimeException("Staff member not found"));
         Staff performedBy = resolveActor(performedByStaffNumber);
+        if (!active) {
+            AdminSafeguards.checkCanDeactivate(target, performedBy, staffRepository);
+        }
 
         target.setActive(active);
         staffRepository.save(target);

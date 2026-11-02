@@ -44,4 +44,18 @@ class RealServerStatusTest {
         ResponseEntity<String> anonymous = rest.getForEntity("/api/visits/today", String.class);
         assertThat(anonymous.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
+
+    @Test
+    void aMistypedPageAddressIsNotFoundButTheApiStillNeedsSignIn() {
+        HttpHeaders browser = new HttpHeaders();
+        browser.setAccept(java.util.List.of(MediaType.TEXT_HTML));
+        ResponseEntity<String> page = rest.exchange("/no-such-page", HttpMethod.GET, new HttpEntity<>(browser), String.class);
+        assertThat(page.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+
+        ResponseEntity<String> api = rest.getForEntity("/api/no-such-endpoint", String.class);
+        assertThat(api.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+
+        ResponseEntity<String> apiPost = rest.postForEntity("/no-such-page", null, String.class);
+        assertThat(apiPost.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
 }

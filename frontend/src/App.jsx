@@ -381,6 +381,7 @@ function BulkStockImport({ stockItems, onDone }) {
         onChange={(e) => { setText(e.target.value); setMessage(null); }}
         placeholder="Paste your rows here"
         aria-label="Stock list"
+        maxLength={500000}
       />
       {rows.length > 0 && (
         <div style={{ overflowX: 'auto', marginTop: '12px' }}>

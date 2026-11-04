@@ -90,7 +90,10 @@ public class PatientService {
         throw new RuntimeException("Failed to generate a unique MRN, please try again");
     }
 
-    public Patient registerPatient(PatientRequest request, String staffNumber) {
+    /** The generated PIN exists in plaintext only in this one registration response. */
+    public record PatientRegistrationResult(Patient patient, String temporaryPortalPin) { }
+
+    public PatientRegistrationResult registerPatient(PatientRequest request, String staffNumber) {
         if (request.getIdNumber() != null && !request.getIdNumber().isBlank()
                 && patientRepository.existsByIdNumber(request.getIdNumber())) {
             throw new RuntimeException("Patient already registered");
@@ -124,6 +127,11 @@ public class PatientService {
         }
         String consentGivenBy = consentGivenBy(request.getConsentGivenBy(), dateOfBirth);
 
+        // The registering staff identity must be known before a new patient is
+        // saved, so every registration has an accountable staff actor.
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Registering staff member not found"));
+
         Patient patient = new Patient();
         patient.setPrivacyNoticeAcceptedAt(LocalDateTime.now());
         patient.setPrivacyNoticeVersion(PRIVACY_NOTICE_VERSION);
@@ -156,19 +164,31 @@ public class PatientService {
         patient.setApgarScore1Min(request.getApgarScore1Min());
         patient.setApgarScore5Min(request.getApgarScore5Min());
 
+        // The normal new-patient workflow generates a temporary PIN on the
+        // server; existing integrations may still supply a patient-chosen PIN.
+        String temporaryPin = null;
         if (request.getPortalPin() != null && !request.getPortalPin().isBlank()) {
             patient.setPortalPinHash(passwordEncoder.encode(validatePortalPin(request.getPortalPin())));
+            patient.setMustChangePortalPin(false); // Already chosen by the patient.
+        } else {
+            temporaryPin = PortalPinGenerator.generate();
+            patient.setPortalPinHash(passwordEncoder.encode(temporaryPin));
+            patient.setMustChangePortalPin(true);
         }
 
         Patient savedPatient = patientRepository.save(patient);
 
-        Staff staff = staffRepository.findByStaffNumber(staffNumber).orElse(null);
-        auditService.recordCreate(staff, savedPatient, "REGISTER_PATIENT",
-                "Registered new patient: " + savedPatient.getMrn(),
-                savedPatient.getFirstName() + " " + savedPatient.getLastName()
-                        + (savedPatient.getDateOfBirth() != null ? ", born " + savedPatient.getDateOfBirth() : ""));
+        // Separate, attributable events for the record and its portal account.
+        // Keep birth dates, identity numbers and the temporary PIN out of audits.
+        auditService.recordEvent(staff, savedPatient, "REGISTER_PATIENT",
+                "registered a new patient record (" + savedPatient.getMrn() + ")",
+                "PATIENT", savedPatient.getId());
+        auditService.recordEvent(staff, savedPatient, "PATIENT_PORTAL_ACCOUNT_CREATED",
+                "created a patient portal account for " + savedPatient.getMrn()
+                        + (temporaryPin != null ? " with a temporary PIN requiring change on first sign-in" : " with a patient-selected PIN"),
+                "PATIENT_ACCOUNT", savedPatient.getId());
 
-        return savedPatient;
+        return new PatientRegistrationResult(savedPatient, temporaryPin);
     }
 
     public PatientRecordResponse getFullRecord(String identifier, String staffNumber) {
@@ -206,10 +226,16 @@ public class PatientService {
      * Front desk sets or resets a patient's portal PIN after checking their
      * identity in person (e.g. the patient forgot it). Also clears any lockout.
      */
+    public String validatePortalPinForChange(String pin) {
+        return validatePortalPin(pin);
+    }
+
     public Patient setPortalPin(String identifier, String pin, String staffNumber) {
         Patient patient = findByIdentifier(identifier);
         boolean hadPin = patient.getPortalPinHash() != null;
         patient.setPortalPinHash(passwordEncoder.encode(validatePortalPin(pin)));
+        // Reception-issued reset PINs are temporary, just like registration PINs.
+        patient.setMustChangePortalPin(true);
         patient.setFailedLoginAttempts(0);
         patient.setLoginLockedUntil(null);
         Patient saved = patientRepository.save(patient);

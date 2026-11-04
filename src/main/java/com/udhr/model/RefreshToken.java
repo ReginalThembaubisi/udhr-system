@@ -38,7 +38,7 @@ public class RefreshToken {
     // so a page reload doesn't sign them out now that the access token lives
     // only in the page's memory.
     @ManyToOne
-    @JoinColumn(name = "staff_id")
+    @JoinColumn(name = "staff_id", nullable = true)
     private Staff staff;
 
     @ManyToOne

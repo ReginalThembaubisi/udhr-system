@@ -58,6 +58,7 @@ public class StaffService {
         staff.setFacility(facility);
         staff.setEmail(request.getEmail());
         staff.setPassword(passwordEncoder.encode(request.getPassword()));
+        staff.setMustChangePassword(true); // Mandatory for every newly created staff account.
         staff.setActive(true);
 
         Staff saved = staffRepository.save(staff);

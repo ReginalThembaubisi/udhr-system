@@ -1,6 +1,8 @@
 package com.udhr.controller;
 
 import com.udhr.dto.PatientRequest;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.udhr.exception.PossibleDuplicatePatientException;
 import com.udhr.dto.PatientRecordResponse;
 import com.udhr.model.Patient;
@@ -21,6 +23,9 @@ public class PatientController {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     private String extractStaffNumber(HttpServletRequest request) {
         String authHeader = request.getHeader("Authorization");
@@ -58,8 +63,13 @@ public class PatientController {
         }
 
         try {
-            Patient patient = patientService.registerPatient(patientRequest, staffNumber);
-            return ResponseEntity.status(HttpStatus.CREATED).body(patient);
+            PatientService.PatientRegistrationResult registered = patientService.registerPatient(patientRequest, staffNumber);
+            ObjectNode response = objectMapper.valueToTree(registered.patient());
+            // One-time credential: never part of Patient, lookup or audit responses.
+            if (registered.temporaryPortalPin() != null) {
+                response.put("temporaryPortalPin", registered.temporaryPortalPin());
+            }
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (PossibleDuplicatePatientException e) {
             Patient existing = e.getExisting();
             return ResponseEntity.status(HttpStatus.CONFLICT).body(java.util.Map.of(

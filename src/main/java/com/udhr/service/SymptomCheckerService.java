@@ -14,6 +14,9 @@ import java.util.*;
 public class SymptomCheckerService {
 
     @Autowired
+    private AuditService auditService;
+
+    @Autowired
     private SymptomRepository symptomRepository;
 
     @Autowired
@@ -89,6 +92,9 @@ public class SymptomCheckerService {
             symptomCheckDetailRepository.save(detail);
         }
 
+        auditService.recordEvent(null, patient, "PATIENT_SYMPTOM_CHECK",
+                "completed a symptom check for their own record " + patient.getMrn(),
+                "SYMPTOM_CHECK", symptomCheck.getId());
         return symptomCheck;
     }
 

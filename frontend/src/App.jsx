@@ -8,6 +8,11 @@ import {
   Menu, Users, CornerUpRight, Package, Building2, Megaphone, MessageCircle, Send, Eye, EyeOff
 } from 'lucide-react';
 import './App.css';
+import './udhr-polish.css';
+import './udhr-standard.css';
+import './udhr-audit.css';
+import './udhr-patient-accounts.css';
+import './udhr-registration.css';
 import { apiFetch, getAccessToken, onSessionExpired, refreshSession, setAccessToken } from './lib/api';
 import { LANGUAGES, getLanguage, setLanguage, t } from './i18n';
 
@@ -53,6 +58,7 @@ const ROLE_LABELS = {
   PHARMACIST: 'Pharmacist',
   SYSTEM_ADMIN: 'System admin',
   PATIENT: 'Patient',
+  ANONYMOUS: 'Unidentified visitor',
 };
 const roleLabel = (role) => ROLE_LABELS[role] || role;
 
@@ -191,6 +197,33 @@ const parseResponseBody = async (response) => {
     return JSON.parse(text);
   } catch {
     return { message: text };
+  }
+};
+
+// Login requests used to wait indefinitely if MySQL was out of disk space or
+// the Java server stopped responding after accepting a connection. Keep the
+// timeout scoped to sign-in only: long-running clinical actions should not be
+// aborted by a blanket network timeout. No credentials are logged or stored.
+const SIGN_IN_TIMEOUT_MS = 25000;
+const requestSignIn = async (url, options) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SIGN_IN_TIMEOUT_MS);
+  try {
+    const response = await apiFetch(url, { ...options, signal: controller.signal });
+    // Reading the body is part of the request too: keep the timeout active
+    // until it has been read instead of clearing it after just the headers.
+    const data = await parseResponseBody(response);
+    return { response, data };
+  } catch (err) {
+    if (controller.signal.aborted || err?.name === 'AbortError') {
+      throw new Error('Sign-in took too long. The server is not responding. Check that the backend is running on port 8085 and MySQL has free disk space, then try again.');
+    }
+    if (err instanceof TypeError && /fetch|network|load/i.test(err.message || '')) {
+      throw new Error('Could not reach the UDHR backend. Check that the Java server is running on port 8085, then try again.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
 };
 
@@ -381,11 +414,10 @@ function BulkStockImport({ stockItems, onDone }) {
         onChange={(e) => { setText(e.target.value); setMessage(null); }}
         placeholder="Paste your rows here"
         aria-label="Stock list"
-        maxLength={500000}
       />
       {rows.length > 0 && (
         <div style={{ overflowX: 'auto', marginTop: '12px' }}>
-          <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', fontSize: '16px', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ textAlign: 'left' }}>
                 <th style={{ padding: '6px' }}>Medication</th><th style={{ padding: '6px' }}>Unit</th>
@@ -531,6 +563,45 @@ function LanguagePicker({ value, onChange }) {
   );
 }
 
+
+// Visual-only workspace branding shared by every staff role. Does not make API
+// requests or change navigation; the existing role-based pages remain intact.
+function WorkspaceBrandBar({ workspace }) {
+  return (
+    <header className="udhr-workspace-brand" aria-label="UDHR workspace">
+      <div className="udhr-workspace-brand-mark" aria-hidden="true"><Activity size={30} strokeWidth={2.4} /></div>
+      <div className="udhr-workspace-brand-copy">
+        <div className="udhr-workspace-brand-title">Universal Digital Health Record <span>(UDHR)</span></div>
+        <div className="udhr-workspace-brand-caption">A connected workspace for safe, coordinated healthcare</div>
+      </div>
+      <div className="udhr-workspace-brand-role">{workspace}</div>
+      <div className="udhr-workspace-brand-art" aria-hidden="true" />
+    </header>
+  );
+}
+
+// Decorative medical illustration for a genuinely empty alert view; the actual
+// alert status and the live alerts still come from the existing backend state.
+function HealthyEmptyIllustration() {
+  return (
+    <svg className="udhr-healthy-illustration" viewBox="0 0 330 218" fill="none" aria-hidden="true">
+      <ellipse cx="166" cy="204" rx="104" ry="10" fill="#DAE9F9" />
+      <path d="M93 177c-38-10-47-49-42-73 29 8 43 27 42 73ZM107 184c-26-30-13-72 2-84 22 23 27 51-2 84ZM239 181c38-13 51-48 46-74-27 4-46 30-46 74ZM220 184c32-31 22-67 10-85-27 20-32 52-10 85Z" fill="#B5EDDC" />
+      <rect x="108" y="35" width="116" height="155" rx="16" fill="#B6DCFF" />
+      <rect x="117" y="43" width="98" height="136" rx="9" fill="#fff" />
+      <rect x="140" y="26" width="53" height="26" rx="10" fill="#54CBA9" />
+      <circle cx="167" cy="30" r="7" fill="#D6FBF0" />
+      <path d="M159 65v22m-11-11h22" stroke="#3C9BED" strokeWidth="7" strokeLinecap="round" />
+      <path d="m136 112 8 8 13-15m-21 39 8 8 13-15" stroke="#13B884" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M171 116h29m-29 27h24" stroke="#AAC9EA" strokeWidth="7" strokeLinecap="round" />
+      <circle cx="222" cy="163" r="35" fill="#fff" />
+      <circle cx="222" cy="163" r="29" fill="#14B986" />
+      <path d="m208 162 10 10 20-22" stroke="white" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="m242 65 7-13m10 30 13-6" stroke="#60D4AD" strokeWidth="5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function App() {
   // Authentication State
   // `token` is the access token from sign-in, kept to know that someone is
@@ -541,6 +612,7 @@ function App() {
   const [userIdNumber, setUserIdNumber] = useState('');
   const [userName, setUserName] = useState('');
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [mustChangePin, setMustChangePin] = useState(false);
   // True while a page load checks whether the session can be resumed, so the
   // login screen doesn't flash up for someone who is still signed in.
   const [restoringSession, setRestoringSession] = useState(true);
@@ -560,6 +632,7 @@ function App() {
   };
   const [idleWarning, setIdleWarning] = useState(false);
   const [changePasswordForm, setChangePasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [changePinForm, setChangePinForm] = useState({ currentPin: '', newPin: '', confirmPin: '' });
 
   const [loginRole, setLoginRole] = useState('patient'); // 'patient' or 'staff'
   const [staffNumber, setStaffNumber] = useState('');
@@ -624,7 +697,7 @@ function App() {
   const [activeRecordTab, setActiveRecordTab] = useState('add'); // sub-tab within a loaded patient record (doctor view) — lands on Diagnose & Prescribe, the doctor's core job
 
   // Staff Dashboard Data State
-  const [searchId, setSearchId] = useState('9001015000083');
+  const [searchId, setSearchId] = useState('');
   const [searchedPatientRecord, setSearchedPatientRecord] = useState(null);
   
   // Forms for Staff
@@ -635,6 +708,8 @@ function App() {
     privacyNoticeAccepted: false, consentGivenBy: '', smsRemindersConsent: false
   });
   const [showRegExtras, setShowRegExtras] = useState(false);
+  // Shown exactly once after registration; never saved in browser storage.
+  const [issuedPatientPin, setIssuedPatientPin] = useState(null);
   // Front desk: result of "Find patient" ({ patient, visits } or { notFound }),
   // and whether the registration form is open.
   const [frontDeskResult, setFrontDeskResult] = useState(null);
@@ -678,7 +753,7 @@ function App() {
 
   // Pharmacy: automatic queue of patients the doctor has just prescribed for.
   // ID/MRN search stays as a manual fallback.
-  const [pharmacySearchId, setPharmacySearchId] = useState('9001015000083');
+  const [pharmacySearchId, setPharmacySearchId] = useState('');
   const [pharmacyRecord, setPharmacyRecord] = useState(null);
   const [pharmacyQueue, setPharmacyQueue] = useState([]);
 
@@ -761,8 +836,19 @@ function App() {
   const [systemAdminTab, setSystemAdminTab] = useState('accounts');
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [systemAdminStaff, setSystemAdminStaff] = useState([]);
+  const [accountCategory, setAccountCategory] = useState('staff');
+  const [systemAdminPatients, setSystemAdminPatients] = useState([]);
+  const [patientAccountSearch, setPatientAccountSearch] = useState('');
+  const [patientAccountPage, setPatientAccountPage] = useState(0);
+  const [patientAccountTotalPages, setPatientAccountTotalPages] = useState(0);
+  const [patientAccountTotal, setPatientAccountTotal] = useState(0);
+  const [patientAccountsLoading, setPatientAccountsLoading] = useState(false);
   const [auditEntries, setAuditEntries] = useState([]);
-  const [auditFilters, setAuditFilters] = useState({ startDate: '', endDate: '', action: '' });
+  const [auditFilters, setAuditFilters] = useState({
+    startDate: '', endDate: '', action: '', staffNumber: '', patientMrn: '', role: '', outcome: ''
+  });
+  const [auditPage, setAuditPage] = useState(0);
+  const [auditHasMore, setAuditHasMore] = useState(false);
   // Shown once, after a reset, so the administrator can hand the temporary
   // password over. Never fetched again — the server only ever returns it here.
   const [resetResult, setResetResult] = useState(null);
@@ -785,6 +871,7 @@ function App() {
     setUserIdNumber(data.idNumber || data.staffNumber);
     setUserName(data.fullName);
     setMustChangePassword(!!data.mustChangePassword);
+    setMustChangePin(!!data.mustChangePin);
     setTwoFactorSetupRequired(!!data.twoFactorSetupRequired);
     markActivity();
   };
@@ -805,15 +892,15 @@ function App() {
     setLoading(true);
 
     try {
-      let response;
+      let result;
       if (loginRole === 'patient') {
-        response = await apiFetch('/api/auth/patient/login', {
+        result = await requestSignIn('/api/auth/patient/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ idNumber: patientIdNumber, dateOfBirth: patientDob, pin: patientPin })
         });
       } else {
-        response = await apiFetch('/api/auth/login', {
+        result = await requestSignIn('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ staffNumber, password: staffPassword })
@@ -824,7 +911,7 @@ function App() {
       // rather than JSON, which response.json() would choke on — parse
       // leniently so a wrong password shows its real message, not a JSON
       // parse error.
-      const data = await parseResponseBody(response);
+      const { response, data } = result;
       if (!response.ok) {
         throw new Error(typeof data === 'string' ? data : data.message || 'Login failed');
       }
@@ -856,12 +943,11 @@ function App() {
     setErrorMessage('');
     setLoading(true);
     try {
-      const response = await apiFetch('/api/auth/login/verify', {
+      const { response, data } = await requestSignIn('/api/auth/login/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ challengeToken: twoFactorChallenge, code: twoFactorCode })
       });
-      const data = await parseResponseBody(response);
       if (!response.ok) {
         // A timed-out challenge means starting again from the password.
         const text = typeof data === 'string' ? data : data?.message || '';
@@ -936,6 +1022,34 @@ function App() {
       setMustChangePassword(false);
       setChangePasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setSuccessMessage('Password updated. Welcome to UDHR!');
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // First patient-portal sign-in using an automatically generated temporary PIN.
+  const handleChangePatientPin = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    if (changePinForm.newPin !== changePinForm.confirmPin) {
+      setErrorMessage('The new PIN and confirmation do not match.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await apiFetch('/api/patient/me/change-pin', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ currentPin: changePinForm.currentPin, newPin: changePinForm.newPin })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(typeof data === 'string' ? data : data.message || 'Unable to change PIN');
+      applySession(data); // Swap to a token without the temporary-PIN restriction.
+      setChangePinForm({ currentPin: '', newPin: '', confirmPin: '' });
+      setSuccessMessage('Your new patient portal PIN has been saved.');
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -1042,7 +1156,7 @@ function App() {
 
   // Fetch data on login
   useEffect(() => {
-    if (token) {
+    if (token && !mustChangePassword && !(userRole === 'PATIENT' && mustChangePin)) {
       if (userRole === 'PATIENT') {
         fetchPatientPortalData();
       } else if (userRole === 'NURSE') {
@@ -1063,7 +1177,7 @@ function App() {
         fetchFacilityList();
       }
     }
-  }, [token, userRole]);
+  }, [token, userRole, mustChangePassword, mustChangePin]);
 
   // Keep the hand-off queues current without anyone clicking a tab: a patient
   // checked in at the front desk shows up on the nurse's screen within ~30 s,
@@ -1112,14 +1226,14 @@ function App() {
   // Nudge patients toward the chat bubble a couple seconds after they land
   // on the portal — dismissed the moment they open the chat or close it.
   useEffect(() => {
-    if (token && userRole === 'PATIENT') {
+    if (token && userRole === 'PATIENT' && !mustChangePin) {
       // Shown briefly, then out of the way: on a phone it sat on top of the
       // patient's allergies until dismissed.
       const show = setTimeout(() => setChatHintVisible(true), 2000);
       const hide = setTimeout(() => setChatHintVisible(false), 9000);
       return () => { clearTimeout(show); clearTimeout(hide); };
     }
-  }, [token, userRole]);
+  }, [token, userRole, mustChangePin]);
 
   // Public announcements — no auth needed, shown on the login screen before
   // anyone signs in.
@@ -1426,6 +1540,7 @@ function App() {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
+    setIssuedPatientPin(null);
 
     if (patientRegForm.idNumber && patientRegForm.idNumber.length !== 13) {
       setErrorMessage('ID number must be exactly 13 digits, or left blank.');
@@ -1487,6 +1602,9 @@ function App() {
         }
       }
 
+      if (data.temporaryPortalPin) {
+        setIssuedPatientPin({ pin: data.temporaryPortalPin, name: `${data.firstName} ${data.lastName}`, mrn: data.mrn });
+      }
       setSuccessMessage(message);
       setPatientRegForm({
         idNumber: '', passportNumber: '', firstName: '', lastName: '', dateOfBirth: '', gender: '', contactNumber: '', address: '', email: '',
@@ -2294,6 +2412,7 @@ function App() {
 
   const handleBackToDoctorQueue = () => {
     setSearchedPatientRecord(null);
+    setSearchId(''); // Never expose the previous patient's ID in a new lookup.
     setPatientAdherence(null);
     setPatientTimeline(null);
     fetchDoctorConsultQueue();
@@ -2301,6 +2420,7 @@ function App() {
 
   const handleBackToPharmacyQueue = () => {
     setPharmacyRecord(null);
+    setPharmacySearchId(''); // A new dispense lookup starts blank.
     fetchPharmacyQueue();
   };
 
@@ -2560,17 +2680,42 @@ function App() {
     }
   };
 
-  const fetchAuditLog = async () => {
+  const fetchPatientAccounts = async (page = 0, search = patientAccountSearch) => {
+    setPatientAccountsLoading(true);
+    setErrorMessage('');
+    try {
+      const params = new URLSearchParams({ page: String(page), size: '20' });
+      if (search.trim()) params.set('search', search.trim());
+      const response = await apiFetch(`/api/system-admin/patients?${params}`, { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data?.message || 'Could not load patient accounts');
+      setSystemAdminPatients(data.content || []);
+      setPatientAccountPage(data.number ?? 0);
+      setPatientAccountTotalPages(data.totalPages ?? 0);
+      setPatientAccountTotal(data.totalElements ?? 0);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setPatientAccountsLoading(false);
+    }
+  };
+
+  const fetchAuditLog = async (requestedPage = 0, filtersOverride = null) => {
+    const page = typeof requestedPage === 'number' ? requestedPage : 0;
     setErrorMessage('');
     try {
       const params = new URLSearchParams();
-      if (auditFilters.startDate) params.append('startDate', auditFilters.startDate);
-      if (auditFilters.endDate) params.append('endDate', auditFilters.endDate);
-      if (auditFilters.action) params.append('action', auditFilters.action);
+      Object.entries(filtersOverride || auditFilters).forEach(([key, value]) => {
+        if (value) params.append(key, value);
+      });
+      params.append('limit', '50');
+      params.append('page', String(page));
       const response = await apiFetch(`/api/system-admin/audit-log?${params.toString()}`, { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to load the audit trail');
-      setAuditEntries(data);
+      setAuditEntries(previous => page === 0 ? data : [...previous, ...data]);
+      setAuditPage(page);
+      setAuditHasMore(data.length === 50);
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -2583,6 +2728,7 @@ function App() {
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to load the audit trail');
       setAuditEntries(data);
+      setAuditHasMore(false);
       setSystemAdminTab('audit');
     } catch (err) {
       setErrorMessage(err.message);
@@ -2751,22 +2897,61 @@ function App() {
     document.body
   ) : null;
 
-  // After a staff sign-in: the previous sign-in, so misuse gets noticed.
-  const signInNoticeBox = signInNotice ? createPortal(
+  // Same last-sign-in safety notice and dismiss behavior, now presented
+  // within the existing staff account area instead of floating over content.
+  const signInNoticeBox = signInNotice ? (
     <div className={`udhr-signin-notice ${signInNotice.failed > 0 ? 'warning' : ''}`} role="status">
-      <p>
-        Last sign-in: <strong>{formatDateTime(signInNotice.at)}</strong>{signInNotice.from ? ` from ${signInNotice.from}` : ''}.
-        {signInNotice.failed > 0 && <> <strong>{signInNotice.failed} failed attempt{signInNotice.failed === 1 ? '' : 's'}</strong> since then.</>}
-      </p>
+      <div className="udhr-signin-notice-label"><Clock size={14} /> Previous sign-in</div>
+      <p><strong>{formatDateTime(signInNotice.at)}</strong></p>
+      {signInNotice.from && <p className="udhr-signin-notice-source">From {signInNotice.from}</p>}
+      {signInNotice.failed > 0 && <p className="udhr-signin-notice-help"><strong>{signInNotice.failed} failed attempt{signInNotice.failed === 1 ? '' : 's'}</strong> since then.</p>}
       <p className="udhr-signin-notice-help">Not you? Tell your system administrator straight away.</p>
-      <button type="button" aria-label="Dismiss" onClick={() => setSignInNotice(null)}>×</button>
-    </div>,
-    document.body
+      <button type="button" aria-label="Dismiss last sign-in notice" onClick={() => setSignInNotice(null)}>×</button>
+    </div>
   ) : null;
 
   // Checking whether the last session can be resumed (a fraction of a second).
   if (restoringSession) {
     return <div className="udhr-restoring" aria-busy="true">Loading…</div>;
+  }
+
+  // A new patient signs in with the temporary PIN only to choose their own.
+  if (token && userRole === 'PATIENT' && mustChangePin) {
+    return (
+      <div className="udhr-page" style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: '24px' }}>
+        <div className="udhr-card" style={{ width: '440px', maxWidth: '100%' }}>
+          <Shield size={36} color="var(--udhr-primary)" style={{ marginBottom: '12px' }} />
+          <h1 className="udhr-page-title">Choose your own portal PIN</h1>
+          <p className="udhr-page-subtitle" style={{ marginBottom: '18px' }}>
+            You signed in with a temporary PIN issued at registration. For your privacy, replace it before viewing your health records.
+          </p>
+          {errorMessage && <div className="udhr-alert-banner error" role="alert">{errorMessage}</div>}
+          <form onSubmit={handleChangePatientPin}>
+            {[
+              ['currentPin', 'Temporary six-digit PIN'],
+              ['newPin', 'New six-digit PIN'],
+              ['confirmPin', 'Confirm new PIN']
+            ].map(([key, label]) => (
+              <div className="udhr-form-group" key={key}>
+                <label className="udhr-label" htmlFor={`change-${key}`}>{label}</label>
+                <input id={`change-${key}`} className="udhr-input" type="password" inputMode="numeric"
+                  autoComplete="off" pattern="[0-9]{6}" maxLength={6} required
+                  value={changePinForm[key]}
+                  onChange={e => setChangePinForm(previous => ({ ...previous, [key]: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                />
+              </div>
+            ))}
+            <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>Do not reuse your temporary PIN or choose an easily guessed PIN.</p>
+            <button type="submit" className="udhr-btn-primary" style={{ width: '100%' }} disabled={loading}>
+              {loading ? 'Saving…' : 'Save PIN & Continue'}
+            </button>
+          </form>
+          <button type="button" className="udhr-btn-neutral" style={{ marginTop: '12px', width: '100%' }} onClick={() => handleLogout()}>
+            Log out
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // STAFF_2FA=required and this account has no authenticator app yet: nothing
@@ -2796,7 +2981,7 @@ function App() {
             <div className="udhr-login-logo-chip">
               <Activity size={20} color="#fff" />
             </div>
-            <span style={{ fontWeight: 700, fontSize: '18px', letterSpacing: '-0.01em' }}>UDHR</span>
+            <span style={{ fontWeight: 700, fontSize: '20px', letterSpacing: '-0.01em' }}>UDHR</span>
           </div>
           <div>
             <h1 className="udhr-login-headline">{t('login.headline1')}<br />{t('login.headline2')}</h1>
@@ -2889,7 +3074,7 @@ function App() {
                     Open Google or Microsoft Authenticator on your phone and type the 6-digit code shown for UDHR. Lost your phone? Ask your system administrator.
                   </p>
                 </div>
-                <button type="submit" className="udhr-btn-primary" disabled={loading || twoFactorCode.length !== 6}>
+                <button type="submit" className="udhr-btn-primary" disabled={loading || twoFactorCode.length !== 6} aria-busy={loading}>
                   {loading ? t('login.submitting') : 'Verify'}
                 </button>
                 <button type="button" className="udhr-link-button" style={{ marginTop: '12px' }} onClick={() => { setTwoFactorChallenge(null); setErrorMessage(''); }}>
@@ -2973,9 +3158,12 @@ function App() {
                   </>
                 )}
 
-                <button type="submit" className="udhr-btn-primary" disabled={loading}>
+                <button type="submit" className="udhr-btn-primary" disabled={loading} aria-busy={loading}>
                   {loading ? t('login.submitting') : t('login.submit')}
                 </button>
+                {loading && <p className="udhr-row-subtitle" role="status" style={{ marginTop: '10px' }}>
+                  Connecting securely… If the server does not respond, you will see an error instead of waiting indefinitely.
+                </p>}
               </form>
             )}
           </div>
@@ -2988,7 +3176,7 @@ function App() {
   // replacing the old one-long-scroll dashboard. Reuses every existing
   // patient-portal state value and handler as-is; only presentation and
   // navigation (tabs vs. scroll) changed.
-  if (token && userRole === 'PATIENT' && !mustChangePassword) {
+  if (token && userRole === 'PATIENT' && !mustChangePassword && !mustChangePin) {
     const hasUrgentFlag = (patientAlerts && patientAlerts.length > 0) || (drugFoodConflicts && drugFoodConflicts.length > 0);
     const urgentFlagText = drugFoodConflicts && drugFoodConflicts.length > 0
       ? drugFoodConflicts[0].message
@@ -3170,7 +3358,7 @@ function App() {
                         <span className={`udhr-tag ${alert.severity === 'CRITICAL' ? 'danger' : 'info'}`}>{alert.severity} WARNING</span>
                         <span className="udhr-row-subtitle">{formatDate(alert.createdAt)}</span>
                       </div>
-                      <p style={{ margin: 0, fontSize: '13.5px', color: 'var(--udhr-text-secondary)' }}>{alert.message}</p>
+                      <p style={{ margin: 0, fontSize: '16px', color: 'var(--udhr-text-secondary)' }}>{alert.message}</p>
                     </div>
                   ))}
                 </>
@@ -3236,7 +3424,7 @@ function App() {
           {/* ===== Symptom Checker ===== */}
           {patientPortalTab === 'symptoms' && (
             <>
-              <p style={{ color: 'var(--udhr-text-muted)', fontSize: '13.5px', margin: '0 0 14px' }}>
+              <p style={{ color: 'var(--udhr-text-muted)', fontSize: '16px', margin: '0 0 14px' }}>
                 Select what you're feeling and our care navigation engine (powered by Infermedica) will guide you on next steps. <em>This is not a diagnosis.</em>
               </p>
               <div className="udhr-chip-row">
@@ -3276,10 +3464,10 @@ function App() {
                   <span className={`udhr-tag ${triageResult.urgencyLevel === 'RED' ? 'danger' : 'info'}`}>
                     {triageResult.urgencyLevel === 'RED' ? '🔴 High · go to Emergency' : triageResult.urgencyLevel === 'YELLOW' ? '🟡 Moderate · visit a clinic within 24h' : '🟢 Low · rest & monitor at home'}
                   </span>
-                  <p style={{ margin: '10px 0 0', fontSize: '13.5px', color: 'var(--udhr-text-secondary)' }}>
+                  <p style={{ margin: '10px 0 0', fontSize: '16px', color: 'var(--udhr-text-secondary)' }}>
                     {triageResult.recommendation.split('[')[0]}
                   </p>
-                  <p style={{ margin: '10px 0 0', fontSize: '12px', color: 'var(--udhr-text-muted)' }}>
+                  <p style={{ margin: '10px 0 0', fontSize: '15px', color: 'var(--udhr-text-muted)' }}>
                     ⚠️ This tool only provides care recommendations based on symptoms. It does not replace professional medical evaluation.
                   </p>
                   <button type="button" className="udhr-btn-neutral" style={{ marginTop: '12px' }} onClick={() => setTriageResult(null)}>
@@ -3297,7 +3485,7 @@ function App() {
                         <span className="udhr-row-subtitle">{formatDate(check.checkedAt)}</span>
                         <span className={`udhr-tag ${check.urgencyLevel === 'RED' ? 'danger' : 'info'}`}>{check.urgencyLevel}</span>
                       </div>
-                      <p style={{ margin: 0, fontSize: '13.5px' }}>{check.recommendation.split('[')[0]}</p>
+                      <p style={{ margin: 0, fontSize: '16px' }}>{check.recommendation.split('[')[0]}</p>
                       {check.details && check.details.length > 0 && (
                         <div className="udhr-chip-row" style={{ marginTop: '8px', marginBottom: 0 }}>
                           {check.details.map((d, idx) => (
@@ -3318,8 +3506,8 @@ function App() {
               {reminderData?.stats && reminderData.stats.totalDoses > 0 && (
                 <div className="udhr-card" style={{ marginBottom: '20px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
-                    <span style={{ fontSize: '14px', fontWeight: 600 }}>Weekly adherence score</span>
-                    <span style={{ fontSize: '17px', fontWeight: 700, color: reminderData.stats.adherenceScore >= 80 ? 'var(--udhr-success)' : reminderData.stats.adherenceScore >= 50 ? 'var(--udhr-warning)' : 'var(--udhr-danger)' }}>
+                    <span style={{ fontSize: '16.5px', fontWeight: 600 }}>Weekly adherence score</span>
+                    <span style={{ fontSize: '19px', fontWeight: 700, color: reminderData.stats.adherenceScore >= 80 ? 'var(--udhr-success)' : reminderData.stats.adherenceScore >= 50 ? 'var(--udhr-warning)' : 'var(--udhr-danger)' }}>
                       {reminderData.stats.adherenceScore}%
                     </span>
                   </div>
@@ -3381,7 +3569,7 @@ function App() {
           {/* ===== Food Checker ===== */}
           {patientPortalTab === 'food' && (
             <>
-              <p style={{ color: 'var(--udhr-text-muted)', fontSize: '13.5px', margin: '0 0 16px' }}>
+              <p style={{ color: 'var(--udhr-text-muted)', fontSize: '16px', margin: '0 0 16px' }}>
                 Type an ingredients list, look one up via Open Food Facts, or scan a label photo (OCR) to check it against your medical record.
               </p>
 
@@ -3444,8 +3632,8 @@ function App() {
                   <label className="udhr-label">Upload food label photo</label>
                   <div style={{ border: '2px dashed var(--udhr-border)', borderRadius: '12px', padding: '24px', textAlign: 'center', background: '#f8fafc', position: 'relative', cursor: 'pointer' }}>
                     <Upload size={28} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
-                    <p style={{ fontSize: '13.5px', color: 'var(--udhr-text-muted)', margin: 0 }}>{loading ? 'Reading the label...' : 'Take or choose a photo of the label'}</p>
-                    <p style={{ fontSize: '12px', color: 'var(--udhr-text-muted-2)', marginTop: '4px' }}>Phone photos are fine.</p>
+                    <p style={{ fontSize: '16px', color: 'var(--udhr-text-muted)', margin: 0 }}>{loading ? 'Reading the label...' : 'Take or choose a photo of the label'}</p>
+                    <p style={{ fontSize: '15px', color: 'var(--udhr-text-muted-2)', marginTop: '4px' }}>Phone photos are fine.</p>
                     <input type="file" accept="image/*" onChange={handleOcrUpload} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} />
                   </div>
                   {ingredientsInput && (
@@ -3455,7 +3643,7 @@ function App() {
                       <textarea className="udhr-textarea" value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={4} />
                     </div>
                   )}
-                  <p style={{ fontSize: '12.5px', color: 'var(--udhr-text-muted)' }}>
+                  <p style={{ fontSize: '15.5px', color: 'var(--udhr-text-muted)' }}>
                     For the best result, photograph just the ingredients list, flat and in good light. Photo reading can make mistakes, so check the text before you rely on it.
                   </p>
                 </div>
@@ -3489,7 +3677,7 @@ function App() {
           {/* ===== Lab Results ===== */}
           {patientPortalTab === 'labs' && (
             <>
-              <p style={{ color: 'var(--udhr-text-muted)', fontSize: '13.5px', margin: '0 0 14px' }}>
+              <p style={{ color: 'var(--udhr-text-muted)', fontSize: '16px', margin: '0 0 14px' }}>
                 Results your care team has recorded, most recent first.
               </p>
               {myLabResults.length === 0 ? (
@@ -3498,7 +3686,7 @@ function App() {
                 myLabResults.map((l) => (
                   <div key={l.id} className="udhr-row-card">
                     <p className="udhr-row-title">{l.testName}</p>
-                    <p style={{ margin: 0, fontSize: '13.5px', fontWeight: 700 }}>
+                    <p style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>
                       {l.result}{l.unit ? ` ${l.unit}` : ''} <span className="udhr-row-subtitle" style={{ fontWeight: 400 }}>{l.normalRange ? `(normal: ${l.normalRange})` : ''}</span>
                     </p>
                   </div>
@@ -3514,18 +3702,18 @@ function App() {
                 <div className="udhr-card" style={{ maxWidth: '480px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
                     <div>
-                      <p style={{ margin: '0 0 2px', fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Referral Letter</p>
-                      <p style={{ margin: 0, fontSize: '14px', fontWeight: 700 }}>Present this at the front desk</p>
+                      <p style={{ margin: '0 0 2px', fontSize: '15px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Referral Letter</p>
+                      <p style={{ margin: 0, fontSize: '16.5px', fontWeight: 700 }}>Present this at the front desk</p>
                     </div>
                     <span className={`udhr-tag ${patientReferral.urgency === 'EMERGENCY' ? 'danger' : patientReferral.urgency === 'URGENT' ? 'warning' : 'info'}`}>
                       {patientReferral.urgency.charAt(0) + patientReferral.urgency.slice(1).toLowerCase()}
                     </span>
                   </div>
                   <div style={{ border: '1px dashed var(--udhr-border)', borderRadius: '10px', padding: '16px', textAlign: 'center', marginBottom: '16px' }}>
-                    <p style={{ margin: '0 0 4px', fontSize: '11px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Referral Code</p>
-                    <p style={{ margin: 0, fontSize: '24px', fontWeight: 800, letterSpacing: '0.02em' }}>REF-{patientReferral.id}</p>
+                    <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Referral Code</p>
+                    <p style={{ margin: 0, fontSize: '26px', fontWeight: 800, letterSpacing: '0.02em' }}>REF-{patientReferral.id}</p>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13.5px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span className="udhr-row-subtitle">Referred to</span><strong style={{ textAlign: 'right' }}>{patientReferral.toFacility?.name}</strong></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span className="udhr-row-subtitle">Reason</span><strong style={{ textAlign: 'right' }}>{patientReferral.reason}</strong></div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span className="udhr-row-subtitle">Issued by</span><strong style={{ textAlign: 'right' }}>Dr. {patientReferral.referredBy?.firstName} {patientReferral.referredBy?.lastName}</strong></div>
@@ -3550,7 +3738,7 @@ function App() {
                 <XCircle size={18} />
               </button>
             </div>
-            <p style={{ color: 'var(--udhr-text-muted)', fontSize: '12px', margin: '10px 16px 0' }}>
+            <p style={{ color: 'var(--udhr-text-muted)', fontSize: '15px', margin: '10px 16px 0' }}>
               Not a diagnosis — for emergencies, call emergency services.
             </p>
             <div className="udhr-chat-messages">
@@ -3628,6 +3816,12 @@ function App() {
         ];
 
     const selectNavTab = (key) => {
+      // Keep any active consultation intact, but clear its old search text
+      // whenever a fresh lookup page is opened.
+      if (key === 'patients' && isDoctor && !searchedPatientRecord) setSearchId('');
+      if (key === 'vitals' && isNurse && !vitalsPatient) setVitalsSearchId('');
+      if (key === 'labs' && isNurse && !labsPatient) setLabsSearchId('');
+      if (key === 'referrals' && !referralLookupPatient) setReferralLookupId('');
       setActiveTabStaff(key);
       setIsMobileNavOpen(false);
       if (key === 'alerts') fetchClinicalAlerts();
@@ -3669,14 +3863,14 @@ function App() {
 
         <div className="udhr-record-card" style={{ maxWidth: 'clamp(280px, 60%, 480px)', marginBottom: '20px' }}>
           <div className="udhr-record-body">
-            <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px' }}>Refer to another facility</h3>
+            <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 6px' }}>Refer to another facility</h3>
             {(() => {
               const rp = referralLookupPatient || (referralSearchOpen ? null : searchedPatientRecord?.patient);
               return rp ? (
               <>
                 <p className="udhr-empty-note" style={{ marginBottom: '14px' }}>
                   For {rp.firstName} {rp.lastName} (file {rp.mrn}).{' '}
-                  <button type="button" className="udhr-link-button" onClick={() => { setReferralLookupPatient(null); setReferralSearchOpen(true); }}>Refer someone else</button>
+                  <button type="button" className="udhr-link-button" onClick={() => { setReferralLookupPatient(null); setReferralLookupId(''); setReferralSearchOpen(true); }}>Refer someone else</button>
                 </p>
                 <form onSubmit={handleCreateReferral}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -3698,10 +3892,13 @@ function App() {
                 </form>
               </>
             ) : (
+              <div className="udhr-lookup-inline">
+                <p className="udhr-label"><Search size={16} aria-hidden="true" /> Look up a patient by ID or file number</p>
               <form onSubmit={handleReferralLookup} className="udhr-search-bar">
-                <input type="text" className="udhr-input" value={referralLookupId} onChange={(e) => setReferralLookupId(e.target.value)} placeholder="ID number or file number" aria-label="Patient ID number or MRN" required />
+                <input type="text" className="udhr-input" autoComplete="off" value={referralLookupId} onChange={(e) => setReferralLookupId(e.target.value)} placeholder="ID number or file number" aria-label="Patient ID number or MRN" required />
                 <button type="submit" className="udhr-btn-compact">Find patient</button>
               </form>
+              </div>
             );
             })()}
           </div>
@@ -3709,7 +3906,7 @@ function App() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px,1fr))', gap: '16px' }}>
           <div>
-            <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Incoming</p>
+            <p style={{ fontSize: '15px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Incoming</p>
             {referralInbox.length === 0 ? (
               <p className="udhr-empty-note">No incoming referrals for your facility.</p>
             ) : (
@@ -3731,7 +3928,7 @@ function App() {
             )}
           </div>
           <div>
-            <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Outgoing</p>
+            <p style={{ fontSize: '15px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Outgoing</p>
             {referralOutgoing.length === 0 ? (
               <p className="udhr-empty-note">
                 No outgoing referrals yet. Use "Refer to another facility" above.
@@ -3758,11 +3955,13 @@ function App() {
 
         {!vitalsPatient && (
           <>
-            <p className="udhr-label" style={{ marginBottom: '8px' }}>Look up by ID or file number (e.g. a walk-in who bypassed the front desk)</p>
+            <section className="udhr-lookup-panel" aria-label="Patient lookup">
+              <p className="udhr-label"><Search size={17} aria-hidden="true" /> Look up by ID or file number (e.g. a walk-in who bypassed the front desk)</p>
             <form onSubmit={handleLookupForVitals} className="udhr-search-bar" style={{ marginBottom: '20px' }}>
               <input
                 type="text"
                 className="udhr-input"
+                autoComplete="off"
                 value={vitalsSearchId}
                 onChange={(e) => setVitalsSearchId(e.target.value)}
                 placeholder="ID number or file number"
@@ -3770,16 +3969,19 @@ function App() {
               />
               <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Find'}</button>
             </form>
+              <img className="udhr-lookup-art" src="/images/clipboard-care.svg" alt="" aria-hidden="true" />
+            </section>
 
-            <p className="udhr-label" style={{ marginBottom: '8px' }}>Or pick from the queue</p>
+            <p className="udhr-label udhr-queue-heading" style={{ marginBottom: '8px' }}>Or pick from the queue</p>
             <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)' }}>
               <div className="udhr-record-body">
                 {nurseVitalsQueue.length === 0 ? (
                   <p className="udhr-empty-note">No one waiting for vitals right now. Admin queues patients at check-in.</p>
                 ) : (
                   nurseVitalsQueue.map(visit => (
-                    <div key={visit.id} className="udhr-list-row">
-                      <div>
+                    <div key={visit.id} className="udhr-list-row udhr-patient-queue-row">
+                      <span className="udhr-patient-avatar" aria-hidden="true"><User size={23} /></span>
+                      <div className="udhr-queue-details">
                         <p className="udhr-row-title">{visit.patient.firstName} {visit.patient.lastName}</p>
                         <p className="udhr-row-subtitle">
                           {visit.patient.idNumber ? `ID: ${visit.patient.idNumber} · ` : ''}File no. {visit.patient.mrn}
@@ -3801,7 +4003,7 @@ function App() {
             <button type="button" className="udhr-btn-neutral" onClick={handleBackToVitalsQueue} style={{ marginBottom: '16px' }}>← Back to queue</button>
             <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)', marginBottom: '16px' }}>
               <div className="udhr-record-body">
-                <p className="udhr-row-title" style={{ fontSize: '14px', marginBottom: '2px' }}>{vitalsPatient.firstName} {vitalsPatient.lastName}</p>
+                <p className="udhr-row-title" style={{ fontSize: '16.5px', marginBottom: '2px' }}>{vitalsPatient.firstName} {vitalsPatient.lastName}</p>
                 <p className="udhr-row-subtitle" style={{ marginBottom: '10px' }}>
                   {vitalsPatient.idNumber ? `ID: ${vitalsPatient.idNumber} · ` : ''}File no. {vitalsPatient.mrn} · {vitalsPatient.gender} · born {formatDate(vitalsPatient.dateOfBirth)}
                 </p>
@@ -3835,7 +4037,16 @@ function App() {
                             className={`udhr-input ${flag ? 'udhr-input-flagged' : ''}`}
                             placeholder={placeholder}
                             value={vitalsForm[key]}
-                            onChange={(e) => setVitalsForm({ ...vitalsForm, [key]: e.target.value })}
+                            inputMode={key === 'bloodPressure' ? 'numeric' : undefined}
+                            maxLength={key === 'bloodPressure' ? 7 : undefined}
+                            pattern={key === 'bloodPressure' ? '[0-9]{2,3}/[0-9]{2,3}' : undefined}
+                            title={key === 'bloodPressure' ? 'Enter two numbers separated by /, for example 120/80' : undefined}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              // Only numbers and one separator, never letters or symbols.
+                              if (key === 'bloodPressure' && !/^\d{0,3}(?:\/\d{0,3})?$/.test(value)) return;
+                              setVitalsForm({ ...vitalsForm, [key]: value });
+                            }}
                           />
                           {flag && <p className="udhr-vital-flag">{flag === 'high' ? 'High' : 'Low'}: check before sending</p>}
                         </div>
@@ -3861,29 +4072,35 @@ function App() {
         <p className="udhr-page-subtitle">Look a patient up by ID or file number to attach a lab result to their file.</p>
 
         {!labsPatient && (
+          <section className="udhr-lookup-panel" aria-label="Patient lookup">
+            <p className="udhr-label"><Search size={17} aria-hidden="true" /> Look up a patient by ID or file number</p>
           <form onSubmit={handleLookupForLabs} className="udhr-search-bar">
             <input
               type="text"
               className="udhr-input"
-              value={labsSearchId}
+              autoComplete="off"
+                value={labsSearchId}
               onChange={(e) => setLabsSearchId(e.target.value)}
               placeholder="ID number or file number"
               required
             />
             <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Find'}</button>
           </form>
+            <img className="udhr-lookup-art" src="/images/clipboard-care.svg" alt="" aria-hidden="true" />
+          </section>
         )}
 
         {labsPatient && (
           <>
             <button type="button" className="udhr-btn-neutral" onClick={handleBackToLabsSearch} style={{ marginBottom: '16px' }}>← Search another patient</button>
-            <div className="udhr-record-card" style={{ maxWidth: 'clamp(320px, 60%, 720px)' }}>
+            <div className="udhr-record-card udhr-labs-card">
               <div className="udhr-record-body">
-                <p className="udhr-row-title" style={{ fontSize: '14px', marginBottom: '2px' }}>{labsPatient.firstName} {labsPatient.lastName}</p>
+                <div className="udhr-labs-patient-head"><span className="udhr-patient-avatar" aria-hidden="true"><User size={24} /></span><div>
+                <p className="udhr-row-title" style={{ fontSize: '16.5px', marginBottom: '2px' }}>{labsPatient.firstName} {labsPatient.lastName}</p>
                 <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>
                   {labsPatient.idNumber ? `ID: ${labsPatient.idNumber} · ` : ''}File no. {labsPatient.mrn} · {labsPatient.gender} · born {formatDate(labsPatient.dateOfBirth)}
-                </p>
-                <form onSubmit={handleAddLabResult}>
+                </p></div></div>
+                <form onSubmit={handleAddLabResult} className="udhr-labs-form">
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
                     <input type="text" className="udhr-input" placeholder="Test name (e.g. HbA1c)" value={labResultForm.testName} onChange={(e) => setLabResultForm({ ...labResultForm, testName: e.target.value })} required />
                     <input type="text" className="udhr-input" placeholder="Result" value={labResultForm.result} onChange={(e) => setLabResultForm({ ...labResultForm, result: e.target.value })} required />
@@ -3922,11 +4139,13 @@ function App() {
 
         {!searchedPatientRecord && (
           <>
-            <p className="udhr-label" style={{ marginBottom: '8px' }}>Look up by ID or file number (e.g. a follow-up not on today's queue)</p>
+            <section className="udhr-doctor-search">
+            <p className="udhr-label" style={{ marginBottom: '8px' }}><Search size={17} /> Look up by ID or file number (e.g. a follow-up not on today's queue)</p>
             <form onSubmit={handleSearchPatient} className="udhr-search-bar" style={{ marginBottom: '20px' }}>
               <input
                 type="text"
                 className="udhr-input"
+                autoComplete="off"
                 value={searchId}
                 onChange={(e) => setSearchId(e.target.value)}
                 placeholder="ID number or file number"
@@ -3934,6 +4153,8 @@ function App() {
               />
               <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
             </form>
+            <img className="udhr-doctor-search-art" src="/images/clipboard-care.svg" alt="" aria-hidden="true" />
+            </section>
 
             <p className="udhr-label" style={{ marginBottom: '8px' }}>Or pick from the queue</p>
             <div className="udhr-record-card">
@@ -3942,8 +4163,9 @@ function App() {
                   <p className="udhr-empty-note">No one waiting for consultation right now.</p>
                 ) : (
                   doctorConsultQueue.map(visit => (
-                    <div key={visit.id} className="udhr-list-row">
-                      <div>
+                    <div key={visit.id} className="udhr-list-row udhr-patient-queue-row">
+                      <span className="udhr-patient-avatar" aria-hidden="true"><User size={23} /></span>
+                      <div className="udhr-queue-details">
                         <p className="udhr-row-title">{visit.patient.firstName} {visit.patient.lastName}</p>
                         <p className="udhr-row-subtitle">
                           {visit.patient.idNumber ? `ID: ${visit.patient.idNumber} · ` : ''}File no. {visit.patient.mrn}
@@ -3968,7 +4190,7 @@ function App() {
             <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
               <div className="udhr-record-header">
                 <div>
-                  <p className="udhr-row-title" style={{ fontSize: '16px' }}>{searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}</p>
+                  <p className="udhr-row-title" style={{ fontSize: '18px' }}>{searchedPatientRecord.patient.firstName} {searchedPatientRecord.patient.lastName}</p>
                   <p className="udhr-row-subtitle">
                     {searchedPatientRecord.patient.idNumber ? `ID: ${searchedPatientRecord.patient.idNumber} · ` : ''}File no. {searchedPatientRecord.patient.mrn} · {searchedPatientRecord.patient.gender} · Born {formatDate(searchedPatientRecord.patient.dateOfBirth)}
                   </p>
@@ -4026,11 +4248,11 @@ function App() {
                       the patient open. Vitals are in the strip above and under
                       History → Vitals. */}
                   {searchedPatientRecord.currentVisit ? (
-                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-primary)', background: 'var(--udhr-primary-tint)', padding: '4px 10px', borderRadius: '999px' }}>
+                    <span style={{ fontSize: '14.5px', fontWeight: 700, color: 'var(--udhr-primary)', background: 'var(--udhr-primary-tint)', padding: '4px 10px', borderRadius: '999px' }}>
                       {searchedPatientRecord.currentVisit.status === 'VITALS_DONE' ? 'In consultation' : visitStatusLabel(searchedPatientRecord.currentVisit.status)}
                     </span>
                   ) : (
-                    <span style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px' }}>
+                    <span style={{ fontSize: '14.5px', fontWeight: 700, color: 'var(--udhr-text-secondary)', background: 'var(--udhr-border-subtle)', padding: '4px 10px', borderRadius: '999px' }}>
                       No open visit
                     </span>
                   )}
@@ -4098,10 +4320,10 @@ function App() {
                     )}
                     {patientAdherence && patientAdherence.stats.totalDoses > 0 && (
                       <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px dashed var(--udhr-border)' }}>
-                        <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Adherence history</h4>
+                        <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 10px' }}>Adherence history</h4>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                          <span style={{ fontSize: '13px' }}>Compliance score</span>
-                          <span style={{ fontSize: '15px', fontWeight: 700, color: patientAdherence.stats.adherenceScore >= 80 ? 'var(--udhr-success)' : 'var(--udhr-warning)' }}>{patientAdherence.stats.adherenceScore}%</span>
+                          <span style={{ fontSize: '16px' }}>Compliance score</span>
+                          <span style={{ fontSize: '17px', fontWeight: 700, color: patientAdherence.stats.adherenceScore >= 80 ? 'var(--udhr-success)' : 'var(--udhr-warning)' }}>{patientAdherence.stats.adherenceScore}%</span>
                         </div>
                         {patientAdherence.adherenceLogs.map((log) => (
                           <div key={log.id} className="udhr-list-row">
@@ -4129,7 +4351,7 @@ function App() {
                           </p>
                           {l.notes && <p className="udhr-row-subtitle" style={{ fontStyle: 'italic' }}>{l.notes}</p>}
                         </div>
-                        <p style={{ margin: 0, fontSize: '13px', fontWeight: 700 }}>
+                        <p style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>
                           {l.result} {l.unit || ''} <span className="udhr-row-subtitle" style={{ fontWeight: 400 }}>{l.normalRange ? `(normal: ${l.normalRange})` : ''}</span>
                         </p>
                       </div>
@@ -4154,7 +4376,7 @@ function App() {
                           {v.notes && (
                             <div style={{ gridColumn: '1 / -1' }}>
                               <p className="udhr-stat-label">Nurse's notes</p>
-                              <p style={{ margin: 0, fontSize: '13.5px' }}>{v.notes}</p>
+                              <p style={{ margin: 0, fontSize: '16px' }}>{v.notes}</p>
                             </div>
                           )}
                           <div style={{ gridColumn: '1 / -1' }}>
@@ -4170,7 +4392,7 @@ function App() {
 
                 {activeRecordTab === 'conditions' && (
                   <>
-                    <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 8px' }}>Active chronic conditions</h4>
+                    <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 8px' }}>Active chronic conditions</h4>
                     {searchedPatientRecord.chronicConditions.length === 0 ? (
                       <p className="udhr-empty-note" style={{ marginBottom: '16px' }}>No registered chronic conditions.</p>
                     ) : (
@@ -4181,7 +4403,7 @@ function App() {
                         </div>
                       ))
                     )}
-                    <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '16px 0 8px' }}>Allergies</h4>
+                    <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '16px 0 8px' }}>Allergies</h4>
                     {searchedPatientRecord.allergies.length === 0 ? (
                       <p className="udhr-empty-note">No registered drug or food allergies.</p>
                     ) : (
@@ -4193,7 +4415,7 @@ function App() {
                       ))
                     )}
                     <form onSubmit={handleAddAllergy} style={{ marginTop: '14px', maxWidth: '520px' }}>
-                      <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Record an allergy</h4>
+                      <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 10px' }}>Record an allergy</h4>
                       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
                         <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                           <label className="udhr-label">Allergen</label>
@@ -4255,49 +4477,49 @@ function App() {
                         <div style={{ marginBottom: '16px' }}>
                           {patientTimeline.activeAlerts.map(alert => (
                             <div key={alert.id} className="udhr-result-card danger">
-                              <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--udhr-danger-text-2)' }}>Clinical alert: {alert.alertType}</p>
-                              <p style={{ margin: '2px 0 0', fontSize: '13px' }}>{alert.message}</p>
+                              <p style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--udhr-danger-text-2)' }}>Clinical alert: {alert.alertType}</p>
+                              <p style={{ margin: '2px 0 0', fontSize: '16px' }}>{alert.message}</p>
                             </div>
                           ))}
                         </div>
                       )}
                       {patientTimeline.foodConflicts && patientTimeline.foodConflicts.length > 0 && (
                         <div className="udhr-result-card warning">
-                          <p style={{ margin: 0, fontSize: '13px', fontWeight: 600 }}>Drug-food interactions detected</p>
+                          <p style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>Drug-food interactions detected</p>
                           {patientTimeline.foodConflicts.map((c, i) => (
-                            <p key={i} style={{ margin: '4px 0 0', fontSize: '12.5px' }}>{c.medication} conflicts with scanned ingredient {c.ingredient} ({c.message})</p>
+                            <p key={i} style={{ margin: '4px 0 0', fontSize: '15.5px' }}>{c.medication} conflicts with scanned ingredient {c.ingredient} ({c.message})</p>
                           ))}
                         </div>
                       )}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '12px' }}>
                         <div>
-                          <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 8px' }}>Medication doses (14 days)</h4>
+                          <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 8px' }}>Medication doses (14 days)</h4>
                           {patientTimeline.adherenceLogs.length === 0 ? (
                             <p className="udhr-empty-note">No doses logged.</p>
                           ) : (
                             patientTimeline.adherenceLogs.map(log => (
                               <div key={log.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '8px 0' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '12.5px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '15.5px' }}>
                                   <span>{log.reminder.prescription.medication}</span>
                                   <span className={`udhr-tag ${log.status === 'TAKEN' ? 'info' : log.status === 'MISSED' ? 'danger' : 'info'}`}>{log.status}</span>
                                 </div>
-                                {log.notes && <p style={{ fontSize: '12px', fontStyle: 'italic', margin: '4px 0 0' }}>"{log.notes}"</p>}
+                                {log.notes && <p style={{ fontSize: '15px', fontStyle: 'italic', margin: '4px 0 0' }}>"{log.notes}"</p>}
                               </div>
                             ))
                           )}
                         </div>
                         <div>
-                          <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 8px' }}>Symptom checks (14 days)</h4>
+                          <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 8px' }}>Symptom checks (14 days)</h4>
                           {patientTimeline.symptomChecks.length === 0 ? (
                             <p className="udhr-empty-note">No symptom checks logged.</p>
                           ) : (
                             patientTimeline.symptomChecks.map(check => (
                               <div key={check.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '8px 0' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '12.5px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '15.5px' }}>
                                   <span className="udhr-row-subtitle">{formatDate(check.checkedAt)}</span>
                                   <span className={`udhr-tag ${check.urgencyLevel === 'RED' ? 'danger' : 'info'}`}>{check.urgencyLevel}</span>
                                 </div>
-                                <p style={{ margin: '4px 0 0', fontSize: '12.5px' }}>{check.recommendation.split('[')[0]}</p>
+                                <p style={{ margin: '4px 0 0', fontSize: '15.5px' }}>{check.recommendation.split('[')[0]}</p>
                               </div>
                             ))
                           )}
@@ -4312,7 +4534,7 @@ function App() {
                 {activeRecordTab === 'add' && (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
                     <form onSubmit={handleAddDiagnosis}>
-                      <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Add clinical diagnosis</h4>
+                      <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 10px' }}>Add clinical diagnosis</h4>
                       <div className="udhr-form-group">
                         <input type="text" className="udhr-input" aria-label="Condition or diagnosis" placeholder="Condition or diagnosis (e.g. Influenza)" value={addDiagnosisForm.conditionName} onChange={(e) => setAddDiagnosisForm({ ...addDiagnosisForm, conditionName: e.target.value })} required />
                       </div>
@@ -4323,7 +4545,7 @@ function App() {
                     </form>
 
                     <form onSubmit={handleAddPrescription}>
-                      <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Issue prescription</h4>
+                      <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 10px' }}>Issue prescription</h4>
                       <div className="udhr-form-group">
                         <label className="udhr-label">Medication</label>
                         <input type="text" className="udhr-input" placeholder="e.g. Amoxicillin 250mg" value={addPrescriptionForm.medicationName} onChange={(e) => { setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value }); setPrescriptionAllergyConflicts(null); setAllergyOverrideReason(''); }} required />
@@ -4464,7 +4686,7 @@ function App() {
 
         {clinicalAlerts.length === 0 ? (
           <div className="udhr-empty-state">
-            <CheckCircle size={48} color="#86efac" style={{ margin: '0 auto 16px' }} />
+            <HealthyEmptyIllustration />
             <h3>No active clinical alerts</h3>
             <p className="udhr-empty-note">All monitored patients are responding well to treatment and have no dietary conflicts.</p>
           </div>
@@ -4476,7 +4698,7 @@ function App() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', borderBottom: '1px solid var(--udhr-border-subtle)', paddingBottom: '12px', marginBottom: '12px' }}>
                   <div>
                     <span className={`udhr-tag ${alert.severity === 'CRITICAL' ? 'danger' : 'info'}`}>{alert.severity} SEVERITY</span>
-                    <p className="udhr-row-title" style={{ fontSize: '14px', marginTop: '6px' }}>
+                    <p className="udhr-row-title" style={{ fontSize: '16.5px', marginTop: '6px' }}>
                       Patient: {item.patient.firstName} {item.patient.lastName} ({item.patient.idNumber || item.patient.mrn})
                     </p>
                     <p className="udhr-row-subtitle">Fired: {formatDateTime(alert.createdAt)} · Type: {alert.alertType}</p>
@@ -4484,14 +4706,14 @@ function App() {
                   <button type="button" className="udhr-btn-soft-success" onClick={() => handleResolveAlert(alert.id)}>Resolve alert</button>
                 </div>
 
-                <p style={{ fontSize: '13.5px', lineHeight: 1.6, margin: '0 0 14px', fontStyle: 'italic', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px' }}>
+                <p style={{ fontSize: '16px', lineHeight: 1.6, margin: '0 0 14px', fontStyle: 'italic', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px' }}>
                   {alert.message}
                 </p>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '12px' }}>
                   <div>
-                    <h4 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', margin: '0 0 8px' }}>Adherence & prescriptions</h4>
-                    <p style={{ fontSize: '13px', margin: 0 }}>Compliance (last 14 days): <strong>{item.adherenceScore}%</strong></p>
+                    <h4 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--udhr-text-muted)', margin: '0 0 8px' }}>Adherence & prescriptions</h4>
+                    <p style={{ fontSize: '16px', margin: 0 }}>Compliance (last 14 days): <strong>{item.adherenceScore}%</strong></p>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
                       {item.activePrescriptions.map(p => (
                         <span key={p.id} className="udhr-tag info">{p.medication} ({p.dosage})</span>
@@ -4499,12 +4721,12 @@ function App() {
                     </div>
                   </div>
                   <div>
-                    <h4 style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', margin: '0 0 8px' }}>Recent symptom checks</h4>
+                    <h4 style={{ fontSize: '15px', fontWeight: 700, color: 'var(--udhr-text-muted)', margin: '0 0 8px' }}>Recent symptom checks</h4>
                     {item.recentSymptomChecks.length === 0 ? (
                       <p className="udhr-empty-note">No checks logged.</p>
                     ) : (
                       item.recentSymptomChecks.map(check => (
-                        <p key={check.id} style={{ fontSize: '12.5px', margin: '0 0 4px' }}>
+                        <p key={check.id} style={{ fontSize: '15.5px', margin: '0 0 4px' }}>
                           {formatDate(check.checkedAt)}: urgency <strong>{check.urgencyLevel}</strong>
                         </p>
                       ))
@@ -4514,13 +4736,13 @@ function App() {
 
                 {alert.alertType === 'NON_RESPONSE' && (
                   <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '14px', border: '1px solid var(--udhr-border)' }}>
-                    <h4 style={{ fontSize: '13px', fontWeight: 700, margin: '0 0 10px' }}>Clinical decision support recommendations</h4>
+                    <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 10px' }}>Clinical decision support recommendations</h4>
                     {item.labRecommendations && item.labRecommendations.length > 0 && (
                       <div style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px dashed var(--udhr-border)' }}>
-                        <p style={{ fontSize: '12.5px', fontWeight: 600, margin: '0 0 4px' }}>Suggested laboratory diagnostics:</p>
+                        <p style={{ fontSize: '15.5px', fontWeight: 600, margin: '0 0 4px' }}>Suggested laboratory diagnostics:</p>
                         {item.labRecommendations.map(lr => (
                           <div key={lr.id} style={{ marginTop: '4px' }}>
-                            <p style={{ fontSize: '12.5px', color: 'var(--udhr-primary)', margin: 0 }}>Order: <strong>{lr.testName}</strong> {lr.icdCode && `(ICD-10: ${lr.icdCode})`}</p>
+                            <p style={{ fontSize: '15.5px', color: 'var(--udhr-primary)', margin: 0 }}>Order: <strong>{lr.testName}</strong> {lr.icdCode && `(ICD-10: ${lr.icdCode})`}</p>
                             <p className="udhr-row-subtitle">{lr.reason}</p>
                           </div>
                         ))}
@@ -4528,11 +4750,11 @@ function App() {
                     )}
                     {item.differentialDiagnoses && item.differentialDiagnoses.length > 0 && (
                       <>
-                        <p style={{ fontSize: '12.5px', fontWeight: 600, margin: '0 0 6px' }}>Suggested ICD-10 differential diagnoses:</p>
+                        <p style={{ fontSize: '15.5px', fontWeight: 600, margin: '0 0 6px' }}>Suggested ICD-10 differential diagnoses:</p>
                         {item.differentialDiagnoses.map(dd => (
                           <div key={dd.id} style={{ background: '#fff', padding: '10px', borderRadius: '8px', marginBottom: '6px', border: '1px solid var(--udhr-border)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontSize: '12.5px', fontWeight: 600 }}>{dd.conditionName} (ICD-10: {dd.icdCode})</span>
+                              <span style={{ fontSize: '15.5px', fontWeight: 600 }}>{dd.conditionName} (ICD-10: {dd.icdCode})</span>
                               <span className={`udhr-tag ${dd.likelihood === 'HIGH' ? 'danger' : 'info'}`}>{dd.likelihood}</span>
                             </div>
                             <p className="udhr-row-subtitle">{dd.reasoning}</p>
@@ -4553,7 +4775,7 @@ function App() {
       <div className="udhr-shell">
         {idleDialog}
         {securityDialog}
-        {signInNoticeBox}
+        <WorkspaceBrandBar workspace={isNurse ? "Nurse workspace" : "Doctor portal" } />
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
         <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
           <div className="udhr-sidebar-header">
@@ -4579,6 +4801,7 @@ function App() {
                 <p className="udhr-user-role">{roleLabel(userRole)}</p>
               </div>
             </div>
+            {signInNoticeBox}
             <button type="button" className="udhr-logout-link" onClick={() => setShowSecurity(true)}><Shield size={15} /> Sign-in security</button>
             <button type="button" className="udhr-logout-link" onClick={handleLogout}><LogOut size={15} /> Log out</button>
           </div>
@@ -4644,12 +4867,20 @@ function App() {
     // desk; running the network is the system administrator's job.
     const renderReportsPanel = () => {
       const r = systemReports;
-      const card = (title, stats, top, exportPath, exportName) => (
-        <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+      const card = (title, stats, top, exportPath, exportName, exportCount) => (
+        <div className="udhr-record-card udhr-report-card" style={{ alignSelf: 'stretch' }}>
           <div className="udhr-record-body">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 700, margin: 0 }}>{title}</h3>
-              {exportPath && <button type="button" className="udhr-link-button" onClick={() => downloadReportCsv(exportPath, exportName)}>Download CSV</button>}
+            <div className="udhr-report-card-header">
+              <h3><span className="udhr-report-card-icon" aria-hidden="true">{title === 'Prescriptions' ? <Pill size={20} /> : title === 'Dispensing' ? <Package size={20} /> : title === 'Stock' ? <Package size={20} /> : title === 'Lab results' ? <FileSpreadsheet size={20} /> : <CornerUpRight size={20} />}</span>{title}</h3>
+              {exportPath && (
+                <button
+                  type="button"
+                  className="udhr-link-button"
+                  disabled={!(Number(exportCount) > 0)}
+                  title={Number(exportCount) > 0 ? `Download ${title.toLowerCase()} CSV` : 'No records available to export'}
+                  onClick={() => { if (Number(exportCount) > 0) downloadReportCsv(exportPath, exportName); }}
+                >↓ Download CSV</button>
+              )}
             </div>
             <div className="udhr-report-stats">
               {stats.map(([label, value]) => (
@@ -4664,7 +4895,7 @@ function App() {
                 <p className="udhr-label" style={{ margin: '14px 0 6px' }}>{top.title}</p>
                 {top.items.slice(0, 5).map((item, i) => (
                   <div key={i} className="udhr-list-row" style={{ padding: '6px 0' }}>
-                    <span style={{ fontSize: '13.5px' }}>{item[0]}</span>
+                    <span style={{ fontSize: '16px' }}>{item[0]}</span>
                     <span className="udhr-tag neutral">{item[1]}</span>
                   </div>
                 ))}
@@ -4682,40 +4913,40 @@ function App() {
           {!r ? (
             <p className="udhr-empty-note">Loading reports...</p>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
+            <div className="udhr-reports-grid">
               {r.prescriptions && card('Prescriptions', [
                 ['Total', r.prescriptions.totalPrescriptions],
                 ['Issued today', r.prescriptions.issuedToday],
                 ['Active', r.prescriptions.activePrescriptions],
                 ['Patients', r.prescriptions.uniquePatientsPrescribed],
               ], { title: 'Most prescribed', items: (r.prescriptions.topMedications || []).map(m => [m.medicationName, m.prescriptionCount]) },
-              '/api/prescriptions/report/export', 'prescriptions.csv')}
+              '/api/prescriptions/report/export', 'prescriptions.csv', r.prescriptions.totalPrescriptions)}
               {r.dispensing && card('Dispensing', [
                 ['Total', r.dispensing.totalDispenseEvents],
                 ['Today', r.dispensing.dispensedToday],
                 ['Patients', r.dispensing.uniquePatientsServed],
               ], { title: 'Most dispensed', items: (r.dispensing.topMedications || []).map(m => [m.medicationName, m.dispenseCount]) },
-              '/api/dispensing/report/export', 'dispensing.csv')}
+              '/api/dispensing/report/export', 'dispensing.csv', r.dispensing.totalDispenseEvents)}
               {r.stock && card('Stock', [
                 ['Medicines tracked', r.stock.totalMedicationsTracked],
                 ['Low stock', r.stock.lowStockCount],
                 ['Expired', r.stock.expiredCount],
                 ['Expiring soon', r.stock.expiringSoonCount],
               ], { title: 'Low stock', items: (r.stock.lowStockItems || []).map(item => [item.medicationName, `${item.quantityOnHand} ${item.unit}`]) },
-              '/api/stock/report/export', 'stock.csv')}
+              '/api/stock/report/export', 'stock.csv', r.stock.totalMedicationsTracked)}
               {r.labs && card('Lab results', [
                 ['Total', r.labs.totalLabResults],
                 ['Today', r.labs.resultsToday],
                 ['Test types', r.labs.uniqueTestTypes],
               ], { title: 'Most common tests', items: (r.labs.topTestTypes || []).map(t => [t.testName, t.testCount]) },
-              '/api/lab-results/report/export', 'lab-results.csv')}
+              '/api/lab-results/report/export', 'lab-results.csv', r.labs.totalLabResults)}
               {r.referrals && card('Referrals', [
                 ['Outgoing', r.referrals.totalOutgoing],
                 ['Incoming', r.referrals.totalIncoming],
                 ['Waiting for reply', r.referrals.pendingIncoming],
                 ['Emergency', r.referrals.emergencyReferrals],
               ], { title: 'Most referred to', items: (r.referrals.topDestinations || []).map(d => [d.facilityName, d.referralCount]) },
-              '/api/referrals/report/export', 'referrals.csv')}
+              '/api/referrals/report/export', 'referrals.csv', Number(r.referrals.totalOutgoing || 0) + Number(r.referrals.totalIncoming || 0))}
             </div>
           )}
         </>
@@ -4730,7 +4961,7 @@ function App() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px' }}>
           <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
             <div className="udhr-record-body">
-              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Add facility</h3>
+              <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 14px' }}>Add facility</h3>
               <form onSubmit={handleAddFacility}>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Name</label>
@@ -4781,10 +5012,10 @@ function App() {
           Published ones rotate as a slideshow on the sign-in screen — use them for vaccination drives, clinic closures, outbreak notices.
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px,1fr))', gap: '20px' }}>
-          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+        <div className="udhr-management-grid">
+          <div className="udhr-record-card udhr-announcement-edit" style={{ alignSelf: 'flex-start' }}>
             <div className="udhr-record-body">
-              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Add announcement</h3>
+              <h3 className="udhr-panel-heading"><Megaphone size={19} /> Add announcement</h3>
               <form onSubmit={handleCreateAnnouncement}>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Title</label>
@@ -4803,8 +5034,9 @@ function App() {
             </div>
           </div>
 
-          <div className="udhr-record-card" style={{ alignSelf: 'flex-start' }}>
+          <div className="udhr-record-card udhr-announcement-list" style={{ alignSelf: 'flex-start' }}>
             <div className="udhr-record-body">
+              <h3 className="udhr-panel-heading"><Clipboard size={19} /> Published announcements</h3>
               {announcements.length === 0 ? (
                 <p className="udhr-empty-note">{loading ? 'Loading...' : 'No announcements yet.'}</p>
               ) : (
@@ -4837,17 +5069,76 @@ function App() {
       <>
         <h1 className="udhr-page-title">Accounts</h1>
         <p className="udhr-page-subtitle">
-          Every account on the system. Reset a password for someone locked out, or end all of an
-          account's sessions immediately if you believe it has been compromised.
+          Manage staff access and review registered patient portal accounts. Patient PINs and clinical
+          information are never displayed here.
         </p>
+        <div className="udhr-account-switch" role="group" aria-label="Account type">
+          <button type="button" className={`udhr-btn-neutral ${accountCategory === 'staff' ? 'udhr-account-switch-active' : ''}`}
+            aria-pressed={accountCategory === 'staff'} onClick={() => setAccountCategory('staff')}>
+            Staff accounts
+          </button>
+          <button type="button" className={`udhr-btn-neutral ${accountCategory === 'patients' ? 'udhr-account-switch-active' : ''}`}
+            aria-pressed={accountCategory === 'patients'} onClick={() => { setAccountCategory('patients'); fetchPatientAccounts(0); }}>
+            Patient accounts
+          </button>
+        </div>
 
+        {accountCategory === 'patients' ? (
+          <div className="udhr-record-card">
+            <div className="udhr-record-body">
+              <div className="udhr-account-directory-header">
+                <div>
+                  <h2 className="udhr-panel-heading">Registered patient accounts</h2>
+                  <p className="udhr-row-subtitle">{patientAccountTotal} registered records · Portal access status only; no medical details</p>
+                </div>
+                <form className="udhr-account-search" onSubmit={(e) => { e.preventDefault(); fetchPatientAccounts(0); }}>
+                  <input type="search" className="udhr-input" aria-label="Search patient accounts"
+                    placeholder="Search name or file number" value={patientAccountSearch}
+                    onChange={(e) => setPatientAccountSearch(e.target.value)} />
+                  <button type="submit" className="udhr-btn-primary">Search</button>
+                </form>
+              </div>
+              {patientAccountsLoading ? <p className="udhr-empty-note">Loading patient accounts…</p> : (
+                systemAdminPatients.length === 0 ? <p className="udhr-empty-note">No registered patient accounts match this search.</p> :
+                systemAdminPatients.map(patient => (
+                  <div key={patient.id} className="udhr-list-row udhr-patient-account-row">
+                    <div>
+                      <p className="udhr-row-title">{patient.fullName}{' '}
+                        <span className="udhr-tag neutral">Patient</span>{' '}
+                        <span className={`udhr-tag ${!patient.portalPinSet ? 'danger' : patient.mustChangePortalPin ? 'warning' : 'info'}`}>
+                          {!patient.portalPinSet ? 'PIN not set' : patient.mustChangePortalPin ? 'Temporary PIN' : 'Portal PIN set'}
+                        </span>
+                      </p>
+                      <p className="udhr-row-subtitle">File number: {patient.mrn} · Registered: {formatDateTime(patient.registeredAt)}</p>
+                    </div>
+                    <button type="button" className="udhr-btn-neutral" onClick={() => {
+                      const selectedFilters = { startDate: '', endDate: '', action: '', staffNumber: '', patientMrn: patient.mrn, role: '', outcome: '' };
+                      setAuditFilters(selectedFilters);
+                      setSystemAdminTab('audit');
+                      fetchAuditLog(0, selectedFilters);
+                    }}>View activity</button>
+                  </div>
+                ))
+              )}
+              <div className="udhr-account-pagination">
+                <span>Page {patientAccountTotalPages ? patientAccountPage + 1 : 0} of {patientAccountTotalPages}</span>
+                <div>
+                  <button type="button" className="udhr-btn-neutral" disabled={patientAccountsLoading || patientAccountPage <= 0}
+                    onClick={() => fetchPatientAccounts(patientAccountPage - 1)}>Previous</button>
+                  <button type="button" className="udhr-btn-neutral" disabled={patientAccountsLoading || patientAccountPage + 1 >= patientAccountTotalPages}
+                    onClick={() => fetchPatientAccounts(patientAccountPage + 1)}>Next</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : <>
         {resetResult && (
           <div className="udhr-record-card" style={{ marginBottom: '20px', maxWidth: '640px' }}>
             <div className="udhr-record-body">
-              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 8px' }}>
+              <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 8px' }}>
                 Temporary password for {resetResult.fullName}
               </h3>
-              <p style={{ fontFamily: 'monospace', fontSize: '18px', fontWeight: 700, margin: '0 0 8px' }}>
+              <p style={{ fontFamily: 'monospace', fontSize: '20px', fontWeight: 700, margin: '0 0 8px' }}>
                 {resetResult.temporaryPassword}
               </p>
               <p className="udhr-row-subtitle" style={{ margin: 0 }}>{resetResult.instructions}</p>
@@ -4869,7 +5160,7 @@ function App() {
         {showCreateAccount ? (
           <div className="udhr-record-card" style={{ marginBottom: '20px', maxWidth: '640px' }}>
             <div className="udhr-record-body">
-              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Create account</h3>
+              <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 14px' }}>Create account</h3>
               <form onSubmit={handleRegisterStaff}>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Staff Number</label>
@@ -4972,6 +5263,7 @@ function App() {
             )}
           </div>
         </div>
+        </>}
       </>
     );
 
@@ -4979,12 +5271,29 @@ function App() {
       <>
         <h1 className="udhr-page-title">Audit trail</h1>
         <p className="udhr-page-subtitle">
-          Who viewed or changed a record, what changed, when, and from which address.
+          Who registered a patient, created an account, viewed or changed a record, and when.
         </p>
 
-        <div className="udhr-record-card" style={{ marginBottom: '20px', maxWidth: '720px' }}>
+        <div className="udhr-audit-shortcuts" aria-label="Audit activity shortcuts">
+          <button type="button" className="udhr-btn-neutral" onClick={() => {
+            const selected = { startDate: '', endDate: '', action: 'REGISTER_PATIENT', staffNumber: '', patientMrn: '', role: '', outcome: '' };
+            setAuditFilters(selected);
+            fetchAuditLog(0, selected);
+          }}>Patient registrations</button>
+          <button type="button" className="udhr-btn-neutral" onClick={() => {
+            const selected = { startDate: '', endDate: '', action: 'PATIENT_PORTAL_ACCOUNT_CREATED', staffNumber: '', patientMrn: '', role: '', outcome: '' };
+            setAuditFilters(selected);
+            fetchAuditLog(0, selected);
+          }}>Patient accounts created</button>
+          <button type="button" className="udhr-btn-neutral" onClick={() => {
+            const selected = { startDate: '', endDate: '', action: '', staffNumber: '', patientMrn: '', role: '', outcome: '' };
+            setAuditFilters(selected);
+            fetchAuditLog(0, selected);
+          }}>All activity</button>
+        </div>
+        <div className="udhr-record-card udhr-audit-filters" style={{ marginBottom: '20px' }}>
           <div className="udhr-record-body">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: '10px', alignItems: 'flex-end' }}>
+            <div className="udhr-audit-filter-grid">
               <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                 <label className="udhr-label">From</label>
                 <input
@@ -5004,57 +5313,104 @@ function App() {
                 />
               </div>
               <div className="udhr-form-group" style={{ marginBottom: 0 }}>
-                <label className="udhr-label">Action</label>
+                <label className="udhr-label">Activity</label>
                 <input
-                  type="text"
+                  type="search"
                   className="udhr-input"
-                  placeholder="e.g. VIEW_RECORD"
+                  placeholder="e.g. sign in, referral, pharmacy"
                   value={auditFilters.action}
                   onChange={(e) => setAuditFilters({ ...auditFilters, action: e.target.value })}
                 />
               </div>
-              <button type="button" className="udhr-btn-neutral" onClick={fetchAuditLog}>Search</button>
+              <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                <label className="udhr-label">Staff number</label>
+                <input className="udhr-input" placeholder="e.g. DOC001"
+                  value={auditFilters.staffNumber}
+                  onChange={(e) => setAuditFilters({ ...auditFilters, staffNumber: e.target.value })} />
+              </div>
+              <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                <label className="udhr-label">Patient record</label>
+                <input className="udhr-input" placeholder="e.g. MRN-2020-000001"
+                  value={auditFilters.patientMrn}
+                  onChange={(e) => setAuditFilters({ ...auditFilters, patientMrn: e.target.value })} />
+              </div>
+              <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                <label className="udhr-label">Role</label>
+                <select className="udhr-input" value={auditFilters.role}
+                  onChange={(e) => setAuditFilters({ ...auditFilters, role: e.target.value })}>
+                  <option value="">All roles</option>
+                  <option value="SYSTEM_ADMIN">System Administrator</option>
+                  <option value="ADMIN">Reception</option>
+                  <option value="DOCTOR">Doctor</option>
+                  <option value="NURSE">Nurse</option>
+                  <option value="PHARMACIST">Pharmacist</option>
+                  <option value="PATIENT">Patient portal</option>
+                </select>
+              </div>
+              <div className="udhr-form-group" style={{ marginBottom: 0 }}>
+                <label className="udhr-label">Outcome</label>
+                <select className="udhr-input" value={auditFilters.outcome}
+                  onChange={(e) => setAuditFilters({ ...auditFilters, outcome: e.target.value })}>
+                  <option value="">All outcomes</option>
+                  <option value="SUCCESS">Successful</option>
+                  <option value="FAILED">Failed or denied</option>
+                </select>
+              </div>
+              <button type="button" className="udhr-btn-neutral" onClick={() => fetchAuditLog(0)}>Search audit history</button>
             </div>
           </div>
         </div>
 
-        <div className="udhr-record-card">
+        <div className="udhr-record-card udhr-audit-log">
           <div className="udhr-record-body">
+            <div className="udhr-panel-heading udhr-audit-heading"><Clipboard size={19} /> Audit trail entries <span className="udhr-audit-count">{auditEntries.length} records</span></div>
             {auditEntries.length === 0 ? (
               <p className="udhr-empty-note">No audit entries for this search. Press Search to load the trail.</p>
             ) : (
               auditEntries.map(entry => (
-                <div key={entry.id} className="udhr-list-row">
-                  <div style={{ minWidth: 0 }}>
-                    <p className="udhr-row-title">
-                      {entry.action}{' '}
-                      <span className="udhr-tag neutral" style={{ marginLeft: '6px' }}>{entry.staffRole}</span>
-                    </p>
-                    <p className="udhr-row-subtitle">
-                      {entry.staffName}
-                      {entry.staffNumber ? ` (${entry.staffNumber})` : ''}
-                      {entry.patientMrn ? ` — patient ${entry.patientMrn}` : ''}
-                    </p>
-                    <p className="udhr-row-subtitle">{entry.description}</p>
-                    {(entry.previousValue || entry.newValue) && (
-                      <p className="udhr-row-subtitle">
-                        {entry.previousValue ? `Before: ${entry.previousValue}` : 'Created'}
-                        {entry.newValue ? ` → After: ${entry.newValue}` : ''}
+                <details key={entry.id} className="udhr-audit-entry">
+                  <summary className="udhr-list-row udhr-audit-event-row">
+                    <span className={`udhr-audit-event-icon ${entry.outcome === 'FAILED' ? 'logout' : entry.outcome === 'SUCCESS' ? 'success' : ''}`} aria-hidden="true">
+                      {entry.outcome === 'FAILED' ? <ShieldAlert size={22} /> : <FileText size={22} />}
+                    </span>
+                    <div className="udhr-audit-description">
+                      <p className="udhr-row-title">
+                        {entry.title || (entry.action || 'System activity').replaceAll('_', ' ').toLowerCase()}
+                        <span className="udhr-tag neutral" style={{ marginLeft: '9px' }}>{roleLabel(entry.staffRole) || entry.actorType}</span>
+                        <span className={`udhr-audit-outcome ${entry.outcome === 'FAILED' ? 'failed' : ''}`}>{entry.outcome === 'FAILED' ? 'Unsuccessful' : 'Successful'}</span>
                       </p>
-                    )}
+                      <p className="udhr-row-subtitle udhr-audit-summary">{entry.summary || entry.description}</p>
+                      <p className="udhr-row-subtitle">
+                        {entry.patientMrn ? `Patient record: ${entry.patientMrn}` : ''}
+                        {entry.facilityName ? ` ${entry.patientMrn ? '•' : ''} ${entry.facilityName}` : ''}
+                      </p>
+                    </div>
+                    <div className="udhr-audit-time">
+                      <p className="udhr-row-subtitle" style={{ margin: 0 }}>{entry.createdAt ? formatDateTime(entry.createdAt) : ''}</p>
+                      <span className="udhr-audit-more">View details</span>
+                    </div>
+                  </summary>
+                  <div className="udhr-audit-details">
+                    <span><strong>Performed by:</strong> {entry.staffName} {entry.staffNumber ? `(${entry.staffNumber})` : ''}</span>
+                    <span><strong>Outcome:</strong> {entry.outcome === 'FAILED' ? 'Unsuccessful or denied' : 'Successful'}</span>
+                    {entry.facilityName && <span><strong>Facility:</strong> {entry.facilityName}</span>}
+                    {entry.entityType && <span><strong>Affected record:</strong> {entry.entityType.replaceAll('_', ' ').toLowerCase()} {entry.entityId ? `#${entry.entityId}` : ''}</span>}
+                    {entry.patientMrn && <span><strong>Patient file:</strong> {entry.patientMrn}</span>}
+                    {entry.previousValue && <span><strong>Before:</strong> {entry.previousValue}</span>}
+                    {entry.newValue && <span><strong>After:</strong> {entry.newValue}</span>}
+                    {entry.ipAddress && <span><strong>Network address:</strong> {entry.ipAddress}</span>}
                   </div>
-                  <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <p className="udhr-row-subtitle" style={{ margin: 0 }}>
-                      {entry.createdAt ? formatDateTime(entry.createdAt) : ''}
-                    </p>
-                    {entry.ipAddress && (
-                      <p className="udhr-row-subtitle" style={{ margin: 0 }}>{entry.ipAddress}</p>
-                    )}
-                  </div>
-                </div>
+                </details>
               ))
             )}
           </div>
+          {auditHasMore && (
+            <div className="udhr-audit-load-more">
+              <button type="button" className="udhr-btn-neutral" onClick={() => fetchAuditLog(auditPage + 1)}>
+                Load more audit events
+              </button>
+            </div>
+          )}
         </div>
       </>
     );
@@ -5063,7 +5419,7 @@ function App() {
       <div className="udhr-shell">
         {idleDialog}
         {securityDialog}
-        {signInNoticeBox}
+        <WorkspaceBrandBar workspace={"System administrator" } />
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
         <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
           <div className="udhr-sidebar-header">
@@ -5093,6 +5449,7 @@ function App() {
                 <p className="udhr-user-role">SYSTEM ADMIN</p>
               </div>
             </div>
+            {signInNoticeBox}
             <button type="button" className="udhr-logout-link" onClick={() => setShowSecurity(true)}><Shield size={15} /> Sign-in security</button>
             <button type="button" className="udhr-logout-link" onClick={handleLogout}><LogOut size={15} /> Log out</button>
           </div>
@@ -5137,6 +5494,7 @@ function App() {
     ];
 
     const selectPharmNavTab = (key) => {
+      if (key === 'dispense' && !pharmacyRecord) setPharmacySearchId('');
       setPharmacistTab(key);
       setIsMobileNavOpen(false);
       if (key === 'stock') fetchStockItems();
@@ -5150,11 +5508,13 @@ function App() {
 
         {!pharmacyRecord && (
           <>
-            <p className="udhr-label" style={{ marginBottom: '8px' }}>Look up by ID or file number (e.g. a self-pay walk-in)</p>
+            <section className="udhr-lookup-panel" aria-label="Patient lookup">
+              <p className="udhr-label"><Search size={17} aria-hidden="true" /> Look up by ID or file number (e.g. a self-pay walk-in)</p>
             <form onSubmit={handleSearchPharmacyPatient} className="udhr-search-bar" style={{ marginBottom: '20px' }}>
               <input
                 type="text"
                 className="udhr-input"
+                autoComplete="off"
                 value={pharmacySearchId}
                 onChange={(e) => setPharmacySearchId(e.target.value)}
                 placeholder="ID number or file number"
@@ -5162,8 +5522,10 @@ function App() {
               />
               <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
             </form>
+              <img className="udhr-lookup-art" src="/images/clipboard-care.svg" alt="" aria-hidden="true" />
+            </section>
 
-            <p className="udhr-label" style={{ marginBottom: '8px' }}>Or pick from the queue</p>
+            <p className="udhr-label udhr-queue-heading" style={{ marginBottom: '8px' }}>Or pick from the queue</p>
             <div className="udhr-record-card">
               <div className="udhr-record-body">
                 {pharmacyQueue.length === 0 ? (
@@ -5201,7 +5563,7 @@ function App() {
             <button type="button" className="udhr-btn-neutral" onClick={handleBackToPharmacyQueue} style={{ marginBottom: '16px' }}>← Back to queue</button>
             <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
               <div className="udhr-record-body">
-                <p className="udhr-row-title" style={{ fontSize: '15px' }}>{pharmacyRecord.patient.firstName} {pharmacyRecord.patient.lastName}</p>
+                <p className="udhr-row-title" style={{ fontSize: '17px' }}>{pharmacyRecord.patient.firstName} {pharmacyRecord.patient.lastName}</p>
                 <p className="udhr-row-subtitle">{pharmacyRecord.patient.idNumber ? `ID: ${pharmacyRecord.patient.idNumber} · ` : ''}File no. {pharmacyRecord.patient.mrn}</p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
                   {pharmacyRecord.allergies && pharmacyRecord.allergies.length > 0 ? (
@@ -5225,7 +5587,7 @@ function App() {
 
             <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
               <div className="udhr-record-body">
-                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Prescriptions waiting to be dispensed</h3>
+                <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 14px' }}>Prescriptions waiting to be dispensed</h3>
                 {pharmacyRecord.pendingPrescriptions.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '30px 20px' }}>
                     <CheckCircle size={36} color="#86efac" style={{ margin: '0 auto 10px' }} />
@@ -5254,7 +5616,7 @@ function App() {
                       <button
                         type="button"
                         onClick={() => handleDispense(p.id)}
-                        style={{ padding: '8px 14px', border: 'none', borderRadius: '8px', background: 'var(--udhr-success)', color: '#fff', fontSize: '12.5px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+                        style={{ padding: '8px 14px', border: 'none', borderRadius: '8px', background: 'var(--udhr-success)', color: '#fff', fontSize: '15.5px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
                       >
                         Mark dispensed
                       </button>
@@ -5266,7 +5628,7 @@ function App() {
 
             <div className="udhr-record-card">
               <div className="udhr-record-body">
-                <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 14px' }}>Log dispense event</h3>
+                <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 14px' }}>Log dispense event</h3>
                 <form onSubmit={handleLogDispense} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                     <label className="udhr-label">Prescription ID</label>
@@ -5289,10 +5651,10 @@ function App() {
 
                 {dispenseHistory.length > 0 && (
                   <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: '1px dashed var(--udhr-border)' }}>
-                    <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Dispense history</p>
+                    <p style={{ fontSize: '15px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Dispense history</p>
                     {dispenseHistory.map(d => (
                       <div key={d.id} className="udhr-list-row">
-                        <p className="udhr-row-title" style={{ fontSize: '13px' }}>{d.prescription.medication} — {d.quantityDispensed}{d.daysSupply ? ` (${d.daysSupply} days)` : ''}</p>
+                        <p className="udhr-row-title" style={{ fontSize: '16px' }}>{d.prescription.medication} — {d.quantityDispensed}{d.daysSupply ? ` (${d.daysSupply} days)` : ''}</p>
                         <p className="udhr-row-subtitle">by {d.dispensedBy.firstName} {d.dispensedBy.lastName} on {formatDate(d.dispensedAt)}</p>
                       </div>
                     ))}
@@ -5310,10 +5672,10 @@ function App() {
         <h1 className="udhr-page-title">Stock</h1>
         <p className="udhr-page-subtitle">Inventory levels across the pharmacy.</p>
 
-        <div className="udhr-record-card" style={{ marginBottom: '20px', maxWidth: stockAddMode === 'bulk' ? '900px' : '640px' }}>
+        <div className="udhr-record-card udhr-stock-editor-card" style={{ marginBottom: '20px', maxWidth: stockAddMode === 'bulk' ? '900px' : '640px' }}>
           <div className="udhr-record-body">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', margin: '0 0 14px', flexWrap: 'wrap' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: 700, margin: 0 }}>{stockAddMode === 'bulk' ? 'Add many at once' : 'Add stock item'}</h3>
+              <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: 0 }}>{stockAddMode === 'bulk' ? 'Add many at once' : 'Add stock item'}</h3>
               <div className="udhr-segmented" role="tablist" aria-label="How to add stock">
                 <button type="button" className={`udhr-segmented-btn ${stockAddMode === 'one' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap' }} onClick={() => setStockAddMode('one')}>One item</button>
                 <button type="button" className={`udhr-segmented-btn ${stockAddMode === 'bulk' ? 'active' : ''}`} style={{ whiteSpace: 'nowrap' }} onClick={() => setStockAddMode('bulk')}>Many at once</button>
@@ -5322,7 +5684,7 @@ function App() {
             {stockAddMode === 'bulk' ? (
               <BulkStockImport stockItems={stockItems} onDone={fetchStockItems} />
             ) : (
-            <form onSubmit={handleAddStockItem} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '10px', alignItems: 'flex-end' }}>
+            <form onSubmit={handleAddStockItem} className="udhr-stock-form" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '10px', alignItems: 'flex-end' }}>
               <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                 <label className="udhr-label">Medication name</label>
                 <input type="text" className="udhr-input" value={newStockItemForm.medicationName} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, medicationName: e.target.value })} required />
@@ -5407,7 +5769,7 @@ function App() {
       <div className="udhr-shell">
         {idleDialog}
         {securityDialog}
-        {signInNoticeBox}
+        <WorkspaceBrandBar workspace={"Pharmacy workspace" } />
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
         <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
           <div className="udhr-sidebar-header">
@@ -5432,6 +5794,7 @@ function App() {
                 <p className="udhr-user-role">{roleLabel(userRole)}</p>
               </div>
             </div>
+            {signInNoticeBox}
             <button type="button" className="udhr-logout-link" onClick={() => setShowSecurity(true)}><Shield size={15} /> Sign-in security</button>
             <button type="button" className="udhr-logout-link" onClick={handleLogout}><LogOut size={15} /> Log out</button>
           </div>
@@ -5477,6 +5840,13 @@ function App() {
     ];
 
     const selectAdminNavTab = (key) => {
+      // Opening a fresh front-desk/visitor lookup must not prefill a previous ID.
+      if (key === 'frontdesk' && !frontDeskResult) setCheckinSearchId('');
+      if (key === 'visitors') {
+        setAdminLookupId('');
+        setAdminLookupRecord(null);
+        setPortalPinInput('');
+      }
       setAdminTab(key);
       setIsMobileNavOpen(false);
       if (key === 'visitors') fetchRecentCheckIns();
@@ -5486,16 +5856,34 @@ function App() {
     const renderFrontDeskPanel = () => (
       <>
         <h1 className="udhr-page-title">Front Desk</h1>
-        <p className="udhr-page-subtitle">Find the patient first. Check them in if they've been here before, or register them if they're new.</p>
+        <p className="udhr-page-subtitle">{showRegisterForm ? 'Create a new patient record with accurate, secure details.' : "Find the patient first. Check them in if they've been here before, or register them if they're new."}</p>
 
-        <div className="udhr-record-card" style={{ maxWidth: '720px', marginBottom: '20px' }}>
+        {issuedPatientPin && (
+          <div className="udhr-record-card" style={{ border: '2px solid #159e7b', marginBottom: '18px', maxWidth: '720px' }} role="status">
+            <div className="udhr-record-body">
+              <h3 className="udhr-row-title" style={{ fontSize: '19px', marginBottom: '8px' }}>Patient registered — temporary portal PIN</h3>
+              <p className="udhr-row-subtitle">For {issuedPatientPin.name} ({issuedPatientPin.mrn}). Hand this PIN privately to the patient.</p>
+              <p style={{ letterSpacing: '0.22em', fontSize: '31px', fontWeight: 800, margin: '16px 0' }}>
+                {issuedPatientPin.pin}
+              </p>
+              <p className="udhr-row-subtitle">This PIN appears only after registration and is never stored in readable form. The patient must change it at first sign-in.</p>
+              <button type="button" className="udhr-btn-primary" onClick={() => setIssuedPatientPin(null)}>
+                PIN handed to patient — hide
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!showRegisterForm && (<div className="udhr-record-card udhr-frontdesk-lookup-card" style={{ maxWidth: '720px', marginBottom: '20px' }}>
           <div className="udhr-record-body">
-            <h3 style={{ fontSize: '15px', fontWeight: 700, margin: '0 0 10px' }}>Find patient</h3>
+            <section className="udhr-lookup-panel udhr-lookup-panel--embedded" aria-label="Find patient">
+              <h3 className="udhr-lookup-heading"><Search size={18} aria-hidden="true" /> Find patient</h3>
             <form onSubmit={handleFrontDeskFind} className="udhr-search-bar">
               <input
                 type="text"
                 className="udhr-input"
                 aria-label="ID number or file number"
+                autoComplete="off"
                 value={checkinSearchId}
                 onChange={(e) => { setCheckinSearchId(e.target.value); setFrontDeskResult(null); }}
                 placeholder="ID number or file number"
@@ -5503,10 +5891,12 @@ function App() {
               />
               <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Finding...' : 'Find'}</button>
             </form>
+              <img className="udhr-lookup-art" src="/images/clipboard-care.svg" alt="" aria-hidden="true" />
+            </section>
 
             {frontDeskResult?.patient && (
               <form onSubmit={handleCheckIn} className="udhr-found-patient">
-                <p className="udhr-row-title" style={{ fontSize: '15px' }}>{frontDeskResult.patient.firstName} {frontDeskResult.patient.lastName}</p>
+                <p className="udhr-row-title" style={{ fontSize: '17px' }}>{frontDeskResult.patient.firstName} {frontDeskResult.patient.lastName}</p>
                 <p className="udhr-row-subtitle" style={{ marginBottom: '12px' }}>
                   Born {formatDate(frontDeskResult.patient.dateOfBirth)} · File no. {frontDeskResult.patient.mrn}
                   {frontDeskResult.visits?.[0] ? ` · Last visit ${formatDate(frontDeskResult.visits[0].visitDate)}` : ' · First visit'}
@@ -5533,99 +5923,163 @@ function App() {
               </button>
             )}
           </div>
-        </div>
+        </div>)}
 
         {showRegisterForm && (
-          <div className="udhr-record-card" style={{ maxWidth: '720px' }}>
-            <div className="udhr-record-body">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <h3 style={{ fontSize: '15px', fontWeight: 700, margin: 0 }}>Register new patient</h3>
-                <button type="button" className="udhr-link-button" onClick={() => setShowRegisterForm(false)}>Cancel</button>
+          <div className="udhr-record-card udhr-patient-registration-card">
+            <div className="udhr-reg-header">
+              <div className="udhr-reg-header-main">
+                <span className="udhr-reg-header-icon" aria-hidden="true"><Users size={21} /></span>
+                <div>
+                  <p className="udhr-reg-eyebrow">PATIENT MANAGEMENT <span aria-hidden="true">/</span> NEW RECORD</p>
+                  <h2 id="udhr-registration-title">Register a new patient</h2>
+                  <p>Enter the patient's details below. Fields marked <span className="udhr-required-mark">*</span> are required.</p>
+                </div>
               </div>
-              <form onSubmit={handleRegisterPatient}>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">ID number</label>
-                  <input type="text" className="udhr-input" value={patientRegForm.idNumber} onChange={(e) => handleRegIdChange(e.target.value)} placeholder="13-digit SA ID number (optional)" maxLength={13} inputMode="numeric" pattern="[0-9]*" />
-                  {renderIdHint()}
+              <button type="button" className="udhr-reg-close" onClick={() => setShowRegisterForm(false)} aria-label="Close registration form"><XCircle size={17} /> Close</button>
+            </div>
+            <form onSubmit={handleRegisterPatient} className="udhr-patient-registration-form" aria-labelledby="udhr-registration-title">
+              <section className="udhr-reg-section" aria-labelledby="reg-identity-title">
+                <div className="udhr-reg-section-header">
+                  <span className="udhr-reg-step" aria-hidden="true">01</span>
+                  <div>
+                    <h3 id="reg-identity-title">Identification</h3>
+                    <p>Provide an SA ID or a passport number, where available.</p>
+                  </div>
                 </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Passport number</label>
-                  <input type="text" className="udhr-input" value={patientRegForm.passportNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, passportNumber: e.target.value })} placeholder="Only if they have no SA ID" />
+                <div className="udhr-patient-registration-grid">
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="reg-id-number">South African ID number</label>
+                    <input id="reg-id-number" type="text" className="udhr-input" value={patientRegForm.idNumber} onChange={(e) => handleRegIdChange(e.target.value)} placeholder="13-digit ID number" maxLength={13} inputMode="numeric" pattern="[0-9]*" />
+                    {renderIdHint()}
+                  </div>
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="reg-passport">Passport number</label>
+                    <input id="reg-passport" type="text" className="udhr-input" value={patientRegForm.passportNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, passportNumber: e.target.value })} placeholder="If no South African ID" />
+                  </div>
                 </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">First Name</label>
-                  <input type="text" className="udhr-input" value={patientRegForm.firstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, firstName: e.target.value })} required />
+              </section>
+
+              <section className="udhr-reg-section" aria-labelledby="reg-personal-title">
+                <div className="udhr-reg-section-header">
+                  <span className="udhr-reg-step" aria-hidden="true">02</span>
+                  <div>
+                    <h3 id="reg-personal-title">Personal details</h3>
+                    <p>Use the patient's legal names and confirmed date of birth.</p>
+                  </div>
                 </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Last Name</label>
-                  <input type="text" className="udhr-input" value={patientRegForm.lastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, lastName: e.target.value })} required />
+                <div className="udhr-patient-registration-grid">
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="reg-first-name">First name <span className="udhr-required-mark">*</span></label>
+                    <input id="reg-first-name" type="text" className="udhr-input" value={patientRegForm.firstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, firstName: e.target.value })} placeholder="Enter first name" autoComplete="given-name" required />
+                  </div>
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="reg-last-name">Last name <span className="udhr-required-mark">*</span></label>
+                    <input id="reg-last-name" type="text" className="udhr-input" value={patientRegForm.lastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, lastName: e.target.value })} placeholder="Enter last name" autoComplete="family-name" required />
+                  </div>
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="reg-date-of-birth">Date of birth <span className="udhr-required-mark">*</span></label>
+                    <DateOfBirthField id="reg-date-of-birth" value={patientRegForm.dateOfBirth} onChange={(v) => setPatientRegForm(form => ({ ...form, dateOfBirth: v }))} required />
+                  </div>
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="reg-gender">Gender <span className="udhr-required-mark">*</span></label>
+                    <select id="reg-gender" className="udhr-input" value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })} required>
+                      <option value="" disabled>Select gender</option>
+                      <option value="MALE">Male</option>
+                      <option value="FEMALE">Female</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Date of Birth</label>
-                  <DateOfBirthField value={patientRegForm.dateOfBirth} onChange={(v) => setPatientRegForm(form => ({ ...form, dateOfBirth: v }))} required />
+              </section>
+
+              <section className="udhr-reg-section" aria-labelledby="reg-contact-title">
+                <div className="udhr-reg-section-header">
+                  <span className="udhr-reg-step" aria-hidden="true">03</span>
+                  <div>
+                    <h3 id="reg-contact-title">Contact &amp; visit</h3>
+                    <p>A visit reason is only needed if the patient should be checked in now.</p>
+                  </div>
                 </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Gender</label>
-                  <select className="udhr-input" value={patientRegForm.gender} onChange={(e) => setPatientRegForm({ ...patientRegForm, gender: e.target.value })} required>
-                    <option value="" disabled>Select gender</option>
-                    <option value="MALE">Male</option>
-                    <option value="FEMALE">Female</option>
-                    <option value="OTHER">Other</option>
-                  </select>
+                <div className="udhr-patient-registration-grid">
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="reg-contact-number">Contact number</label>
+                    <input id="reg-contact-number" type="text" className="udhr-input" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value.replace(/\D/g, '') })} inputMode="numeric" pattern="[0-9]*" placeholder="e.g. 0821234567" />
+                  </div>
+                  <div className="udhr-form-group">
+                    <label className="udhr-label" htmlFor="reg-visit-reason">Reason for visit <span className="udhr-label-optional">Optional</span></label>
+                    <input id="reg-visit-reason" type="text" className="udhr-input" value={regReasonForVisit} onChange={(e) => setRegReasonForVisit(e.target.value)} placeholder="e.g. Follow-up or flu symptoms" />
+                  </div>
                 </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Contact Number</label>
-                  <input type="text" className="udhr-input" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value.replace(/\D/g, '') })} inputMode="numeric" pattern="[0-9]*" />
-                </div>
-                <div className="udhr-form-group">
-                  <label className="udhr-label">Reason for visit (optional)</label>
-                  <input type="text" className="udhr-input" value={regReasonForVisit} onChange={(e) => setRegReasonForVisit(e.target.value)} placeholder="e.g. Follow-up, flu symptoms..." />
-                  <p className="udhr-empty-note" style={{ marginTop: '4px' }}>
-                    Fill this in to check the patient in and queue them for vitals right away — leave blank to just register them.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="udhr-btn-neutral"
-                  style={{ width: '100%', marginBottom: '10px' }}
-                  onClick={() => setShowRegExtras(!showRegExtras)}
-                >
-                  {showRegExtras ? 'Hide more details' : 'More details: email, address, portal PIN, next of kin, newborn (optional)'}
+                <p className="udhr-reg-inline-note"><CheckCircle size={15} aria-hidden="true" /> Add a reason to register and check the patient in for vitals. Leave blank to register only.</p>
+              </section>
+
+              <section className="udhr-reg-more" aria-label="Optional patient information">
+                <button type="button" className="udhr-reg-more-toggle" aria-expanded={showRegExtras} aria-controls={showRegExtras ? "udhr-reg-extra-fields" : undefined} onClick={() => setShowRegExtras(!showRegExtras)}>
+                  <span className="udhr-reg-more-title"><PlusCircle size={20} aria-hidden="true" /><span><strong>Additional patient information</strong><small>Email, address, next of kin and newborn details</small></span></span>
+                  <span className="udhr-reg-more-action">{showRegExtras ? 'Hide details' : 'Add details'} <span aria-hidden="true">{showRegExtras ? '−' : '+'}</span></span>
                 </button>
                 {showRegExtras && (
-                  <div style={{ background: 'var(--udhr-bg)', border: '1px solid var(--udhr-border)', padding: '12px', borderRadius: '8px', marginBottom: '10px' }}>
-                    <div className="udhr-form-group">
-                      <label className="udhr-label">Email Address</label>
-                      <input type="email" className="udhr-input" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@gmail.com" />
+                  <div id="udhr-reg-extra-fields" className="udhr-patient-registration-extras">
+                    <div className="udhr-reg-subsection">
+                      <h4>Contact information</h4>
+                      <div className="udhr-patient-registration-grid">
+                        <div className="udhr-form-group udhr-patient-registration-email">
+                          <label className="udhr-label" htmlFor="reg-email">Email address</label>
+                          <input id="reg-email" type="email" className="udhr-input" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@example.com" />
+                        </div>
+                        <div className="udhr-form-group udhr-patient-registration-address">
+                          <label className="udhr-label" htmlFor="reg-address">Residential address</label>
+                          <textarea id="reg-address" className="udhr-textarea" value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} placeholder="Street address and suburb" />
+                        </div>
+                      </div>
                     </div>
-                    <div className="udhr-form-group">
-                      <label className="udhr-label">Patient portal PIN (optional)</label>
-                      <input type="password" className="udhr-input" value={patientRegForm.portalPin} onChange={(e) => setPatientRegForm({ ...patientRegForm, portalPin: e.target.value.replace(/\D/g, '').slice(0, 6) })} inputMode="numeric" autoComplete="new-password" placeholder="6 digits, chosen by the patient" />
-                      <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>Lets the patient sign in to view their record. Can also be set later under Visitors.</p>
+                    <div className="udhr-reg-subsection">
+                      <h4>Next of kin</h4>
+                      <div className="udhr-patient-registration-grid">
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-kin-first">First name</label><input id="reg-kin-first" type="text" className="udhr-input" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} /></div>
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-kin-last">Last name</label><input id="reg-kin-last" type="text" className="udhr-input" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} /></div>
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-kin-relation">Relationship</label><input id="reg-kin-relation" type="text" className="udhr-input" placeholder="e.g. Parent, spouse" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} /></div>
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-kin-phone">Phone number</label><input id="reg-kin-phone" type="text" className="udhr-input" placeholder="Contact number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} /></div>
+                      </div>
                     </div>
-                    <div className="udhr-form-group">
-                      <label className="udhr-label">Address</label>
-                      <textarea className="udhr-textarea" value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} />
+                    <div className="udhr-reg-subsection">
+                      <h4>Newborn information <span className="udhr-label-optional">If applicable</span></h4>
+                      <p className="udhr-reg-subtitle">Leave these fields blank unless registering a baby at birth.</p>
+                      <div className="udhr-patient-registration-grid">
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-mother-id">Mother's ID number</label><input id="reg-mother-id" type="text" className="udhr-input" placeholder="Mother's SA ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} /></div>
+                      </div>
+                      <div className="udhr-patient-registration-grid">
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-birth-weight">Birth weight (g)</label><input id="reg-birth-weight" type="number" className="udhr-input" placeholder="Weight in grams" value={patientRegForm.birthWeightGrams} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthWeightGrams: e.target.value })} /></div>
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-birth-length">Birth length (cm)</label><input id="reg-birth-length" type="number" className="udhr-input" placeholder="Length in cm" value={patientRegForm.birthLengthCm} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthLengthCm: e.target.value })} /></div>
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-apgar-1">Apgar (1 min)</label><input id="reg-apgar-1" type="number" className="udhr-input" placeholder="Score" value={patientRegForm.apgarScore1Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore1Min: e.target.value })} /></div>
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-apgar-5">Apgar (5 min)</label><input id="reg-apgar-5" type="number" className="udhr-input" placeholder="Score" value={patientRegForm.apgarScore5Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore5Min: e.target.value })} /></div>
+                      </div>
                     </div>
-                    <p className="udhr-empty-note" style={{ marginBottom: '8px' }}>Next of Kin</p>
-                    <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} /></div>
-                    <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} /></div>
-                    <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Relationship (e.g. Husband)" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} /></div>
-                    <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Phone number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} /></div>
-                    <p className="udhr-empty-note" style={{ margin: '12px 0 8px' }}>Newborn — leave blank unless registering a baby at birth</p>
-                    <div className="udhr-form-group"><input type="text" className="udhr-input" placeholder="Mother's ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} /></div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                      <input type="number" className="udhr-input" placeholder="Birth weight (g)" value={patientRegForm.birthWeightGrams} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthWeightGrams: e.target.value })} />
-                      <input type="number" className="udhr-input" placeholder="Birth length (cm)" value={patientRegForm.birthLengthCm} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthLengthCm: e.target.value })} />
-                      <input type="number" className="udhr-input" placeholder="Apgar (1 min)" value={patientRegForm.apgarScore1Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore1Min: e.target.value })} />
-                      <input type="number" className="udhr-input" placeholder="Apgar (5 min)" value={patientRegForm.apgarScore5Min} onChange={(e) => setPatientRegForm({ ...patientRegForm, apgarScore5Min: e.target.value })} />
-                    </div>
+                    <div className="udhr-reg-pin-note"><Shield size={19} aria-hidden="true" /><div><strong>Secure patient portal access</strong><p>A random six-digit temporary PIN is generated at registration and shown once. Give it privately to the patient; they must change it on first sign-in.</p></div></div>
                   </div>
                 )}
+              </section>
+
+              <section className="udhr-reg-section udhr-reg-consent-section" aria-labelledby="reg-consent-title">
+                <div className="udhr-reg-section-header">
+                  <span className="udhr-reg-step" aria-hidden="true">04</span>
+                  <div>
+                    <h3 id="reg-consent-title">Privacy &amp; consent</h3>
+                    <p>Explain how patient information will be protected before submitting.</p>
+                  </div>
+                </div>
                 {renderConsentFields()}
-                <button type="submit" className="udhr-btn-primary">Create patient record</button>
-              </form>
-            </div>
+              </section>
+
+              <div className="udhr-reg-footer">
+                <p><Shield size={16} aria-hidden="true" /> Patient information is handled securely.</p>
+                <div className="udhr-reg-footer-actions">
+                  <button type="button" className="udhr-reg-cancel" onClick={() => setShowRegisterForm(false)}>Cancel</button>
+                  <button type="submit" className="udhr-btn-primary"><PlusCircle size={17} aria-hidden="true" /> Create patient record</button>
+                </div>
+              </div>
+            </form>
           </div>
         )}
       </>
@@ -5638,14 +6092,16 @@ function App() {
 
         <div className="udhr-record-card" style={{ marginBottom: '20px' }}>
           <div className="udhr-record-body">
-            <h3 style={{ fontSize: '14px', fontWeight: 700, margin: '0 0 6px' }}>Look up a patient</h3>
-            <p className="udhr-empty-note" style={{ marginBottom: '14px' }}>
-              For anyone not on today's list — confirms they're registered and shows when they were last seen. Registration and contact details only, no clinical record.
-            </p>
+            <section className="udhr-lookup-panel udhr-lookup-panel--embedded" aria-label="Patient lookup">
+              <h3 className="udhr-lookup-heading"><Search size={18} aria-hidden="true" /> Look up a patient</h3>
+              <p className="udhr-lookup-description">
+                For anyone not on today's list — confirms they're registered and shows when they were last seen. Registration and contact details only, no clinical record.
+              </p>
             <form onSubmit={handleAdminPatientLookup} className="udhr-search-bar">
               <input
                 type="text"
                 className="udhr-input"
+                autoComplete="off"
                 value={adminLookupId}
                 onChange={(e) => setAdminLookupId(e.target.value)}
                 placeholder="ID number or file number"
@@ -5653,10 +6109,12 @@ function App() {
               />
               <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
             </form>
+              <img className="udhr-lookup-art" src="/images/clipboard-care.svg" alt="" aria-hidden="true" />
+            </section>
 
             {adminLookupRecord && (
               <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px dashed var(--udhr-border)' }}>
-                <p className="udhr-row-title" style={{ fontSize: '15px' }}>
+                <p className="udhr-row-title" style={{ fontSize: '17px' }}>
                   {adminLookupRecord.patient.firstName} {adminLookupRecord.patient.lastName}
                   <span className={`udhr-tag ${adminLookupRecord.firstVisit ? 'info' : 'neutral'}`} style={{ marginLeft: '8px' }}>{adminLookupRecord.firstVisit ? 'NEW' : 'RETURNING'}</span>
                 </p>
@@ -5711,7 +6169,7 @@ function App() {
                   <button type="submit" className="udhr-btn-compact" style={{ marginTop: '10px' }}>Record consent</button>
                 </form>
 
-                <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 8px' }}>Visit history</p>
+                <p style={{ fontSize: '15px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 8px' }}>Visit history</p>
                 {adminLookupRecord.visits.length === 0 ? (
                   <p className="udhr-empty-note">No visits on file yet.</p>
                 ) : (
@@ -5733,7 +6191,7 @@ function App() {
           </div>
         </div>
 
-        <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Today's visitors</p>
+        <p style={{ fontSize: '15px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Today's visitors</p>
         <div className="udhr-record-card">
           <div className="udhr-record-body">
             {recentCheckIns.length === 0 ? (
@@ -5801,7 +6259,7 @@ function App() {
       <div className="udhr-shell">
         {idleDialog}
         {securityDialog}
-        {signInNoticeBox}
+        <WorkspaceBrandBar workspace={"Reception workspace" } />
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
         <aside className={`udhr-sidebar ${isMobileNavOpen ? 'open' : ''}`}>
           <div className="udhr-sidebar-header">
@@ -5826,6 +6284,7 @@ function App() {
                 <p className="udhr-user-role">{roleLabel(userRole)}</p>
               </div>
             </div>
+            {signInNoticeBox}
             <button type="button" className="udhr-logout-link" onClick={() => setShowSecurity(true)}><Shield size={15} /> Sign-in security</button>
             <button type="button" className="udhr-logout-link" onClick={handleLogout}><LogOut size={15} /> Log out</button>
           </div>
@@ -5872,7 +6331,7 @@ function App() {
           <div className="flex items-center gap-4">
             <div className="text-right">
               <p style={{ color: '#fff', fontWeight: 600 }}>{userName}</p>
-              <p className="text-muted" style={{ fontSize: '0.8rem' }}>
+              <p className="text-muted" style={{ fontSize: '0.95rem' }}>
                 {userRole === 'PATIENT' ? 'Patient Portal' : roleLabel(userRole)}
               </p>
             </div>
@@ -5908,8 +6367,8 @@ function App() {
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, padding: '20px 0' }}>
             <div className="udhr-card" style={{ width: '420px', maxWidth: '100%', textAlign: 'center' }}>
               <Shield size={40} color="var(--udhr-primary)" style={{ margin: '0 auto 16px' }} />
-              <h2 style={{ margin: '0 0 8px', fontSize: '19px', fontWeight: 700, color: 'var(--udhr-text)' }}>Set a new password</h2>
-              <p style={{ margin: '0 0 24px', fontSize: '13.5px', color: 'var(--udhr-text-muted)' }}>
+              <h2 style={{ margin: '0 0 8px', fontSize: '21px', fontWeight: 700, color: 'var(--udhr-text)' }}>Set a new password</h2>
+              <p style={{ margin: '0 0 24px', fontSize: '16px', color: 'var(--udhr-text-muted)' }}>
                 This account was created with a temporary password. Choose your own before continuing.
               </p>
               <form onSubmit={handleChangePassword} style={{ textAlign: 'left' }}>
@@ -5984,10 +6443,10 @@ function App() {
 
       {/* Footer */}
       <footer style={{ marginTop: 'auto', paddingTop: '40px', paddingBottom: '20px', borderTop: '1px solid rgba(255, 255, 255, 0.08)', textAlign: 'center' }}>
-        <p className="text-muted" style={{ fontSize: '0.85rem' }}>
+        <p className="text-muted" style={{ fontSize: '0.95rem' }}>
           &copy; {new Date().getFullYear()} Universal Digital Health Record System (UDHR). Authorized medical staff and patient access only.
         </p>
-        <p className="text-muted" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+        <p className="text-muted" style={{ fontSize: '0.9rem', marginTop: '4px' }}>
           System complies with the National Health Act and POPI Act of South Africa. Portals powered by Infermedica Triage & OpenFDA Databases.
         </p>
       </footer>

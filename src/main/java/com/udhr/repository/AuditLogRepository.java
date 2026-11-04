@@ -9,7 +9,7 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 
 @Repository
-public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
+public interface AuditLogRepository extends JpaRepository<AuditLog, Long>, org.springframework.data.jpa.repository.JpaSpecificationExecutor<AuditLog> {
     List<AuditLog> findByStaffIdOrderByCreatedAtDesc(Long staffId);
     List<AuditLog> findByPatientIdOrderByCreatedAtDesc(Long patientId);
     // The whole trail, newest first — the system administrator's starting point

@@ -377,3 +377,10 @@ label {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+
+/* Global readable type scale — raised from the earlier 10–14px UI.
+   A modest 17px root improves rem-based components and accessibility without
+   scaling fixed layouts or modifying application interactions. */
+html { font-size: 17px; text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
+/* The browser should never shrink form text below a comfortable input size. */
+input, textarea, select, button { font-family: inherit; }

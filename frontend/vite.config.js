@@ -16,6 +16,9 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // Do not silently switch to 3001 if an older UDHR version is still open
+    // on 3000: staff should see a clear startup error instead of the wrong app.
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://localhost:8085',

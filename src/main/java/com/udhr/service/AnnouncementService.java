@@ -11,6 +11,9 @@ import java.util.List;
 public class AnnouncementService {
 
     @Autowired
+    private AuditService auditService;
+
+    @Autowired
     private AnnouncementRepository announcementRepository;
 
     public List<Announcement> getPublicAnnouncements() {
@@ -27,7 +30,12 @@ public class AnnouncementService {
         announcement.setMessage(request.getMessage());
         announcement.setPhotoUrl(request.getPhotoUrl());
         announcement.setActive(request.getActive() == null || request.getActive());
-        return announcementRepository.save(announcement);
+        Announcement saved = announcementRepository.save(announcement);
+        auditService.recordEvent(auditService.currentStaff(), null, "CREATE_ANNOUNCEMENT",
+                "created public announcement #" + saved.getId() + " titled '" + saved.getTitle() + "'"
+                        + (Boolean.TRUE.equals(saved.getActive()) ? " and published it" : " as a draft"),
+                "ANNOUNCEMENT", saved.getId());
+        return saved;
     }
 
     public Announcement updateAnnouncement(Long id, AnnouncementRequest request) {
@@ -37,13 +45,20 @@ public class AnnouncementService {
         if (request.getMessage() != null) announcement.setMessage(request.getMessage());
         if (request.getPhotoUrl() != null) announcement.setPhotoUrl(request.getPhotoUrl());
         if (request.getActive() != null) announcement.setActive(request.getActive());
-        return announcementRepository.save(announcement);
+        Announcement saved = announcementRepository.save(announcement);
+        auditService.recordEvent(auditService.currentStaff(), null, "UPDATE_ANNOUNCEMENT",
+                "updated public announcement #" + saved.getId() + " titled '" + saved.getTitle()
+                        + "' (" + (Boolean.TRUE.equals(saved.getActive()) ? "published" : "unpublished") + ")",
+                "ANNOUNCEMENT", saved.getId());
+        return saved;
     }
 
     public void deleteAnnouncement(Long id) {
-        if (!announcementRepository.existsById(id)) {
-            throw new RuntimeException("Announcement not found");
-        }
+        Announcement announcement = announcementRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Announcement not found"));
+        String title = announcement.getTitle();
         announcementRepository.deleteById(id);
+        auditService.recordEvent(auditService.currentStaff(), null, "DELETE_ANNOUNCEMENT",
+                "deleted public announcement #" + id + " titled '" + title + "'", "ANNOUNCEMENT", id);
     }
 }

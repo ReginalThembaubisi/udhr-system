@@ -10,10 +10,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -38,12 +34,11 @@ public class PatientAccessAuditInterceptor implements HandlerInterceptor {
     private static final Pattern BY_PATIENT_ID = Pattern.compile("^/api/([a-z-]+)/patient/(\\d+)(/.*)?$");
     // /api/patients/<identifier> (not /record) and the front desk's check-in lookup
     private static final Pattern BY_IDENTIFIER = Pattern.compile("^/api/(patients|checkin/lookup)/([^/]+)$");
-    private static final Duration REPEAT_WINDOW = Duration.ofMinutes(10);
+    // Capture every successful sensitive read; in-memory deduplication loses evidence.
 
     private final AuditService auditService;
     private final PatientRepository patientRepository;
     private final PatientService patientService;
-    private final Map<String, Instant> recentlyLogged = new ConcurrentHashMap<>();
 
     public PatientAccessAuditInterceptor(AuditService auditService, PatientRepository patientRepository,
                                          PatientService patientService) {
@@ -81,17 +76,8 @@ public class PatientAccessAuditInterceptor implements HandlerInterceptor {
         if (staff == null) {
             return; // a patient reading their own data, logged by the portal itself
         }
-        String key = staff.getId() + ":" + patient.getId() + ":" + area;
-        Instant now = Instant.now();
-        Instant last = recentlyLogged.get(key);
-        if (last != null && last.plus(REPEAT_WINDOW).isAfter(now)) {
-            return;
-        }
-        recentlyLogged.put(key, now);
-        if (recentlyLogged.size() > 10_000) {
-            recentlyLogged.entrySet().removeIf(e -> e.getValue().plus(REPEAT_WINDOW).isBefore(now));
-        }
-        auditService.recordView(staff, patient, "VIEW_PATIENT_DATA",
-                "Viewed " + area + " for " + patient.getMrn());
+        auditService.recordEvent(staff, patient, "VIEW_PATIENT_DATA",
+                "viewed " + area.replace('-', ' ') + " for patient " + patient.getMrn(),
+                "PATIENT", patient.getId());
     }
 }

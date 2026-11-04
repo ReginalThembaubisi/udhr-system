@@ -250,6 +250,9 @@ public class AuthService {
         if (request.getNewPassword() == null || request.getNewPassword().length() < 8) {
             throw new RuntimeException("New password must be at least 8 characters");
         }
+        if (passwordEncoder.matches(request.getNewPassword(), staff.getPassword())) {
+            throw new RuntimeException("Choose a different password from your temporary or current password");
+        }
 
         staff.setPassword(passwordEncoder.encode(request.getNewPassword()));
         staff.setMustChangePassword(false);

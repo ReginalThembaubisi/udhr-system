@@ -49,6 +49,12 @@ class PasswordChangeSessionTest {
                         .content(json.writeValueAsString(Map.of("staffNumber", "NUR555", "password", "TempPass1!"))))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
 
+        // A new staff member may not "change" to the same temporary password.
+        mvc.perform(post("/api/auth/change-password").header("Authorization", "Bearer " + tempToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("currentPassword", "TempPass1!", "newPassword", "TempPass1!"))))
+                .andExpect(status().isBadRequest());
+
         String newToken = token(mvc.perform(post("/api/auth/change-password").header("Authorization", "Bearer " + tempToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("currentPassword", "TempPass1!", "newPassword", "NewPass12!"))))

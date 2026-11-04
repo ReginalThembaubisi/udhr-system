@@ -1,6 +1,7 @@
 package com.udhr.security;
 
 import com.udhr.service.TokenService;
+import com.udhr.repository.PatientRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,6 +30,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Lazy
     @Autowired
     private TokenService tokenService;
+
+    @Lazy
+    @Autowired
+    private PatientRepository patientRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -74,6 +79,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                     response.setContentType("application/json");
                     response.getWriter().write("\"Password change required before continuing.\"");
+                    return;
+                }
+
+                // A patient signed in with a temporary generated PIN may only
+                // choose a new PIN (or sign out) before accessing medical data.
+                boolean patientMustChangePin = "PATIENT".equals(role)
+                        && (jwtUtil.extractMustChangePin(token)
+                            || patientRepository.findByIdNumber(staffNumber)
+                                    .map(p -> Boolean.TRUE.equals(p.getMustChangePortalPin()))
+                                    .orElse(false));
+                if (patientMustChangePin
+                        && !"/api/patient/me/change-pin".equals(request.getRequestURI())
+                        && !"/api/auth/logout".equals(request.getRequestURI())) {
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.setContentType("application/json");
+                    response.getWriter().write("\"Change your temporary portal PIN before continuing.\"");
                     return;
                 }
 

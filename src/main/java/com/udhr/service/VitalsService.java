@@ -15,6 +15,9 @@ import java.util.List;
 public class VitalsService {
 
     @Autowired
+    private AuditService auditService;
+
+    @Autowired
     private VitalsRepository vitalsRepository;
 
     @Autowired
@@ -60,6 +63,10 @@ public class VitalsService {
         // "ready for consultation" without any queue ticket changing hands.
         visitService.updateStatus(visit, "VITALS_DONE");
 
+        auditService.recordEvent(nurse, patient, "RECORD_VITALS",
+                "recorded vital signs for patient " + patient.getMrn()
+                        + " during visit #" + visit.getId() + " and sent the patient for consultation",
+                "VITALS", saved.getId());
         return saved;
     }
 

@@ -79,6 +79,7 @@ public class PatientPortalService {
         try {
             patient = patientService.findByIdentifier(request.getIdNumber() == null ? "" : request.getIdNumber().trim());
         } catch (Exception e) {
+            auditService.recordSecurityEvent(null, "PATIENT_LOGIN_FAILED", "attempted an unsuccessful patient portal sign-in");
             recordAddressFailure(addressKey, clientAddress);
             throw new RuntimeException(INVALID);
         }
@@ -114,6 +115,8 @@ public class PatientPortalService {
                         "Patient portal locked for " + LOCKOUT_MINUTES + " minutes after " + MAX_FAILED_ATTEMPTS + " failed sign-in attempts");
             }
             patientRepository.save(patient);
+            auditService.recordEvent(null, patient, "PATIENT_LOGIN_FAILED",
+                    "attempted an unsuccessful patient portal sign-in", "PATIENT", patient.getId());
             recordAddressFailure(addressKey, clientAddress);
             throw new RuntimeException(INVALID);
         }
@@ -121,7 +124,8 @@ public class PatientPortalService {
         patient.setFailedLoginAttempts(0);
         patient.setLoginLockedUntil(null);
         patientRepository.save(patient);
-
+        auditService.recordEvent(null, patient, "PATIENT_LOGIN_SUCCESS",
+                "signed in to their patient portal", "PATIENT", patient.getId());
         return buildSession(patient);
     }
 
@@ -134,7 +138,8 @@ public class PatientPortalService {
 
     /** A fresh access token and refresh token, after sign-in or a refresh. */
     public PatientLoginResponse buildSession(Patient patient) {
-        String token = jwtUtil.generateToken(patient.getIdNumber(), "PATIENT");
+        boolean requiresPinChange = Boolean.TRUE.equals(patient.getMustChangePortalPin());
+        String token = jwtUtil.generatePatientToken(patient.getIdNumber(), requiresPinChange);
         String fullName = patient.getFirstName() + " " + patient.getLastName();
 
         return new PatientLoginResponse(
@@ -142,13 +147,59 @@ public class PatientPortalService {
                 tokenService.issueRefreshToken(patient),
                 patient.getIdNumber(),
                 fullName,
-                "PATIENT"
+                "PATIENT",
+                requiresPinChange
         );
     }
 
+    /**
+     * Completes a patient's first sign-in. A temporary PIN cannot be reused as
+     * their permanent PIN; neither PIN is written to logs or API responses.
+     */
+    public PatientLoginResponse changePin(String idNumber, String currentPin, String newPin, String accessToken) {
+        Patient patient = patientService.findByIdentifier(idNumber);
+        if (patient.getLoginLockedUntil() != null && patient.getLoginLockedUntil().isAfter(LocalDateTime.now())) {
+            throw new LoginLockedException("Too many incorrect PIN attempts. Ask the front desk for help or try again later.");
+        }
+        if (currentPin == null || patient.getPortalPinHash() == null
+                || !passwordEncoder.matches(currentPin, patient.getPortalPinHash())) {
+            int failures = (patient.getFailedLoginAttempts() == null ? 0 : patient.getFailedLoginAttempts()) + 1;
+            patient.setFailedLoginAttempts(failures);
+            if (failures >= MAX_FAILED_ATTEMPTS) {
+                patient.setLoginLockedUntil(LocalDateTime.now().plusMinutes(LOCKOUT_MINUTES));
+                patient.setFailedLoginAttempts(0);
+            }
+            patientRepository.save(patient);
+            auditService.recordEvent(null, patient, "PATIENT_PIN_CHANGE_FAILED",
+                    "attempted to replace the portal PIN without supplying the correct current PIN", "PATIENT", patient.getId());
+            throw new RuntimeException("Current PIN is incorrect");
+        }
+        if (newPin == null || !newPin.matches("[0-9]{6}")) {
+            throw new RuntimeException("New PIN must contain exactly six digits");
+        }
+        if (currentPin.equals(newPin)) {
+            throw new RuntimeException("Choose a different PIN from the temporary PIN");
+        }
+        // Use the existing PIN validation (reject easily guessed sequential PINs).
+        patientService.validatePortalPinForChange(newPin);
+        patient.setPortalPinHash(passwordEncoder.encode(newPin));
+        patient.setMustChangePortalPin(false);
+        patient.setFailedLoginAttempts(0);
+        patient.setLoginLockedUntil(null);
+        patientRepository.save(patient);
+        tokenService.revokePatientRefreshTokens(patient);
+        tokenService.revokeAccessToken(accessToken, "PATIENT_PIN_CHANGE");
+        auditService.recordEvent(null, patient, "PATIENT_PORTAL_PIN_CHANGED",
+                "replaced their temporary portal PIN after signing in", "PATIENT", patient.getId());
+        return buildSession(patient);
+    }
+
     public Patient getPatientProfile(String idNumber) {
-        return patientRepository.findByIdNumber(idNumber)
+        Patient patient = patientRepository.findByIdNumber(idNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
+        auditService.recordEvent(null, patient, "PATIENT_VIEW_PROFILE",
+                "viewed their patient portal profile", "PATIENT", patient.getId());
+        return patient;
     }
 
     public PatientRecordResponse getPatientRecord(String idNumber) {

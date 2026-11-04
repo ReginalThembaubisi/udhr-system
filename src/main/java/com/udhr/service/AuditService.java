@@ -35,6 +35,15 @@ public class AuditService {
     @Autowired
     private StaffRepository staffRepository;
 
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(AuditService.class);
+
+    /** A meaningful, entity-linked event. Do not include patient notes, passwords or tokens. */
+    public void recordEvent(Staff staff, Patient patient, String action, String description,
+                            String entityType, Object entityId) {
+        write(staff, patient, action, description, null, null, entityType,
+                entityId == null ? null : String.valueOf(entityId));
+    }
+
     /** A record was read. Nothing changed, so there are no before/after values. */
     public void recordView(Staff staff, Patient patient, String action, String description) {
         write(staff, patient, action, description, null, null);
@@ -52,6 +61,22 @@ public class AuditService {
     public void recordChange(Staff staff, Patient patient, String action, String description,
                              String previousValue, String newValue) {
         write(staff, patient, action, description, previousValue, newValue);
+    }
+
+    /** An operational before/after change with a stable affected-record identifier. */
+    public void recordChangeForEntity(Staff staff, Patient patient, String action, String description,
+            String previousValue, String newValue, String entityType, Object entityId) {
+        write(staff, patient, action, description, previousValue, newValue, entityType,
+                entityId == null ? null : String.valueOf(entityId));
+    }
+
+    /** Record a rejected clinical or safety-sensitive attempt independently of a rolled-back operation. */
+    @org.springframework.transaction.annotation.Transactional(
+            propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void recordRejectedAction(Staff staff, Patient patient, String action, String description,
+                                     String entityType, Object entityId) {
+        write(staff, patient, action, description, null, null, entityType,
+                entityId == null ? null : String.valueOf(entityId));
     }
 
     /** Sign-ins, failures, lockouts, revocations — no patient involved. */
@@ -77,18 +102,36 @@ public class AuditService {
 
     private void write(Staff staff, Patient patient, String action, String description,
                        String previousValue, String newValue) {
+        write(staff, patient, action, description, previousValue, newValue, null, null);
+    }
+
+    private void write(Staff staff, Patient patient, String action, String description,
+                       String previousValue, String newValue, String entityType, String entityId) {
         try {
             AuditLog log = new AuditLog();
             log.setStaff(staff);
             log.setPatient(patient);
             log.setAction(action);
+            log.setActorType(staff != null ? "STAFF" : patient != null ? "PATIENT" : "ANONYMOUS");
+            if (staff != null) {
+                log.setActorLabel(AuditNarrative.readableRole(staff.getRole()) + " " + staff.getFirstName()
+                        + " " + staff.getLastName() + " (" + staff.getStaffNumber() + ")");
+                if (staff.getFacility() != null) log.setFacilityName(staff.getFacility().getName());
+            } else if (patient != null) {
+                log.setActorLabel("Patient " + patient.getMrn());
+            }
+            log.setOutcome(action != null && (action.contains("FAILED") || action.contains("LOCKED")
+                    || action.contains("DENIED") || action.contains("BLOCKED")
+                    || action.contains("REJECTED")) ? "FAILED" : "SUCCESS");
+            log.setEntityType(entityType != null ? entityType : patient != null ? "PATIENT" : null);
+            log.setEntityId(entityId != null ? entityId : patient != null ? String.valueOf(patient.getId()) : null);
             log.setDescription(description);
             log.setPreviousValue(previousValue);
             log.setNewValue(newValue);
             log.setIpAddress(currentIpAddress());
             auditLogRepository.save(log);
         } catch (Exception e) {
-            System.out.println("[AuditService] Could not write audit entry for " + action + ": " + e.getMessage());
+            LOG.error("AUDIT WRITE FAILED for action {}: {}", action, e.toString(), e);
         }
     }
 
@@ -105,11 +148,7 @@ public class AuditService {
                 return null;
             }
             HttpServletRequest request = attributes.getRequest();
-            String forwarded = request.getHeader("X-Forwarded-For");
-            if (forwarded != null && !forwarded.isBlank()) {
-                // The header is a chain; the original client is the first entry.
-                return forwarded.split(",")[0].trim();
-            }
+            // Proxy headers can be spoofed unless a trusted proxy is configured.
             return request.getRemoteAddr();
         } catch (Exception e) {
             return null;

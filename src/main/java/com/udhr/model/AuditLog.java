@@ -34,6 +34,25 @@ public class AuditLog {
     @Column(nullable = false)
     private String action;
 
+    // Captured at event time, not reconstructed from a potentially changed staff profile.
+    @Column(name = "actor_type", length = 20)
+    private String actorType;
+
+    @Column(name = "actor_label", length = 200)
+    private String actorLabel;
+
+    @Column(name = "facility_name", length = 200)
+    private String facilityName;
+
+    @Column(name = "entity_type", length = 60)
+    private String entityType;
+
+    @Column(name = "entity_id", length = 100)
+    private String entityId;
+
+    @Column(name = "outcome", length = 20)
+    private String outcome;
+
     @Column(columnDefinition = "TEXT")
     private String description;
 
@@ -56,6 +75,12 @@ public class AuditLog {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @jakarta.persistence.PreUpdate
+    @jakarta.persistence.PreRemove
+    protected void rejectMutation() {
+        throw new IllegalStateException("Audit history is append-only");
+    }
 
     @PrePersist
     protected void onCreate() {

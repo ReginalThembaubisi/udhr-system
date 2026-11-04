@@ -1,0 +1,13 @@
+/* System-admin: patient accounts are access metadata, not clinical records. */
+.udhr-account-switch { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 22px; }
+.udhr-account-switch .udhr-btn-neutral { min-width: 155px; }
+.udhr-account-switch-active { color: #075bd2 !important; border-color: #9fc2ff !important; background: #eaf3ff !important; font-weight: 750 !important; }
+.udhr-account-directory-header { display: flex; justify-content: space-between; gap: 18px; align-items: end; flex-wrap: wrap; margin-bottom: 14px; }
+.udhr-account-directory-header .udhr-panel-heading { margin: 0 0 5px; }
+.udhr-account-search { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
+.udhr-account-search .udhr-input { min-width: min(100%, 240px); }
+.udhr-patient-account-row { gap: 12px; flex-wrap: wrap; }
+.udhr-account-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.udhr-account-pagination > div { display: flex; gap: 9px; }
+@media (max-width: 700px) { .udhr-account-search, .udhr-account-search .udhr-input { width: 100%; } .udhr-patient-account-row > div { width: 100%; } }
+.udhr-audit-shortcuts { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 18px; }

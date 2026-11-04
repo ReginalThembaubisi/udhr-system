@@ -204,6 +204,11 @@ public class TokenService {
     }
 
     @Transactional
+    public void revokePatientRefreshTokens(Patient patient) {
+        refreshTokenRepository.revokeAllForPatient(patient.getId());
+    }
+
+    @Transactional
     public void revokeRefreshTokensFor(Staff staff) {
         refreshTokenRepository.revokeAllForStaff(staff.getId());
     }

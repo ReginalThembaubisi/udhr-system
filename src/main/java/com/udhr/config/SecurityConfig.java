@@ -1,6 +1,7 @@
 package com.udhr.config;
 
 import com.udhr.security.JwtAuthenticationFilter;
+import com.udhr.service.AuditService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -39,9 +40,11 @@ public class SecurityConfig {
             "frame-ancestors 'none'");
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final AuditService auditService;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, AuditService auditService) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.auditService = auditService;
     }
 
     @Bean
@@ -52,7 +55,22 @@ public class SecurityConfig {
             // A request with no valid sign-in gets 401, not Spring's default 403,
             // so the page can tell "your session expired" (refresh and retry)
             // apart from "your role isn't allowed to do this" (fix list P1-2).
-            .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, exception) -> {
+                    response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                    if (request.getRequestURI().startsWith("/api/")
+                            && !request.getRequestURI().startsWith("/api/auth/")) {
+                        auditService.recordSecurityEvent(null, "SECURITY_ACCESS_DENIED",
+                                "attempted an API request without valid authentication: "
+                                        + request.getMethod() + " " + request.getRequestURI());
+                    }
+                })
+                .accessDeniedHandler((request, response, exception) -> {
+                    auditService.recordSecurityEvent(auditService.currentStaff(), "SECURITY_ACCESS_DENIED",
+                            "was denied permission to perform " + request.getMethod()
+                                    + " " + request.getRequestURI());
+                    response.setStatus(HttpStatus.FORBIDDEN.value());
+                }))
             // Browser security headers on every response, the app's own pages
             // included (fix list P1-7).
             .headers(headers -> headers
@@ -73,13 +91,6 @@ public class SecurityConfig {
                 // that carries no sign-in. Left protected, every 403 ("not
                 // allowed") turned into a 401 ("not signed in") on a real server.
                 .requestMatchers("/error").permitAll()
-                // Any other page address outside the API (a mistyped link, an old
-                // bookmark, /help.html) is public: the request reaches the static
-                // files, and an address that doesn't exist gets the friendly
-                // "Page not found" page (static/error/404.html) instead of a bare
-                // 401. No data lives outside /api, so nothing is exposed.
-                .requestMatchers(request -> "GET".equals(request.getMethod())
-                        && !request.getRequestURI().startsWith("/api/")).permitAll()
                 .requestMatchers("/api/auth/change-password").authenticated()
                 .requestMatchers("/api/auth/2fa/**").authenticated()
                 .requestMatchers("/api/auth/**").permitAll()

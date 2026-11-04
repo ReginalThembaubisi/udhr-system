@@ -122,12 +122,30 @@ public class SystemAdminController {
         }
     }
 
+    /** List registered patient portal accounts; excludes clinical and secret information. */
+    @GetMapping("/patients")
+    public ResponseEntity<?> listPatientAccounts(
+            @RequestParam(required = false, defaultValue = "") String search,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "20") int size,
+            HttpServletRequest request) {
+        if (extractStaffNumber(request) == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+        return ResponseEntity.ok(systemAdminService.getPatientAccounts(search, page, size));
+    }
+
     /** The system-wide audit trail, newest first. */
     @GetMapping("/audit-log")
     public ResponseEntity<?> getAuditLog(@RequestParam(required = false) String startDate,
                                          @RequestParam(required = false) String endDate,
                                          @RequestParam(required = false) String action,
                                          @RequestParam(required = false, defaultValue = "200") int limit,
+                                         @RequestParam(required = false, defaultValue = "0") int page,
+                                         @RequestParam(required = false) String staffNumber,
+                                         @RequestParam(required = false) String role,
+                                         @RequestParam(required = false) String patientMrn,
+                                         @RequestParam(required = false) String outcome,
                                          HttpServletRequest request) {
         String actor = extractStaffNumber(request);
         if (actor == null) {
@@ -136,7 +154,7 @@ public class SystemAdminController {
         try {
             LocalDate start = parseDate(startDate);
             LocalDate end = parseDate(endDate);
-            List<AuditLogEntryResponse> entries = systemAdminService.getAuditLog(start, end, action, limit, actor);
+            List<AuditLogEntryResponse> entries = systemAdminService.getAuditLog(start, end, action, staffNumber, role, patientMrn, outcome, limit, page, actor);
             return ResponseEntity.ok(entries);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));

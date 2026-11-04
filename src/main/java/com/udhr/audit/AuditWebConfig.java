@@ -8,13 +8,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class AuditWebConfig implements WebMvcConfigurer {
 
     private final PatientAccessAuditInterceptor patientAccessAuditInterceptor;
+    private final ReportExportAuditInterceptor reportExportAuditInterceptor;
 
-    public AuditWebConfig(PatientAccessAuditInterceptor patientAccessAuditInterceptor) {
+    public AuditWebConfig(PatientAccessAuditInterceptor patientAccessAuditInterceptor,
+                          ReportExportAuditInterceptor reportExportAuditInterceptor) {
         this.patientAccessAuditInterceptor = patientAccessAuditInterceptor;
+        this.reportExportAuditInterceptor = reportExportAuditInterceptor;
     }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(patientAccessAuditInterceptor).addPathPatterns("/api/**");
+        registry.addInterceptor(reportExportAuditInterceptor).addPathPatterns("/api/**");
     }
 }

@@ -25,6 +25,9 @@ import java.util.stream.Stream;
 public class ReferralService {
 
     @Autowired
+    private AuditService auditService;
+
+    @Autowired
     private ReferralRepository referralRepository;
 
     @Autowired
@@ -97,6 +100,10 @@ public class ReferralService {
         // elsewhere, so close out any active queue entry at this facility.
         queueService.completeActiveEntryForPatientAtFacility(patient.getId(), staff.getFacility().getId());
 
+        auditService.recordEvent(staff, patient, "CREATE_REFERRAL",
+                "referred patient " + patient.getMrn() + " from " + staff.getFacility().getName()
+                        + " to " + toFacility.getName() + " (" + saved.getUrgency() + " priority)",
+                "REFERRAL", saved.getId());
         return saved;
     }
 
@@ -119,12 +126,17 @@ public class ReferralService {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
 
+        Referral.Status previousStatus = referral.getStatus();
         referral.setStatus(Referral.Status.valueOf(request.getStatus()));
         referral.setResponseNotes(request.getResponseNotes());
         referral.setRespondedBy(staff);
         referral.setRespondedAt(LocalDateTime.now());
 
-        return referralRepository.save(referral);
+        Referral saved = referralRepository.save(referral);
+        auditService.recordEvent(staff, saved.getPatient(), "RESPOND_REFERRAL",
+                "changed referral #" + saved.getId() + " for patient " + saved.getPatient().getMrn()
+                        + " from " + previousStatus + " to " + saved.getStatus(), "REFERRAL", saved.getId());
+        return saved;
     }
 
     public List<Referral> getPatientHistory(Long patientId) {

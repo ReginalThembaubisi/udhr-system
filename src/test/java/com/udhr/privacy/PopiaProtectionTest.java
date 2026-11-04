@@ -85,7 +85,7 @@ class PopiaProtectionTest {
     // ---- Every read of patient data is logged (sections 8 and 19) -----------------
 
     @Test
-    void aNurseReadingVitalsIsLoggedOncePerSitting() throws Exception {
+    void aNurseReadingVitalsIsLoggedOnEveryRead() throws Exception {
         String nurse = login("NUR001", "Nurse@123");
         Long patientId = patientRepository.findByIdNumber("9001015000083").orElseThrow().getId();
         long before = countViews("vitals");
@@ -93,7 +93,7 @@ class PopiaProtectionTest {
         mvc.perform(get("/api/vitals/patient/" + patientId).header("Authorization", "Bearer " + nurse)).andExpect(status().isOk());
         mvc.perform(get("/api/vitals/patient/" + patientId).header("Authorization", "Bearer " + nurse)).andExpect(status().isOk());
 
-        assertThat(countViews("vitals")).isEqualTo(before + 1);
+        assertThat(countViews("vitals")).isEqualTo(before + 2);
     }
 
     // ---- Reports don't identify patients (section 10) -----------------------------

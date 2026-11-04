@@ -120,12 +120,12 @@ class TwoFactorSignInTest {
     // ---- helpers ------------------------------------------------------------------
 
     private ResultActions login(String staffNumber, String password, String address) throws Exception {
-        return mvc.perform(post("/api/auth/login").header("X-Forwarded-For", address).contentType(MediaType.APPLICATION_JSON)
+        return mvc.perform(post("/api/auth/login").with(request -> { request.setRemoteAddr(address); return request; }).contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of("staffNumber", staffNumber, "password", password))));
     }
 
     private ResultActions verify(String challengeToken, String code, String address) throws Exception {
-        return mvc.perform(post("/api/auth/login/verify").header("X-Forwarded-For", address).contentType(MediaType.APPLICATION_JSON)
+        return mvc.perform(post("/api/auth/login/verify").with(request -> { request.setRemoteAddr(address); return request; }).contentType(MediaType.APPLICATION_JSON)
                 .content(json.writeValueAsString(Map.of("challengeToken", challengeToken, "code", code))));
     }
 

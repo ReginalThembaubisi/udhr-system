@@ -87,7 +87,7 @@ public final class AuditNarrative {
             } else if (log.getPatient() != null) {
                 actor = "Patient " + log.getPatient().getMrn();
             } else {
-                actor = "An unidentified visitor";
+                actor = "Unidentified visitor";
             }
         }
         // General system oversight is not authority to read clinical details.

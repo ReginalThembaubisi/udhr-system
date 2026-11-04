@@ -58,6 +58,24 @@ public class JwtUtil {
                 .compact();
     }
 
+    /** Patient tokens include a claim that restricts temporary-PIN sessions. */
+    public String generatePatientToken(String patientIdNumber, boolean mustChangePin) {
+        return Jwts.builder()
+                .setId(UUID.randomUUID().toString())
+                .setSubject(patientIdNumber)
+                .claim("role", "PATIENT")
+                .claim("mustChangePin", mustChangePin)
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + expiration))
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public boolean extractMustChangePin(String token) {
+        Boolean value = getClaims(token).get("mustChangePin", Boolean.class);
+        return value != null && value;
+    }
+
     /**
      * Proof that the password was right, good for 5 minutes and only for
      * entering the authenticator code. The filter never accepts it as a

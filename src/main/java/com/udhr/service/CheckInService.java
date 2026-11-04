@@ -18,6 +18,9 @@ import java.util.stream.Collectors;
 public class CheckInService {
 
     @Autowired
+    private AuditService auditService;
+
+    @Autowired
     private PatientService patientService;
 
     @Autowired
@@ -55,11 +58,18 @@ public class CheckInService {
             if (!reason.isEmpty() && !reason.equals(open.getReason())) {
                 open.setReason(reason);
                 open = visitRepository.save(open);
+                auditService.recordEvent(admin, patient, "CHECK_IN_PATIENT",
+                        "updated the check-in reason for patient " + patient.getMrn() + " on visit #" + open.getId(),
+                        "VISIT", open.getId());
             }
             return new CheckInResult(open, true);
         }
-        return new CheckInResult(visitService.findOrCreateOpenVisit(patient, admin,
-                reason.isEmpty() ? "Front desk check-in" : reason), false);
+        Visit created = visitService.findOrCreateOpenVisit(patient, admin,
+                reason.isEmpty() ? "Front desk check-in" : reason);
+        auditService.recordEvent(admin, patient, "CHECK_IN_PATIENT",
+                "checked in patient " + patient.getMrn() + " at reception and opened visit #" + created.getId(),
+                "VISIT", created.getId());
+        return new CheckInResult(created, false);
     }
 
     /**

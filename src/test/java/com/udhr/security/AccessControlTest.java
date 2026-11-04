@@ -105,6 +105,12 @@ class AccessControlTest {
                         .content(newAccount("NUR777", "NURSE")))
                 .andExpect(status().isCreated());
         assertThat(staffRepository.findByStaffNumber("NUR777")).isPresent();
+        // Every new staff account must change its temporary password before
+        // being allowed to access clinical or administrative endpoints.
+        assertThat(staffRepository.findByStaffNumber("NUR777").orElseThrow().getMustChangePassword()).isTrue();
+        String temporarySession = login("NUR777", "TempPass1!");
+        mvc.perform(get("/api/visits/today").header("Authorization", bearer(temporarySession)))
+                .andExpect(status().isForbidden());
     }
 
     // ---- P0-6: pharmacy actions stay inside the pharmacist's own facility --------

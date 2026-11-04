@@ -14,6 +14,9 @@ import java.util.List;
 public class ChronicConditionService {
 
     @Autowired
+    private AuditService auditService;
+
+    @Autowired
     private ChronicConditionRepository chronicConditionRepository;
 
     @Autowired
@@ -29,7 +32,11 @@ public class ChronicConditionService {
         chronicCondition.setDiagnosedDate(LocalDate.parse(request.getDiagnosedDate()));
         chronicCondition.setNotes(request.getNotes());
 
-        return chronicConditionRepository.save(chronicCondition);
+        ChronicCondition saved = chronicConditionRepository.save(chronicCondition);
+        auditService.recordEvent(auditService.currentStaff(), patient, "ADD_CHRONIC_CONDITION",
+                "added a chronic-condition record for patient " + patient.getMrn(),
+                "CHRONIC_CONDITION", saved.getId());
+        return saved;
     }
 
     public List<ChronicCondition> getChronicConditionsByPatient(Long patientId) {

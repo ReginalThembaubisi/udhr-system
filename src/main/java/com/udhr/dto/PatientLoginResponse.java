@@ -17,4 +17,9 @@ public class PatientLoginResponse implements SessionResponse {
     private String idNumber;
     private String fullName;
     private String role;
+    private Boolean mustChangePin;
+
+    public PatientLoginResponse(String token, String refreshToken, String idNumber, String fullName, String role) {
+        this(token, refreshToken, idNumber, fullName, role, false);
+    }
 }

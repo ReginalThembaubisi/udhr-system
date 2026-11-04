@@ -14,6 +14,9 @@ import java.util.*;
 public class ReminderService {
 
     @Autowired
+    private AuditService auditService;
+
+    @Autowired
     private MedicationReminderRepository reminderRepository;
 
     @Autowired
@@ -149,6 +152,7 @@ public class ReminderService {
         MedicationAdherence log = adherenceRepository.findById(adherenceId)
                 .orElseThrow(() -> new RuntimeException("Adherence record not found"));
 
+        String oldStatus = log.getStatus();
         log.setStatus(status.toUpperCase());
         if ("TAKEN".equalsIgnoreCase(status)) {
             log.setTakenAt(LocalDateTime.now());
@@ -157,7 +161,12 @@ public class ReminderService {
         }
         log.setNotes(notes);
 
-        return adherenceRepository.save(log);
+        MedicationAdherence saved = adherenceRepository.save(log);
+        auditService.recordEvent(auditService.currentStaff(), saved.getPatient(), "UPDATE_MEDICATION_ADHERENCE",
+                "changed medication adherence entry #" + saved.getId() + " for patient "
+                        + saved.getPatient().getMrn() + " from " + oldStatus + " to " + saved.getStatus(),
+                "MEDICATION_ADHERENCE", saved.getId());
+        return saved;
     }
 
     public Map<String, Object> getAdherenceStats(Long patientId) {

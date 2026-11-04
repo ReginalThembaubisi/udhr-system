@@ -100,7 +100,7 @@ public class AuthController {
         return cookie.build();
     }
 
-    private static ResponseEntity<?> withSession(SessionResponse session) {
+    static ResponseEntity<?> withSession(SessionResponse session) {
         // No refresh token yet means sign-in isn't finished (two-step code
         // still needed), so no cookie is set.
         if (session.getRefreshToken() == null) {
@@ -116,6 +116,12 @@ public class AuthController {
             return withSession(login.get());
         } catch (LoginLockedException e) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(e.getMessage());
+        } catch (org.springframework.dao.DataAccessException e) {
+            // Never send raw SQL, table names or constraint details to a browser.
+            org.slf4j.LoggerFactory.getLogger(AuthController.class)
+                    .error("Sign-in database operation failed", e);
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body("Sign-in is temporarily unavailable. Please contact the system administrator.");
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(e.getMessage());
         }

@@ -1,0 +1,405 @@
+/*
+ * UDHR 2026 — shared visual system, second pass.
+ * Presentation only: no event handlers, APIs, data models, validations or
+ * permission logic are changed.  This layer makes the existing Doctor search
+ * presentation the reference for search, forms and record cards across roles.
+ */
+
+:root {
+  --udhr-panel-shadow: 0 10px 28px rgba(22, 76, 148, .075);
+  --udhr-panel-border: #dce9f9;
+  --udhr-panel-gradient: linear-gradient(116deg, #fff 36%, #e8f4ff 100%);
+  --udhr-field-height: 46px;
+}
+
+/* Search input / action components — same dimensions on every staff page. */
+.udhr-shell-main .udhr-search-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  width: min(100%, 840px);
+  max-width: none;
+  min-width: 0;
+}
+.udhr-shell-main .udhr-search-bar .udhr-input {
+  min-width: 0;
+  flex: 1 1 0;
+  min-height: var(--udhr-field-height);
+  padding: 11px 15px;
+  font-size: 16.5px;
+}
+.udhr-shell-main .udhr-search-bar .udhr-btn-compact {
+  min-height: var(--udhr-field-height);
+  flex-shrink: 0;
+  padding: 0 22px;
+  font-size: 16px;
+}
+
+/* The standard lookup panel matches the 'Today's patients' search surface. */
+.udhr-lookup-panel, .udhr-doctor-search {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  min-height: 166px;
+  margin: 0 0 26px;
+  padding: 25px 254px 25px 26px;
+  overflow: hidden;
+  border: 1px solid var(--udhr-panel-border);
+  border-radius: 19px;
+  background: var(--udhr-panel-gradient);
+  box-shadow: var(--udhr-panel-shadow);
+}
+.udhr-lookup-panel::before, .udhr-doctor-search::before {
+  content: '';
+  position: absolute;
+  right: -48px;
+  top: -70px;
+  z-index: -1;
+  width: 245px;
+  height: 245px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(214,248,241,.60), rgba(214,248,241,0) 72%);
+  pointer-events: none;
+}
+.udhr-lookup-panel > .udhr-label, .udhr-doctor-search > .udhr-label,
+.udhr-lookup-panel > .udhr-lookup-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 22px;
+  margin: 0 0 15px !important;
+  font-size: 16px;
+  line-height: 1.45;
+  color: #18375d;
+  font-weight: 725;
+}
+.udhr-lookup-panel .udhr-label svg, .udhr-lookup-heading svg { color: #216acb; flex-shrink: 0; }
+.udhr-lookup-panel > .udhr-search-bar,
+.udhr-doctor-search > .udhr-search-bar {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 800px);
+  margin: 0 !important;
+}
+.udhr-lookup-art, .udhr-doctor-search-art {
+  position: absolute;
+  right: 26px;
+  bottom: 0;
+  width: 202px;
+  height: 170px;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+.udhr-lookup-description {
+  max-width: 690px;
+  font-size: 15.5px;
+  color: #597391;
+  line-height: 1.55;
+  margin: -7px 0 14px;
+}
+.udhr-lookup-panel--embedded {
+  margin: -3px 0 19px;
+  padding: 21px 236px 22px 22px;
+  min-height: 155px;
+  border-radius: 15px;
+  background: linear-gradient(120deg,#fafdff 38%,#e6f2ff);
+  box-shadow: none;
+}
+.udhr-lookup-panel--embedded .udhr-lookup-art { height: 149px; width: 186px; right: 17px; }
+.udhr-lookup-panel--embedded > .udhr-lookup-description + .udhr-search-bar { margin-top: 0 !important; }
+.udhr-lookup-inline {
+  min-width: 0;
+  padding: 18px 18px 19px;
+  border-radius: 13px;
+  background: linear-gradient(110deg,#f8fbff,#edf6ff);
+  border: 1px solid #dae8fb;
+}
+.udhr-lookup-inline > .udhr-label { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.udhr-lookup-inline > .udhr-search-bar { margin: 0; }
+.udhr-queue-heading { display: block; font-size: 16px !important; margin-bottom: 12px !important; }
+
+/* Shared form and record rhythm — no change to required attributes or events. */
+.udhr-shell-main .udhr-input,
+.udhr-shell-main .udhr-textarea,
+.udhr-shell-main .udhr-note-input {
+  border: 1px solid #cedeef;
+  border-radius: 11px;
+  color: #163457;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(23,65,123,.025);
+  font-family: inherit;
+  font-size: 16px;
+}
+.udhr-shell-main .udhr-input { min-height: var(--udhr-field-height); }
+.udhr-shell-main .udhr-textarea { min-height: 100px; padding: 12px 14px; }
+.udhr-shell-main .udhr-input:focus-visible,
+.udhr-shell-main .udhr-textarea:focus-visible,
+.udhr-shell-main .udhr-note-input:focus-visible {
+  border-color: #2772e9;
+  outline: 3px solid #c2deff;
+  outline-offset: 1px;
+}
+.udhr-shell-main .udhr-form-group { gap: 8px; }
+.udhr-shell-main .udhr-label { color: #254367; font-size: 15.5px; font-weight: 685; }
+.udhr-shell-main .udhr-btn-primary,
+.udhr-shell-main .udhr-btn-compact,
+.udhr-shell-main .udhr-btn-neutral {
+  border-radius: 11px;
+  font-family: inherit;
+  transition: background .16s, box-shadow .16s, border-color .16s, transform .16s;
+}
+.udhr-shell-main .udhr-btn-primary,
+.udhr-shell-main .udhr-btn-compact { box-shadow: 0 5px 15px rgba(25,97,218,.15); }
+.udhr-shell-main .udhr-btn-primary:disabled,
+.udhr-shell-main .udhr-btn-compact:disabled,
+.udhr-shell-main .udhr-btn-neutral:disabled { transform: none; box-shadow: none; }
+.udhr-shell-main .udhr-btn-neutral { min-height: 42px; padding: 9px 15px; }
+.udhr-shell-main .udhr-link-button { text-decoration-thickness: 1px; text-underline-offset: 3px; }
+
+.udhr-shell-main .udhr-record-card,
+.udhr-shell-main .udhr-card,
+.udhr-shell-main .udhr-row-card,
+.udhr-shell-main .udhr-alert-item {
+  border: 1px solid var(--udhr-panel-border);
+  border-radius: 18px;
+  background-color: #fff;
+  box-shadow: var(--udhr-panel-shadow);
+}
+.udhr-shell-main .udhr-record-body { padding: clamp(19px,2.1vw,30px); }
+.udhr-shell-main .udhr-record-header {
+  background: linear-gradient(110deg,#fafeff,#eef6ff);
+  border-bottom-color: var(--udhr-panel-border);
+  gap: 14px;
+  padding: 19px 25px;
+}
+.udhr-shell-main .udhr-record-subtabs {
+  background: #fbfdff;
+  border-bottom-color: var(--udhr-panel-border);
+}
+.udhr-shell-main .udhr-subtab.active { font-weight: 750; }
+.udhr-shell-main .udhr-record-card > .udhr-record-body > h3:first-child,
+.udhr-shell-main .udhr-card > h3:first-child {
+  color: #102a51;
+  font-weight: 750;
+  font-size: 18px !important;
+  letter-spacing: -.01em;
+  line-height: 1.4;
+}
+.udhr-shell-main .udhr-row-title { color: #112a50; }
+.udhr-shell-main .udhr-list-row { min-width: 0; gap: 16px; }
+.udhr-shell-main .udhr-list-row > div:first-child { min-width: 0; }
+.udhr-shell-main .udhr-list-row .udhr-row-subtitle { overflow-wrap: anywhere; }
+.udhr-shell-main .udhr-list-row > button { flex-shrink: 0; }
+.udhr-shell-main .udhr-record-body > .udhr-empty-note:only-child {
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 22px;
+  border: 1px dashed #cddff6;
+  border-radius: 13px;
+  background: linear-gradient(125deg,#fafdff,#f2f8ff);
+}
+.udhr-shell-main .udhr-tag { font-weight: 700; letter-spacing: .012em; }
+.udhr-shell-main .udhr-found-patient,
+.udhr-shell-main .udhr-consent-box {
+  border-radius: 14px;
+  border-color: #d7e7f9;
+  background-color: #f7fbff;
+  padding: 19px;
+}
+
+/* The older screens used 480px–720px cards, leaving half the desktop unused. */
+.udhr-shell-main > .udhr-record-card[style*="max-width"],
+.udhr-shell-main > .udhr-card[style*="max-width"],
+.udhr-shell-main > .udhr-record-card[style*="maxWidth"] {
+  max-width: min(100%, 1150px) !important;
+}
+.udhr-shell-main .udhr-stock-editor-card {
+  width: 100%;
+  max-width: min(100%, 1150px) !important;
+}
+.udhr-stock-form { column-gap: 14px !important; row-gap: 17px !important; }
+.udhr-stock-editor-card .udhr-segmented { margin-bottom: 0; border: 1px solid #e0eafb; }
+.udhr-stock-editor-card .udhr-record-body > div:first-child > h3 { font-size: 18px !important; color: #143158; }
+.udhr-stock-editor-card .udhr-btn-neutral[type="submit"] { background: #1263e9; color: #fff; border-color: #1263e9; font-weight: 700; }
+.udhr-stock-editor-card .udhr-btn-neutral[type="submit"]:hover { background: #0954cc; }
+
+/* A patient queue/list row looks like the approved Doctor reference anywhere. */
+.udhr-shell-main .udhr-patient-queue-row { padding: 19px 10px; }
+.udhr-shell-main .udhr-patient-queue-row .udhr-btn-primary { padding-inline: 20px; }
+.udhr-shell-main .udhr-patient-avatar { border-radius: 13px; }
+.udhr-shell-main .udhr-record-card:not(.udhr-audit-log) .udhr-record-body > .udhr-list-row:hover { background: #fafcff; }
+.udhr-shell-main .udhr-record-card:not(.udhr-audit-log) .udhr-record-body > .udhr-list-row {
+  border-radius: 10px;
+  transition: background-color .15s;
+}
+
+/* Consistent look for system-admin, pharmacy and reception forms and audit. */
+.udhr-shell-main .udhr-management-grid,
+.udhr-shell-main .udhr-reports-grid { gap: 20px; }
+.udhr-shell-main .udhr-report-card .udhr-record-body { padding: 0; }
+.udhr-shell-main .udhr-report-card-header { padding: 18px 21px; }
+.udhr-shell-main .udhr-report-stats > div { min-width: 0; }
+.udhr-shell-main .udhr-audit-log .udhr-record-body { padding: 10px 16px 20px; }
+.udhr-shell-main .udhr-audit-event-row { background: transparent; }
+.udhr-shell-main .udhr-audit-filters .udhr-record-body { padding: 21px 24px; }
+.udhr-shell-main .udhr-audit-filters input { width: 100%; }
+.udhr-shell-main .udhr-announcement-edit .udhr-record-body,
+.udhr-shell-main .udhr-announcement-list .udhr-record-body { padding: 24px; }
+.udhr-shell-main .udhr-announcement-list .udhr-list-row { align-items: flex-start; }
+.udhr-shell-main .udhr-labs-card .udhr-record-body { padding: 25px; }
+
+/* Patient portal shares the same typography, card surfaces and brand palette. */
+.udhr-page {
+  background: radial-gradient(ellipse at 85% 12%,#e2f3ff,transparent 42%),
+              linear-gradient(135deg,#f8fbff,#eef6ff);
+}
+.udhr-page-inner { max-width: 1160px; padding: 25px 24px 75px; }
+.udhr-page-header {
+  gap: 18px;
+  margin: 0 0 25px;
+  padding: 18px 24px;
+  color: #fff;
+  border: none;
+  border-radius: 18px;
+  background: linear-gradient(108deg,#16417e 0%,#1668a4 66%,#0b9bab 100%);
+  box-shadow: 0 10px 28px rgba(23,77,146,.12);
+}
+.udhr-page-header .udhr-page-logo { font-family: 'Outfit','Inter',sans-serif; font-size: 21px; font-weight: 770; }
+.udhr-page-header .udhr-page-logo-chip { background: rgba(255,255,255,.16); border: 1px solid rgba(255,255,255,.25); width: 37px; height: 37px; }
+.udhr-page-header .udhr-logout-link { color: white; border: 1px solid rgba(255,255,255,.28); border-radius: 9px; padding: 9px 12px; }
+.udhr-page-header .udhr-logout-link:hover { color: white; background: rgba(255,255,255,.16); }
+.udhr-page-header .udhr-language-picker { min-height: 38px; }
+.udhr-page .udhr-greeting {
+  margin: 0 0 20px;
+  padding: 24px 28px;
+  border: 1px solid #dce9fa;
+  border-radius: 19px;
+  background: linear-gradient(112deg,#fff,#e7f1ff 70%,#dcf9f3);
+  box-shadow: var(--udhr-panel-shadow);
+}
+.udhr-page .udhr-greeting h1 { font-family: 'Outfit','Inter',sans-serif; font-size: clamp(23px,2.35vw,30px); color: #142d54; }
+.udhr-page .udhr-greeting p { margin-top: 6px; }
+.udhr-page .udhr-tab-bar { border-bottom: 0; gap: 10px; margin-top: 22px; padding-bottom: 12px; }
+.udhr-page .udhr-tab-pill { padding: 11px 18px; border: 1px solid #d9e7f8; background: #fff; border-radius: 12px; }
+.udhr-page .udhr-tab-pill.active { background: #e4efff; border-color: #c2dafc; color: #075cd5; }
+.udhr-page .udhr-card,
+.udhr-page .udhr-row-card,
+.udhr-page .udhr-stat-card,
+.udhr-page .udhr-quick-card,
+.udhr-page .udhr-result-card,
+.udhr-page .udhr-next-dose {
+  border: 1px solid var(--udhr-panel-border);
+  border-radius: 17px;
+  box-shadow: var(--udhr-panel-shadow);
+}
+.udhr-page .udhr-quick-card { min-height: 100px; padding: 21px; }
+.udhr-page .udhr-section-title { font-family: 'Outfit','Inter',sans-serif; font-weight: 720; font-size: 19px; color: #142e57; }
+.udhr-page .udhr-card { padding: 21px; }
+.udhr-page .udhr-input,
+.udhr-page .udhr-textarea,
+.udhr-page input:not([type="checkbox"]):not([type="radio"]),
+.udhr-page select {
+  border-radius: 11px;
+  border-color: #cfdeef;
+}
+.udhr-page .udhr-input:focus-visible,
+.udhr-page input:focus-visible,
+.udhr-page select:focus-visible { outline: 3px solid #bcdcff; outline-offset: 1px; }
+
+@media (max-width: 1190px) {
+  .udhr-lookup-panel,.udhr-doctor-search { padding-right: 209px; }
+  .udhr-lookup-panel--embedded { padding-right: 195px; }
+  .udhr-lookup-art,.udhr-doctor-search-art { right: 12px; width: 182px; }
+  .udhr-lookup-panel--embedded .udhr-lookup-art { width: 160px; }
+  .udhr-shell-main .udhr-search-bar { width: 100%; }
+}
+@media (max-width: 900px) {
+  .udhr-lookup-panel, .udhr-doctor-search { padding: 22px 170px 23px 22px; }
+  .udhr-lookup-panel--embedded { padding-right: 165px; }
+  .udhr-lookup-art, .udhr-doctor-search-art { width: 148px; height: 150px; }
+  .udhr-lookup-panel--embedded .udhr-lookup-art { width: 132px; height: 128px; }
+  .udhr-shell-main .udhr-stock-form { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  .udhr-stock-form .udhr-form-group[style*="grid-column"] { grid-column: 1 / -1 !important; }
+  .udhr-page-inner { padding: 17px 18px 65px; }
+}
+@media (max-width: 650px) {
+  .udhr-lookup-panel,.udhr-doctor-search,
+  .udhr-lookup-panel--embedded { padding: 18px; min-height: 0; border-radius: 15px; }
+  .udhr-lookup-art,.udhr-doctor-search-art { display: none; }
+  .udhr-shell-main .udhr-search-bar { flex-wrap: wrap; gap: 9px; }
+  .udhr-shell-main .udhr-search-bar .udhr-input { flex: 1 1 100%; }
+  .udhr-shell-main .udhr-search-bar .udhr-btn-compact { flex: 1 1 100%; }
+  .udhr-shell-main .udhr-stock-form { grid-template-columns: 1fr !important; }
+  .udhr-stock-form .udhr-form-group[style*="grid-column"] { grid-column: 1 / -1 !important; }
+  .udhr-shell-main .udhr-list-row { flex-wrap: wrap; align-items: flex-start; }
+  .udhr-shell-main .udhr-list-row > div:last-child { max-width: 100%; }
+  .udhr-shell-main .udhr-record-body { padding: 17px; }
+  .udhr-shell-main .udhr-search-bar .udhr-btn-compact { min-height: 44px; }
+  .udhr-shell-main .udhr-lookup-panel .udhr-search-bar { margin-bottom: 0 !important; }
+  .udhr-page-header { padding: 15px; flex-wrap: wrap; }
+  .udhr-page .udhr-greeting { padding: 21px; }
+  .udhr-page .udhr-tab-pill { padding: 10px 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .udhr-shell-main .udhr-record-card *, .udhr-page * { transition-duration: .01ms !important; }
+}
+
+
+/* Reception: compact new-patient registration, matching the newborn two-column fields.
+   Visual arrangement only: existing input state, validators, required flags and handlers remain unchanged. */
+.udhr-shell-main .udhr-patient-registration-card {
+  width: 100%;
+  max-width: 840px;
+}
+.udhr-shell-main .udhr-patient-registration-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+  row-gap: 12px;
+  align-items: start;
+  width: 100%;
+  margin-bottom: 12px;
+}
+.udhr-shell-main .udhr-patient-registration-grid > .udhr-form-group {
+  min-width: 0;
+  margin-bottom: 0;
+}
+/* All data-entry fields are half-width when space allows, including optional details. */
+.udhr-shell-main .udhr-patient-registration-grid > .udhr-input,
+.udhr-shell-main .udhr-patient-registration-grid .udhr-textarea {
+  min-width: 0;
+  width: 100%;
+}
+.udhr-shell-main .udhr-patient-registration-pin-note {
+  margin: 0 0 14px;
+}
+.udhr-shell-main .udhr-patient-registration-form .udhr-consent-box > .udhr-form-group {
+  width: calc(50% - 8px);
+  max-width: 100%;
+}
+.udhr-shell-main .udhr-patient-registration-form .udhr-input,
+.udhr-shell-main .udhr-patient-registration-form .udhr-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+}
+.udhr-shell-main .udhr-patient-registration-extras {
+  background: var(--udhr-bg);
+  border: 1px solid var(--udhr-border);
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+.udhr-shell-main .udhr-patient-registration-extras > .udhr-form-group {
+  max-width: 100%;
+}
+.udhr-shell-main .udhr-patient-registration-extras .udhr-textarea { min-height: 72px; }
+@media (max-width: 720px) {
+  .udhr-shell-main .udhr-patient-registration-grid { grid-template-columns: 1fr; }
+  .udhr-shell-main .udhr-patient-registration-form .udhr-consent-box > .udhr-form-group { width: 100%; }
+  .udhr-shell-main .udhr-patient-registration-extras { padding: 12px; }
+}

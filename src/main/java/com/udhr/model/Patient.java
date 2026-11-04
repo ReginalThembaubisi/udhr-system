@@ -100,6 +100,12 @@ public class Patient {
     @Column(name = "portal_pin_hash")
     private String portalPinHash;
 
+    // A generated/temporary portal PIN must be replaced by the patient on
+    // first sign-in. Null on legacy records is treated as false.
+    @JsonIgnore
+    @Column(name = "must_change_portal_pin")
+    private Boolean mustChangePortalPin;
+
     @JsonIgnore
     @Column(name = "failed_login_attempts")
     private Integer failedLoginAttempts;

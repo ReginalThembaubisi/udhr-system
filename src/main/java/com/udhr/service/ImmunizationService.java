@@ -24,6 +24,9 @@ import java.util.List;
 public class ImmunizationService {
 
     @Autowired
+    private AuditService auditService;
+
+    @Autowired
     private ImmunizationRepository immunizationRepository;
 
     @Autowired
@@ -101,7 +104,11 @@ public class ImmunizationService {
             }
         }
 
-        return immunizationRepository.save(immunization);
+        Immunization saved = immunizationRepository.save(immunization);
+        auditService.recordEvent(staff, saved.getPatient(), "ADMINISTER_IMMUNIZATION",
+                "administered vaccine " + saved.getVaccineName() + " (dose " + saved.getDoseNumber()
+                        + ") to patient " + saved.getPatient().getMrn(), "IMMUNIZATION", saved.getId());
+        return saved;
     }
 
     @Transactional
@@ -109,7 +116,11 @@ public class ImmunizationService {
         Immunization immunization = immunizationRepository.findById(immunizationId)
                 .orElseThrow(() -> new RuntimeException("Immunization record not found"));
         immunization.setStatus("MISSED");
-        return immunizationRepository.save(immunization);
+        Immunization saved = immunizationRepository.save(immunization);
+        auditService.recordEvent(auditService.currentStaff(), saved.getPatient(), "MARK_IMMUNIZATION_MISSED",
+                "marked vaccine " + saved.getVaccineName() + " (dose " + saved.getDoseNumber()
+                        + ") as missed for patient " + saved.getPatient().getMrn(), "IMMUNIZATION", saved.getId());
+        return saved;
     }
 
     /**
@@ -149,6 +160,11 @@ public class ImmunizationService {
             }
         }
 
-        return immunizationRepository.save(immunization);
+        Immunization saved = immunizationRepository.save(immunization);
+        auditService.recordEvent(staff, patient, "ADD_IMMUNIZATION",
+                "added a " + saved.getVaccineName() + " immunization record (dose " + saved.getDoseNumber()
+                        + ", status " + saved.getStatus() + ") for patient " + patient.getMrn(),
+                "IMMUNIZATION", saved.getId());
+        return saved;
     }
 }

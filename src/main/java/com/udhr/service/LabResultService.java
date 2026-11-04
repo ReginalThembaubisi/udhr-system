@@ -22,6 +22,9 @@ import java.util.stream.Collectors;
 public class LabResultService {
 
     @Autowired
+    private AuditService auditService;
+
+    @Autowired
     private LabResultRepository labResultRepository;
 
     @Autowired
@@ -58,7 +61,11 @@ public class LabResultService {
         labResult.setNormalRange(request.getNormalRange());
         labResult.setNotes(request.getNotes());
 
-        return labResultRepository.save(labResult);
+        LabResult saved = labResultRepository.save(labResult);
+        auditService.recordEvent(staff, patient, "ADD_LAB_RESULT",
+                "recorded a " + saved.getTestName() + " laboratory result for patient " + patient.getMrn()
+                        + " during visit #" + visit.getId(), "LAB_RESULT", saved.getId());
+        return saved;
     }
 
     public List<LabResult> getLabResultsByPatient(Long patientId) {

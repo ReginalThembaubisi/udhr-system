@@ -23,6 +23,9 @@ import java.util.Map;
 public class QueueService {
 
     @Autowired
+    private AuditService auditService;
+
+    @Autowired
     private QueueEntryRepository queueEntryRepository;
 
     @Autowired
@@ -62,7 +65,12 @@ public class QueueService {
         entry.setQueueNumber((int) countToday + 1);
         entry.setCheckedInBy(staff);
 
-        return queueEntryRepository.save(entry);
+        QueueEntry saved = queueEntryRepository.save(entry);
+        auditService.recordEvent(staff, patient, "QUEUE_CHECK_IN",
+                "added patient " + patient.getMrn() + " to the " + saved.getDepartment()
+                        + " queue as number " + saved.getQueueNumber() + " (" + saved.getUrgency() + " priority)",
+                "QUEUE_ENTRY", saved.getId());
+        return saved;
     }
 
     public List<QueueEntry> getTodayQueue(String staffNumber) {
@@ -105,8 +113,13 @@ public class QueueService {
     public QueueEntry updateUrgency(Long id, String urgency) {
         QueueEntry entry = queueEntryRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Queue entry not found"));
+        QueueEntry.Urgency previous = entry.getUrgency();
         entry.setUrgency(QueueEntry.Urgency.valueOf(urgency));
-        return queueEntryRepository.save(entry);
+        QueueEntry saved = queueEntryRepository.save(entry);
+        auditService.recordEvent(auditService.currentStaff(), saved.getPatient(), "QUEUE_URGENCY_UPDATED",
+                "changed queue priority for patient " + saved.getPatient().getMrn() + " from " + previous
+                        + " to " + saved.getUrgency(), "QUEUE_ENTRY", saved.getId());
+        return saved;
     }
 
     @Transactional
@@ -119,7 +132,11 @@ public class QueueService {
         entry.setStatus(QueueEntry.Status.IN_CONSULTATION);
         entry.setAttendingStaff(staff);
         entry.setCalledAt(LocalDateTime.now());
-        return queueEntryRepository.save(entry);
+        QueueEntry saved = queueEntryRepository.save(entry);
+        auditService.recordEvent(staff, saved.getPatient(), "QUEUE_CALLED",
+                "called patient " + saved.getPatient().getMrn() + " from queue number " + saved.getQueueNumber()
+                        + " for consultation", "QUEUE_ENTRY", saved.getId());
+        return saved;
     }
 
     @Transactional
@@ -130,7 +147,11 @@ public class QueueService {
             throw new RuntimeException("Only a patient currently in consultation can be sent to pharmacy");
         }
         entry.setStatus(QueueEntry.Status.AWAITING_PHARMACY);
-        return queueEntryRepository.save(entry);
+        QueueEntry saved = queueEntryRepository.save(entry);
+        auditService.recordEvent(auditService.currentStaff(), saved.getPatient(), "QUEUE_PHARMACY",
+                "sent patient " + saved.getPatient().getMrn() + " from consultation to the pharmacy queue",
+                "QUEUE_ENTRY", saved.getId());
+        return saved;
     }
 
     public List<PharmacyQueueItem> getAwaitingPharmacy(String staffNumber) {
@@ -153,7 +174,11 @@ public class QueueService {
                 .orElseThrow(() -> new RuntimeException("Queue entry not found"));
         entry.setStatus(QueueEntry.Status.COMPLETED);
         entry.setCompletedAt(LocalDateTime.now());
-        return queueEntryRepository.save(entry);
+        QueueEntry saved = queueEntryRepository.save(entry);
+        auditService.recordEvent(auditService.currentStaff(), saved.getPatient(), "QUEUE_COMPLETED",
+                "completed queue entry #" + saved.getId() + " for patient " + saved.getPatient().getMrn(),
+                "QUEUE_ENTRY", saved.getId());
+        return saved;
     }
 
     // Best-effort: closes out whatever active queue entry a patient has
@@ -178,7 +203,11 @@ public class QueueService {
         QueueEntry entry = queueEntryRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Queue entry not found"));
         entry.setStatus(QueueEntry.Status.CANCELLED);
-        return queueEntryRepository.save(entry);
+        QueueEntry saved = queueEntryRepository.save(entry);
+        auditService.recordEvent(auditService.currentStaff(), saved.getPatient(), "QUEUE_CANCELLED",
+                "cancelled queue entry #" + saved.getId() + " for patient " + saved.getPatient().getMrn(),
+                "QUEUE_ENTRY", saved.getId());
+        return saved;
     }
 
     public List<QueueEntry> getPatientHistory(Long patientId) {

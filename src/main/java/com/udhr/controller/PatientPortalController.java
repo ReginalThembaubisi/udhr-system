@@ -10,6 +10,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import jakarta.servlet.http.HttpServletRequest;
+import com.udhr.dto.PatientLoginResponse;
+import com.udhr.controller.AuthController;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,6 +34,23 @@ public class PatientPortalController {
 
     private String getLoggedInPatientId() {
         return (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+    }
+
+    @PostMapping("/change-pin")
+    public ResponseEntity<?> changePin(@RequestBody java.util.Map<String, String> body, HttpServletRequest request) {
+        try {
+            String authorization = request.getHeader("Authorization");
+            if (authorization == null || !authorization.startsWith("Bearer ")) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+            }
+            PatientLoginResponse session = patientPortalService.changePin(getLoggedInPatientId(),
+                    body.get("currentPin"), body.get("newPin"), authorization.substring(7));
+            return AuthController.withSession(session);
+        } catch (com.udhr.exception.LoginLockedException e) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(java.util.Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
+        }
     }
 
     @GetMapping

@@ -24,6 +24,9 @@ import java.util.stream.Collectors;
 @Service
 public class DispenseService {
 
+    @Autowired
+    private AuditService auditService;
+
     private static final Pattern LEADING_INT = Pattern.compile("^\\s*(\\d+)");
 
     @Autowired
@@ -68,7 +71,12 @@ public class DispenseService {
         dispense.setDaysSupply(request.getDaysSupply());
         dispense.setPharmacyNotes(request.getPharmacyNotes());
 
-        return dispenseRepository.save(dispense);
+        Dispense saved = dispenseRepository.save(dispense);
+        auditService.recordEvent(staff, prescription.getPatient(), "DISPENSE_MEDICATION",
+                "dispensed " + request.getQuantityDispensed() + " of " + prescription.getMedication()
+                        + " to patient " + prescription.getPatient().getMrn() + " against prescription #"
+                        + prescription.getId(), "DISPENSE", saved.getId());
+        return saved;
     }
 
     public List<Dispense> getHistoryForPrescription(Long prescriptionId) {

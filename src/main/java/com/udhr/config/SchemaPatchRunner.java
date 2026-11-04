@@ -42,11 +42,25 @@ public class SchemaPatchRunner implements CommandLineRunner {
         // refresh_tokens.staff_id was required too, until patients got refresh
         // tokens of their own (a patient's row has no staff member).
         try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
-            if (conn.getMetaData().getDatabaseProductName().toLowerCase().contains("postgresql")) {
+            String database = conn.getMetaData().getDatabaseProductName().toLowerCase(java.util.Locale.ROOT);
+            if (database.contains("postgresql")) {
                 stmt.execute("ALTER TABLE refresh_tokens ALTER COLUMN staff_id DROP NOT NULL");
+            } else if (database.contains("mysql") || database.contains("mariadb")) {
+                // Existing MySQL installations still have a NOT NULL constraint from
+                // when only staff could sign in. Hibernate's ddl-auto=update does
+                // not relax that constraint, so patient refresh token inserts fail.
+                // This DDL preserves existing token rows and the staff foreign key.
+                try (java.sql.ResultSet columns = conn.getMetaData().getColumns(
+                        conn.getCatalog(), null, "refresh_tokens", "staff_id")) {
+                    if (columns.next() && columns.getInt("NULLABLE") == java.sql.DatabaseMetaData.columnNoNulls) {
+                        stmt.execute("ALTER TABLE refresh_tokens MODIFY COLUMN staff_id BIGINT NULL");
+                        System.out.println("SchemaPatchRunner: enabled patient refresh tokens on MySQL");
+                    }
+                }
             }
         } catch (Exception e) {
-            System.out.println("SchemaPatchRunner: skipped refresh_tokens.staff_id patch (" + e.getMessage() + ")");
+            System.err.println("SchemaPatchRunner: could not make refresh_tokens.staff_id nullable. "
+                    + "Patient sign-in may fail until this is fixed: " + e.getMessage());
         }
     }
 }

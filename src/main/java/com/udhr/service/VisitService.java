@@ -23,6 +23,9 @@ import java.util.stream.Collectors;
 public class VisitService {
 
     @Autowired
+    private AuditService auditService;
+
+    @Autowired
     private VisitRepository visitRepository;
 
     @Autowired
@@ -58,7 +61,11 @@ public class VisitService {
         visit.setReason(request.getReason());
         visit.setNotes(request.getNotes());
 
-        return visitRepository.save(visit);
+        Visit saved = visitRepository.save(visit);
+        auditService.recordEvent(staff, patient, "REGISTER_VISIT",
+                "created visit #" + saved.getId() + " for patient " + patient.getMrn()
+                        + " at " + facility.getName(), "VISIT", saved.getId());
+        return saved;
     }
 
     public List<Visit> getVisitsByPatient(Long patientId) {
@@ -94,12 +101,23 @@ public class VisitService {
         visit.setStaff(staff);
         visit.setFacility(staff.getFacility());
         visit.setReason(reason != null && !reason.isBlank() ? reason : "Clinic visit");
-        return visitRepository.save(visit);
+        Visit saved = visitRepository.save(visit);
+        auditService.recordEvent(staff, patient, "REGISTER_VISIT",
+                "opened a clinic visit for patient " + patient.getMrn() + " at " + staff.getFacility().getName(),
+                "VISIT", saved.getId());
+        return saved;
     }
 
     public Visit updateStatus(Visit visit, String status) {
+        String before = visit.getStatus();
         visit.setStatus(status);
-        return visitRepository.save(visit);
+        Visit saved = visitRepository.save(visit);
+        if (!java.util.Objects.equals(before, status)) {
+            auditService.recordEvent(auditService.currentStaff(), saved.getPatient(), "UPDATE_VISIT_STATUS",
+                    "moved visit #" + saved.getId() + " for patient " + saved.getPatient().getMrn()
+                            + " from " + before + " to " + status, "VISIT", saved.getId());
+        }
+        return saved;
     }
 
     /**
@@ -167,6 +185,9 @@ public class VisitService {
         // so close out any active queue entry at this facility.
         queueService.completeActiveEntryForPatientAtFacility(patient.getId(), staff.getFacility().getId());
 
+        auditService.recordEvent(staff, patient, "DISCHARGE_PATIENT",
+                "discharged patient " + patient.getMrn() + " from visit #" + saved.getId()
+                        + " with outcome " + saved.getDischargeOutcome(), "VISIT", saved.getId());
         return saved;
     }
 }

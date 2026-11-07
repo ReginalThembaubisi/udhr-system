@@ -75,7 +75,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // other endpoint is blocked here, at the filter, so this
                 // can't be bypassed by calling the API directly instead of
                 // going through the frontend's gate screen.
-                if (jwtUtil.extractMustChangePassword(token) && !"/api/auth/change-password".equals(request.getRequestURI())) {
+                String requestPath = request.getRequestURI();
+                boolean changingPassword = "/api/auth/change-password".equals(requestPath);
+                boolean signingOut = "/api/auth/logout".equals(requestPath);
+                if (jwtUtil.extractMustChangePassword(token) && !changingPassword && !signingOut) {
                     response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                     response.setContentType("application/json");
                     response.getWriter().write("\"Password change required before continuing.\"");
@@ -100,7 +103,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 // Same idea when two-step sign-in is compulsory (STAFF_2FA=required)
                 // and this account hasn't set it up yet: only the setup works.
-                if (jwtUtil.extractTwoFactorSetup(token) && !request.getRequestURI().startsWith("/api/auth/2fa/")) {
+                // First-time system admins can have BOTH onboarding flags at
+                // once. Password change must be possible before 2FA setup;
+                // otherwise each gate blocks the only route through the other.
+                // Logout remains available at either step so a shared computer
+                // is never stuck with a live refresh cookie.
+                if (jwtUtil.extractTwoFactorSetup(token)
+                        && !requestPath.startsWith("/api/auth/2fa/")
+                        && !changingPassword && !signingOut) {
                     response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                     response.setContentType("application/json");
                     response.getWriter().write("\"Set up two-step sign-in before continuing.\"");

@@ -799,6 +799,15 @@ function App() {
   // today) by ID/MRN — demographics + visit history only, no clinical data.
   const [adminLookupId, setAdminLookupId] = useState('');
   const [adminLookupRecord, setAdminLookupRecord] = useState(null);
+  // Hospital Admin: all registered patients (administrative directory only)
+  const [patientDirectoryQuery, setPatientDirectoryQuery] = useState('');
+  const [patientDirectory, setPatientDirectory] = useState({ patients: [], total: 0, page: 0, pages: 0 });
+  const [patientDirectoryLoading, setPatientDirectoryLoading] = useState(false);
+  // Hospital Admin: facility-scoped staff. System administrator accounts stay separate.
+  const [hospitalStaff, setHospitalStaff] = useState([]);
+  const [hospitalStaffLoading, setHospitalStaffLoading] = useState(false);
+  const [hospitalStaffForm, setHospitalStaffForm] = useState({ staffNumber: '', firstName: '', lastName: '', role: 'NURSE', email: '' });
+  const [issuedStaffPassword, setIssuedStaffPassword] = useState(null);
   const [portalPinInput, setPortalPinInput] = useState('');
   const [consentForm, setConsentForm] = useState({ consentGivenBy: '', smsRemindersConsent: false, explained: false });
 
@@ -1017,11 +1026,11 @@ function App() {
       // Changing the password ends every other session, so the tokens issued
       // here are the only ones that still work: the server already swapped the
       // refresh cookie, and this swaps the access token.
-      setAccessToken(data.token);
-      setToken(data.token);
-      setMustChangePassword(false);
+      applySession(data);
       setChangePasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      setSuccessMessage('Password updated. Welcome to UDHR!');
+      setSuccessMessage(data.twoFactorSetupRequired
+        ? 'Password updated. Complete two-step sign-in setup to continue.'
+        : 'Password updated. Welcome to UDHR!');
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -1156,7 +1165,7 @@ function App() {
 
   // Fetch data on login
   useEffect(() => {
-    if (token && !mustChangePassword && !(userRole === 'PATIENT' && mustChangePin)) {
+    if (token && !mustChangePassword && !twoFactorSetupRequired && !(userRole === 'PATIENT' && mustChangePin)) {
       if (userRole === 'PATIENT') {
         fetchPatientPortalData();
       } else if (userRole === 'NURSE') {
@@ -1177,7 +1186,7 @@ function App() {
         fetchFacilityList();
       }
     }
-  }, [token, userRole, mustChangePassword, mustChangePin]);
+  }, [token, userRole, mustChangePassword, mustChangePin, twoFactorSetupRequired]);
 
   // Keep the hand-off queues current without anyone clicking a tab: a patient
   // checked in at the front desk shows up on the nurse's screen within ~30 s,
@@ -1185,7 +1194,7 @@ function App() {
   // list as it was rather than flashing an error at someone mid-task, and it
   // pauses while the tab is hidden.
   useEffect(() => {
-    if (!token || mustChangePassword) return;
+    if (!token || mustChangePassword || twoFactorSetupRequired) return;
     const sources = {
       NURSE: ['/api/visits/queue/WAITING_VITALS', setNurseVitalsQueue],
       DOCTOR: ['/api/visits/queue/VITALS_DONE', setDoctorConsultQueue],
@@ -1205,7 +1214,7 @@ function App() {
       }
     }, 30000);
     return () => clearInterval(interval);
-  }, [token, userRole, mustChangePassword]);
+  }, [token, userRole, mustChangePassword, twoFactorSetupRequired]);
 
   // A success banner (e.g. "Vitals recorded") clears itself after a
   // few seconds instead of sitting there until someone dismisses it by hand.
@@ -2033,6 +2042,80 @@ function App() {
       setErrorMessage(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Patient directory: searching this list never exposes diagnoses, prescriptions,
+  // allergies or other clinical information to reception staff.
+  const fetchHospitalPatientDirectory = async (query = '', page = 0) => {
+    setPatientDirectoryLoading(true);
+    setErrorMessage('');
+    try {
+      const response = await apiFetch(`/api/hospital-admin/patients?query=${encodeURIComponent(query)}&page=${page}&size=15`, {
+        headers: getAuthHeaders()
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Could not load registered patients');
+      setPatientDirectory(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setPatientDirectoryLoading(false);
+    }
+  };
+
+  const openHospitalDirectoryPatient = async (patient) => {
+    const identifier = patient.idNumber || patient.mrn;
+    setAdminLookupId(identifier);
+    setAdminLookupRecord(null);
+    setErrorMessage('');
+    setLoading(true);
+    try {
+      const response = await apiFetch(`/api/checkin/lookup/${encodeURIComponent(identifier)}`, { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Unable to open administrative file');
+      setAdminLookupRecord(data);
+      setAdminTab('visitors');
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchHospitalStaff = async () => {
+    setHospitalStaffLoading(true);
+    setErrorMessage('');
+    try {
+      const response = await apiFetch('/api/hospital-admin/staff', { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Unable to load facility staff');
+      setHospitalStaff(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setHospitalStaffLoading(false);
+    }
+  };
+
+  const handleCreateHospitalStaff = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setSuccessMessage('');
+    setIssuedStaffPassword(null);
+    try {
+      const response = await apiFetch('/api/hospital-admin/staff', {
+        method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(hospitalStaffForm)
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || data.error || 'Could not create staff account');
+      setIssuedStaffPassword({ name: `${data.staff.firstName} ${data.staff.lastName}`, staffNumber: data.staff.staffNumber,
+        password: data.temporaryPassword });
+      setHospitalStaffForm({ staffNumber: '', firstName: '', lastName: '', role: 'NURSE', email: '' });
+      setSuccessMessage('Staff account created. Share the temporary password privately; the new user must change it at first login.');
+      fetchHospitalStaff();
+    } catch (err) {
+      setErrorMessage(err.message);
     }
   };
 
@@ -5835,7 +5918,9 @@ function App() {
   if (token && isAdmin && !mustChangePassword) {
     const adminNavItems = [
       { key: 'frontdesk', label: 'Front Desk', icon: <Clipboard size={17} /> },
-      { key: 'visitors', label: 'Visitors', icon: <Clock size={17} /> },
+      { key: 'patients', label: 'Registered patients', icon: <Users size={17} /> },
+      { key: 'visitors', label: 'Visitors & patient files', icon: <Clock size={17} /> },
+      { key: 'staff', label: 'Doctors & staff', icon: <User size={17} /> },
       { key: 'referrals', label: 'Incoming referrals', icon: <CornerUpRight size={17} /> },
     ];
 
@@ -5851,7 +5936,119 @@ function App() {
       setIsMobileNavOpen(false);
       if (key === 'visitors') fetchRecentCheckIns();
       if (key === 'referrals') fetchReferralReport();
+      if (key === 'patients') fetchHospitalPatientDirectory(patientDirectoryQuery, 0);
+      if (key === 'staff') fetchHospitalStaff();
     };
+
+    const renderPatientDirectoryPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Registered patients</h1>
+        <p className="udhr-page-subtitle">Search registered patients across the UDHR network. Only administrative details are shown; clinical records remain restricted to authorised healthcare staff.</p>
+        <div className="udhr-record-card" style={{ marginBottom: '18px' }}>
+          <div className="udhr-record-body">
+            <form className="udhr-search-bar" onSubmit={(e) => { e.preventDefault(); fetchHospitalPatientDirectory(patientDirectoryQuery, 0); }}>
+              <input type="search" className="udhr-input" value={patientDirectoryQuery} autoComplete="off"
+                placeholder="Search by name, SA ID, passport, phone or file number (MRN)"
+                aria-label="Search registered patients" onChange={e => setPatientDirectoryQuery(e.target.value)} />
+              <button type="submit" className="udhr-btn-compact" disabled={patientDirectoryLoading}>Search</button>
+              <button type="button" className="udhr-btn-neutral" onClick={() => {
+                setPatientDirectoryQuery(''); fetchHospitalPatientDirectory('', 0);
+              }}>Clear</button>
+            </form>
+            <p className="udhr-row-subtitle" style={{ marginTop: '10px' }}>
+              {patientDirectoryLoading ? 'Loading patients…' : `${patientDirectory.total} registered patient${patientDirectory.total === 1 ? '' : 's'} found`}
+            </p>
+          </div>
+        </div>
+        <div className="udhr-record-card">
+          <div className="udhr-record-body">
+            {patientDirectory.patients.length === 0 ? (
+              <p className="udhr-empty-note">{patientDirectoryLoading ? 'Loading…' : 'No registered patients match this search.'}</p>
+            ) : patientDirectory.patients.map(patient => (
+              <div className="udhr-list-row" key={patient.id}>
+                <div>
+                  <p className="udhr-row-title">{patient.firstName} {patient.lastName}</p>
+                  <p className="udhr-row-subtitle">File no. {patient.mrn}{patient.idNumber ? ` · ID: ${patient.idNumber}` : ''}</p>
+                  <p className="udhr-row-subtitle">Born {formatDate(patient.dateOfBirth)} · Portal PIN: {patient.portalPinSet ? 'set' : 'not set'}</p>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  <button type="button" className="udhr-btn-neutral" onClick={() => {
+                    setAdminTab('frontdesk'); setShowRegisterForm(false);
+                    setCheckinSearchId(patient.idNumber || patient.mrn); setFrontDeskResult(null);
+                  }}>Check in</button>
+                  <button type="button" className="udhr-btn-compact" onClick={() => openHospitalDirectoryPatient(patient)} disabled={loading}>View file</button>
+                </div>
+              </div>
+            ))}
+            {patientDirectory.pages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '16px', gap: '8px' }}>
+                <button type="button" className="udhr-btn-neutral" disabled={patientDirectory.page === 0 || patientDirectoryLoading}
+                  onClick={() => fetchHospitalPatientDirectory(patientDirectoryQuery, patientDirectory.page - 1)}>Previous</button>
+                <span className="udhr-row-subtitle">Page {patientDirectory.page + 1} of {patientDirectory.pages}</span>
+                <button type="button" className="udhr-btn-neutral" disabled={patientDirectory.page + 1 >= patientDirectory.pages || patientDirectoryLoading}
+                  onClick={() => fetchHospitalPatientDirectory(patientDirectoryQuery, patientDirectory.page + 1)}>Next</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+
+    const renderHospitalStaffPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Doctors & staff</h1>
+        <p className="udhr-page-subtitle">Manage doctors, nurses and pharmacists at your facility. System administrators control global access, role changes and security overrides.</p>
+        <div className="udhr-record-card" style={{ marginBottom: '18px' }}>
+          <div className="udhr-record-body">
+            <h2 className="udhr-lookup-heading">Facility staff</h2>
+            {hospitalStaffLoading ? <p className="udhr-empty-note">Loading staff…</p> : hospitalStaff.length === 0 ? (
+              <p className="udhr-empty-note">No staff accounts were found for this facility.</p>
+            ) : hospitalStaff.map(staff => (
+              <div className="udhr-list-row" key={staff.id}>
+                <div>
+                  <p className="udhr-row-title">{staff.firstName} {staff.lastName}</p>
+                  <p className="udhr-row-subtitle">{staff.staffNumber} · {roleLabel(staff.role)} · {staff.email}</p>
+                </div>
+                <span className={`udhr-tag ${staff.active ? 'info' : 'warning'}`}>{staff.active ? 'Active' : 'Inactive'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="udhr-record-card" style={{ marginBottom: '18px' }}>
+          <div className="udhr-record-body">
+            <h2 className="udhr-lookup-heading">Create facility staff account</h2>
+            <p className="udhr-row-subtitle">Only doctor, nurse and pharmacist accounts can be created here. The system generates a temporary password, shown once.</p>
+            <form onSubmit={handleCreateHospitalStaff} className="udhr-form-grid" style={{ marginTop: '14px' }}>
+              <div className="udhr-form-group"><label className="udhr-label">Staff number</label>
+                <input className="udhr-input" required value={hospitalStaffForm.staffNumber} autoComplete="off" onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, staffNumber: e.target.value })}/></div>
+              <div className="udhr-form-group"><label className="udhr-label">First name</label>
+                <input className="udhr-input" required value={hospitalStaffForm.firstName} onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, firstName: e.target.value })}/></div>
+              <div className="udhr-form-group"><label className="udhr-label">Last name</label>
+                <input className="udhr-input" required value={hospitalStaffForm.lastName} onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, lastName: e.target.value })}/></div>
+              <div className="udhr-form-group"><label className="udhr-label">Work email</label>
+                <input className="udhr-input" type="email" required value={hospitalStaffForm.email} onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, email: e.target.value })}/></div>
+              <div className="udhr-form-group"><label className="udhr-label">Role</label>
+                <select className="udhr-input" value={hospitalStaffForm.role} onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, role: e.target.value })}>
+                  <option value="NURSE">Nurse</option><option value="DOCTOR">Doctor</option><option value="PHARMACIST">Pharmacist</option>
+                </select></div>
+              <div className="udhr-form-group" style={{ alignSelf: 'end' }}><button type="submit" className="udhr-btn-primary">Create staff account</button></div>
+            </form>
+          </div>
+        </div>
+        {issuedStaffPassword && (
+          <div className="udhr-record-card" style={{ border: '2px solid #159e7b' }} role="status">
+            <div className="udhr-record-body">
+              <h3 className="udhr-row-title">Temporary password — show privately once</h3>
+              <p className="udhr-row-subtitle">{issuedStaffPassword.name} ({issuedStaffPassword.staffNumber})</p>
+              <p style={{ overflowWrap: 'anywhere', fontWeight: 750, fontSize: '20px' }}>{issuedStaffPassword.password}</p>
+              <p className="udhr-row-subtitle">The new user must change this password at first sign-in. Do not share it in group chats.</p>
+              <button className="udhr-btn-primary" type="button" onClick={() => setIssuedStaffPassword(null)}>Handed over — hide</button>
+            </div>
+          </div>
+        )}
+        <p className="udhr-row-subtitle" style={{ marginTop: '12px' }}>For a forgotten staff password, verify identity and contact the System Administrator for a reset. No staff member can view an existing password.</p>
+      </>
+    );
 
     const renderFrontDeskPanel = () => (
       <>
@@ -6311,6 +6508,8 @@ function App() {
           )}
 
           {adminTab === 'frontdesk' && renderFrontDeskPanel()}
+          {adminTab === 'patients' && renderPatientDirectoryPanel()}
+          {adminTab === 'staff' && renderHospitalStaffPanel()}
           {adminTab === 'visitors' && renderVisitorsPanel()}
           {adminTab === 'referrals' && renderReferralsPanel()}
         </main>

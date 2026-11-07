@@ -101,6 +101,8 @@ public class SecurityConfig {
                 // clinical role — this person manages access, not patients.
                 // Listed before the rules below so it is matched first.
                 .requestMatchers("/api/system-admin/**").hasRole("SYSTEM_ADMIN")
+                // Facility-level patient directory and local clinical staff accounts, never SYSTEM_ADMIN.
+                .requestMatchers("/api/hospital-admin/**").hasRole("ADMIN")
                 // The login screen fetches this before anyone has signed in.
                 .requestMatchers(HttpMethod.GET, "/api/announcements/public").permitAll()
                 // Public notices show on every patient's sign-in screen across the

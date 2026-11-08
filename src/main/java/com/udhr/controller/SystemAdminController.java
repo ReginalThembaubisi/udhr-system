@@ -34,6 +34,12 @@ public class SystemAdminController {
     private com.udhr.service.SecurityAlertService securityAlertService;
 
     @Autowired
+    private com.udhr.service.SecurityAlertMailer securityAlertMailer;
+
+    @Autowired
+    private com.udhr.service.AlertEmailSender alertEmailSender;
+
+    @Autowired
     private JwtUtil jwtUtil;
 
     private String extractStaffNumber(HttpServletRequest request) {
@@ -123,6 +129,49 @@ public class SystemAdminController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
         }
+    }
+
+    /** Changes a staff account's email (where security alerts are sent, for system admins). */
+    @PostMapping("/staff/{staffId}/email")
+    public ResponseEntity<?> changeEmail(@PathVariable Long staffId,
+                                         @RequestBody Map<String, String> body,
+                                         HttpServletRequest request) {
+        String actor = extractStaffNumber(request);
+        if (actor == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+        try {
+            return ResponseEntity.ok(systemAdminService.changeEmail(staffId, body.get("email"), actor));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    /** Whether alert emails are set up, and who would get them. */
+    @GetMapping("/alert-email")
+    public ResponseEntity<?> alertEmailStatus() {
+        return ResponseEntity.ok(Map.of(
+                "configured", alertEmailSender.configured(),
+                "recipients", securityAlertMailer.recipients()));
+    }
+
+    /** Sends a test email to the system admins, to check the setup works. */
+    @PostMapping("/alert-email/test")
+    public ResponseEntity<?> sendTestAlertEmail(HttpServletRequest request) {
+        String actor = extractStaffNumber(request);
+        if (actor == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+        if (!alertEmailSender.configured()) {
+            return ResponseEntity.badRequest().body(Map.of("message",
+                    "Alert emails aren't set up yet: add BREVO_API_KEY and ALERT_EMAIL_FROM on Render."));
+        }
+        int sentTo = securityAlertMailer.sendTest(actor);
+        if (sentTo == 0) {
+            return ResponseEntity.badRequest().body(Map.of("message",
+                    "The test email wasn't sent. Check the system admins have real emails, and that the sender is verified in Brevo."));
+        }
+        return ResponseEntity.ok(Map.of("message", "Test email sent to " + sentTo + " system admin" + (sentTo == 1 ? "" : "s") + "."));
     }
 
     /** Warnings worked out from the audit trail: unusual record access, sign-ins from new places, lockouts. */

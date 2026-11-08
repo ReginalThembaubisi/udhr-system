@@ -83,7 +83,7 @@
 }
 .udhr-workspace-brand-copy { position: relative; z-index: 1; min-width: 0; }
 .udhr-workspace-brand-title {
-  font-family: 'Outfit','Inter',sans-serif;
+  font-family: 'Inter',sans-serif;
   font-size: clamp(17px, 1.56vw, 26px);
   font-weight: 730;
   letter-spacing: -.025em;

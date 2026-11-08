@@ -13,7 +13,7 @@ import './udhr-standard.css';
 import './udhr-audit.css';
 import './udhr-patient-accounts.css';
 import './udhr-registration.css';
-import { apiFetch, getAccessToken, onAccessReasonRequired, onSessionExpired, refreshSession, setAccessToken } from './lib/api';
+import { apiFetch, getAccessToken, onAccessReasonRequired, onSessionExpired, refreshSession, setAccessToken, onDatabaseStatus } from './lib/api';
 import { LANGUAGES, getLanguage, setLanguage, t } from './i18n';
 
 // Sign-out after inactivity on shared clinic computers (fix list P1-4).
@@ -413,8 +413,7 @@ function BulkStockImport({ stockItems, onDone }) {
         value={text}
         onChange={(e) => { setText(e.target.value); setMessage(null); }}
         placeholder="Paste your rows here"
-        aria-label="Stock list"
-      />
+        aria-label="Stock list" maxLength={2000} />
       {rows.length > 0 && (
         <div style={{ overflowX: 'auto', marginTop: '12px' }}>
           <table style={{ width: '100%', fontSize: '16px', borderCollapse: 'collapse' }}>
@@ -610,8 +609,8 @@ function TwoFactorSettings({ required, onSession }) {
           ) : (
             <form onSubmit={disable}>
               <p className="udhr-label" style={{ marginTop: '14px' }}>Turn it off</p>
-              <input type="password" className="udhr-input" aria-label="Your password" placeholder="Your password" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ marginBottom: '8px' }} />
-              <input type="text" className="udhr-input udhr-code-input" aria-label="Current code" placeholder="Current 6-digit code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" required style={{ marginBottom: '8px' }} />
+              <input type="password" className="udhr-input" aria-label="Your password" placeholder="Your password" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ marginBottom: '8px' }} maxLength={128} />
+              <input type="text" className="udhr-input udhr-code-input" aria-label="Current code" placeholder="Current 6-digit code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" required style={{ marginBottom: '8px' }} maxLength={100} />
               <button type="submit" className="udhr-btn-neutral">Turn off two-step sign-in</button>
             </form>
           )}
@@ -632,7 +631,7 @@ function TwoFactorSettings({ required, onSession }) {
           <img src={setup.qr} alt="QR code for your authenticator app" width="200" height="200" className="udhr-two-factor-qr" />
           <p className="udhr-row-subtitle">Can't scan? Enter this key in the app instead: <code className="udhr-two-factor-key">{setup.secret.match(/.{1,4}/g).join(' ')}</code></p>
           <label className="udhr-label" htmlFor="twoFactorSetupCode" style={{ marginTop: '12px' }}>Code shown in the app</label>
-          <input id="twoFactorSetupCode" type="text" className="udhr-input udhr-code-input" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="6 digits" required />
+          <input id="twoFactorSetupCode" type="text" className="udhr-input udhr-code-input" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="6 digits" required maxLength={100} />
           <button type="submit" className="udhr-btn-primary" style={{ marginTop: '10px' }} disabled={code.length !== 6}>Turn on</button>
         </form>
       )}
@@ -957,6 +956,12 @@ function App() {
   const [securityAlerts, setSecurityAlerts] = useState([]);
   const [alertEmail, setAlertEmail] = useState(null);
   const [demoInbox, setDemoInbox] = useState([]);
+  const [systemStatus, setSystemStatus] = useState(null);
+  // Set when the server says the database can't be reached; cleared when a request works again.
+  const [databaseDown, setDatabaseDown] = useState(null);
+  useEffect(() => {
+    onDatabaseStatus((ok, message) => setDatabaseDown(ok ? null : message));
+  }, []);
   const [openDemoEmail, setOpenDemoEmail] = useState(null);
   const [accountCategory, setAccountCategory] = useState('staff');
   const [systemAdminPatients, setSystemAdminPatients] = useState([]);
@@ -1233,6 +1238,45 @@ function App() {
   // Logout. Tells the server first so the tokens are actually revoked:
   // clearing the browser alone would leave them working for anyone else
   // holding a copy. `notice` is shown on the login screen afterwards.
+  // Browser Back and Forward move between the screens inside the app
+  // (rubric 0.2.3), instead of leaving it. Each tab change adds a history
+  // entry; Back restores the previous tab. Forms keep what was typed, since
+  // their contents live in the app's state, not in the tab.
+  const screen = { activeTabStaff, patientPortalTab, adminTab, pharmacistTab, systemAdminTab, activeRecordTab };
+  const screenKey = JSON.stringify(screen);
+  const restoringScreen = useRef(false);
+  const firstScreen = useRef(true);
+  const currentScreenKey = useRef(screenKey);
+  currentScreenKey.current = screenKey;
+  useEffect(() => {
+    if (restoringScreen.current) {
+      restoringScreen.current = false;
+      return;
+    }
+    if (firstScreen.current) {
+      firstScreen.current = false;
+      window.history.replaceState({ udhrScreen: screen }, '');
+      return;
+    }
+    window.history.pushState({ udhrScreen: screen }, '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screenKey]);
+  useEffect(() => {
+    const onBack = (event) => {
+      const saved = event.state?.udhrScreen;
+      if (!saved || JSON.stringify(saved) === currentScreenKey.current) return;
+      restoringScreen.current = true;
+      setActiveTabStaff(saved.activeTabStaff);
+      setPatientPortalTab(saved.patientPortalTab);
+      setAdminTab(saved.adminTab);
+      setPharmacistTab(saved.pharmacistTab);
+      setSystemAdminTab(saved.systemAdminTab);
+      setActiveRecordTab(saved.activeRecordTab);
+    };
+    window.addEventListener('popstate', onBack);
+    return () => window.removeEventListener('popstate', onBack);
+  }, []);
+
   const handleLogout = (reason, notice) => {
     apiFetch(reason === 'idle' ? '/api/auth/logout?reason=idle' : '/api/auth/logout', {
       method: 'POST',
@@ -3092,6 +3136,17 @@ function App() {
     }
   };
 
+  const fetchSystemStatus = async () => {
+    setSystemStatus(null);
+    try {
+      const response = await apiFetch('/api/system-admin/system-status', { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      setSystemStatus(response.ok ? data : { database: 'unavailable', message: data.message });
+    } catch (err) {
+      setSystemStatus({ database: 'unavailable', message: err.message });
+    }
+  };
+
   const fetchAlertEmailStatus = async () => {
     try {
       const response = await apiFetch('/api/system-admin/alert-email', { headers: getAuthHeaders() });
@@ -3271,7 +3326,7 @@ function App() {
             <label className="udhr-label" htmlFor="consent-given-by">Parent or guardian who agreed (patient is under 18)</label>
             <input id="consent-given-by" type="text" className="udhr-input" value={patientRegForm.consentGivenBy}
               onChange={(e) => setPatientRegForm({ ...patientRegForm, consentGivenBy: e.target.value })}
-              placeholder="e.g. Mother: Thandi Zulu" required />
+              placeholder="e.g. Mother: Thandi Zulu" required maxLength={100} />
           </div>
         )}
         <label className="udhr-checkbox-row">
@@ -3291,6 +3346,15 @@ function App() {
   // Shown on every signed-in screen from 10 minutes without activity. Drawn
   // straight into <body> so nothing on the page (like the chat bubble) can
   // sit on top of it.
+  // Shown on every screen while the database can't be reached.
+  const databaseBanner = databaseDown ? (
+    <div role="alert" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 2000, padding: '10px 16px',
+      background: 'var(--udhr-danger-tint)', color: 'var(--udhr-danger-text)', borderBottom: '1px solid var(--udhr-danger)',
+      fontWeight: 600, textAlign: 'center' }}>
+      {databaseDown}
+    </div>
+  ) : null;
+
   const accessReasonDialog = accessReasonAsk ? (
     <AccessReasonDialog
       message={accessReasonAsk.message}
@@ -3388,7 +3452,7 @@ function App() {
   if (token && twoFactorSetupRequired && !mustChangePassword) {
     return (
       <div className="udhr-restoring" style={{ alignItems: 'flex-start', paddingTop: '60px' }}>
-        {idleDialog}{accessReasonDialog}
+        {idleDialog}{accessReasonDialog}{databaseBanner}
         <div className="udhr-idle-dialog" style={{ maxWidth: '480px' }}>
           <h2>Set up two-step sign-in</h2>
           <p>Your clinic requires a code from an authenticator app as well as your password.</p>
@@ -3405,6 +3469,7 @@ function App() {
   if (!token) {
     return (
       <div className="udhr-login-shell">
+        {databaseBanner}
         <div className="udhr-login-brand">
           <div className="udhr-login-logo">
             <div className="udhr-login-logo-chip">
@@ -3503,7 +3568,7 @@ function App() {
                   <label className="udhr-label" htmlFor="patientDeviceCode">Code from the text message</label>
                   <input id="patientDeviceCode" type="text" className="udhr-input udhr-code-input" value={patientDeviceCode} placeholder="6 digits"
                     onChange={(e) => setPatientDeviceCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    inputMode="numeric" autoComplete="one-time-code" autoFocus required />
+                    inputMode="numeric" autoComplete="one-time-code" autoFocus required maxLength={100} />
                 </div>
                 {rememberBox}
                 <button type="submit" className="udhr-btn-primary" disabled={loading || patientDeviceCode.length !== 6} aria-busy={loading}>
@@ -3520,7 +3585,7 @@ function App() {
                   <label className="udhr-label" htmlFor="twoFactorCode">Code from your authenticator app</label>
                   <input id="twoFactorCode" type="text" className="udhr-input udhr-code-input" value={twoFactorCode}
                     onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    inputMode="numeric" autoComplete="one-time-code" placeholder="6 digits" autoFocus required />
+                    inputMode="numeric" autoComplete="one-time-code" placeholder="6 digits" autoFocus required maxLength={100} />
                   <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>
                     Open Google or Microsoft Authenticator on your phone and type the 6-digit code shown for UDHR. Lost your phone? Ask your system administrator.
                   </p>
@@ -3540,9 +3605,9 @@ function App() {
                   We'll email a code to the work email on your account. You'll use it to choose a new password.
                 </p>
                 <div className="udhr-form-group">
-                  <label className="udhr-label" htmlFor="resetStaffNum">Staff Number</label>
+                  <label className="udhr-label" htmlFor="resetStaffNum">Staff number</label>
                   <input type="text" id="resetStaffNum" className="udhr-input" value={staffNumber} required
-                    onChange={(e) => setStaffNumber(e.target.value)} placeholder="e.g. DOC001 or NUR001" />
+                    onChange={(e) => setStaffNumber(e.target.value)} placeholder="e.g. DOC001 or NUR001" maxLength={100} />
                 </div>
                 <button type="submit" className="udhr-btn-primary" disabled={loading} aria-busy={loading}>
                   {loading ? 'Sending…' : 'Email me a code'}
@@ -3568,17 +3633,17 @@ function App() {
                   <label className="udhr-label" htmlFor="staffResetCode">Code from the email</label>
                   <input id="staffResetCode" type="text" className="udhr-input udhr-code-input" value={resetCode} placeholder="6 digits"
                     onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    inputMode="numeric" autoComplete="one-time-code" autoFocus required />
+                    inputMode="numeric" autoComplete="one-time-code" autoFocus required maxLength={100} />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label" htmlFor="newResetPassword">New password (at least 8 characters)</label>
                   <input id="newResetPassword" type="password" className="udhr-input" value={newResetPassword} autoComplete="new-password" required
-                    onChange={(e) => setNewResetPassword(e.target.value)} />
+                    onChange={(e) => setNewResetPassword(e.target.value)} maxLength={128} />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label" htmlFor="newResetPasswordAgain">New password again</label>
                   <input id="newResetPasswordAgain" type="password" className="udhr-input" value={newResetPasswordAgain} autoComplete="new-password" required
-                    onChange={(e) => setNewResetPasswordAgain(e.target.value)} />
+                    onChange={(e) => setNewResetPasswordAgain(e.target.value)} maxLength={128} />
                 </div>
                 <button type="submit" className="udhr-btn-primary"
                   disabled={loading || resetCode.length !== 6 || newResetPassword.length < 8 || !newResetPasswordAgain} aria-busy={loading}>
@@ -3603,7 +3668,7 @@ function App() {
                       setPatientIdNumber(digits);
                       const parsed = parseSaId(digits);
                       if (parsed?.dateOfBirth) setPatientDob(parsed.dateOfBirth);
-                    }} />
+                    }} maxLength={100} />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label" htmlFor="resetDob">{t('login.dateOfBirth')}</label>
@@ -3633,17 +3698,17 @@ function App() {
                   <label className="udhr-label" htmlFor="resetCode">Code from the text message</label>
                   <input id="resetCode" type="text" className="udhr-input udhr-code-input" value={resetCode} placeholder="6 digits"
                     onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    inputMode="numeric" autoComplete="one-time-code" autoFocus required />
+                    inputMode="numeric" autoComplete="one-time-code" autoFocus required maxLength={100} />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label" htmlFor="newResetPin">New PIN (6 digits)</label>
                   <input id="newResetPin" type="password" className="udhr-input" value={newResetPin} inputMode="numeric" autoComplete="new-password" required
-                    onChange={(e) => setNewResetPin(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+                    onChange={(e) => setNewResetPin(e.target.value.replace(/\D/g, '').slice(0, 6))} maxLength={128} />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label" htmlFor="newResetPinAgain">New PIN again</label>
                   <input id="newResetPinAgain" type="password" className="udhr-input" value={newResetPinAgain} inputMode="numeric" autoComplete="new-password" required
-                    onChange={(e) => setNewResetPinAgain(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+                    onChange={(e) => setNewResetPinAgain(e.target.value.replace(/\D/g, '').slice(0, 6))} maxLength={128} />
                   <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>Avoid easy PINs like 123456 or your birthday.</p>
                 </div>
                 <button type="submit" className="udhr-btn-primary"
@@ -3674,8 +3739,7 @@ function App() {
                         }}
                         inputMode="numeric"
                         placeholder={t('login.idPlaceholder')}
-                        required
-                      />
+                        required maxLength={100} />
                     </div>
                     <div className="udhr-form-group">
                       <label className="udhr-label" htmlFor="patientDob">{t('login.dateOfBirth')}</label>
@@ -3692,8 +3756,7 @@ function App() {
                         inputMode="numeric"
                         autoComplete="current-password"
                         placeholder={t('login.pinPlaceholder')}
-                        required
-                      />
+                        required maxLength={128} />
                       <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>{t('login.pinHelp')}</p>
                       <button type="button" className="udhr-link-button" style={{ marginTop: '4px' }}
                         onClick={() => { setForgotPinStep('start'); setErrorMessage(''); setSuccessMessage(''); }}>
@@ -3704,7 +3767,7 @@ function App() {
                 ) : (
                   <>
                     <div className="udhr-form-group">
-                      <label className="udhr-label" htmlFor="staffNum">Staff Number</label>
+                      <label className="udhr-label" htmlFor="staffNum">Staff number</label>
                       <input
                         type="text"
                         id="staffNum"
@@ -3712,8 +3775,7 @@ function App() {
                         value={staffNumber}
                         onChange={(e) => setStaffNumber(e.target.value)}
                         placeholder="e.g. DOC001 or NUR001"
-                        required
-                      />
+                        required maxLength={100} />
                     </div>
                     <div className="udhr-form-group">
                       <label className="udhr-label" htmlFor="staffPass">Password</label>
@@ -3725,8 +3787,7 @@ function App() {
                           value={staffPassword}
                           onChange={(e) => setStaffPassword(e.target.value)}
                           placeholder="••••••••"
-                          required
-                        />
+                          required maxLength={128} />
                         <button type="button" className="udhr-password-toggle" onClick={() => setShowStaffPassword(!showStaffPassword)} aria-label={showStaffPassword ? 'Hide password' : 'Show password'}>
                           {showStaffPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
@@ -3765,7 +3826,7 @@ function App() {
 
     return (
       <div className="udhr-page">
-        {idleDialog}{accessReasonDialog}
+        {idleDialog}{accessReasonDialog}{databaseBanner}
         <div className="udhr-page-inner">
           <header className="udhr-page-header">
             <div className="udhr-page-logo">
@@ -4122,8 +4183,7 @@ function App() {
                             className="udhr-note-input"
                             placeholder="How does this make you feel? (e.g. side effects, dizzy...)"
                             value={adherenceNotes[log.id] || ''}
-                            onChange={(e) => setAdherenceNotes({ ...adherenceNotes, [log.id]: e.target.value })}
-                          />
+                            onChange={(e) => setAdherenceNotes({ ...adherenceNotes, [log.id]: e.target.value })} maxLength={100} />
                         ) : (
                           log.notes && (
                             <p className="udhr-row-subtitle" style={{ fontStyle: 'italic' }}>Patient feedback: "{log.notes}"</p>
@@ -4157,7 +4217,7 @@ function App() {
               <div className="udhr-segmented" style={{ maxWidth: '460px' }}>
                 <button type="button" className={`udhr-segmented-btn ${foodInputMethod === 'type' ? 'active' : ''}`} onClick={() => setFoodInputMethod('type')}>Type</button>
                 <button type="button" className={`udhr-segmented-btn ${foodInputMethod === 'search' ? 'active' : ''}`} onClick={() => setFoodInputMethod('search')}>Open Food Facts</button>
-                <button type="button" className={`udhr-segmented-btn ${foodInputMethod === 'upload' ? 'active' : ''}`} onClick={() => setFoodInputMethod('upload')}>Upload Label</button>
+                <button type="button" className={`udhr-segmented-btn ${foodInputMethod === 'upload' ? 'active' : ''}`} onClick={() => setFoodInputMethod('upload')}>Upload label</button>
               </div>
 
               {foodInputMethod === 'type' && (
@@ -4168,8 +4228,7 @@ function App() {
                     value={ingredientsInput}
                     onChange={(e) => setIngredientsInput(e.target.value)}
                     placeholder="e.g. Sugar, Wheat Flour, Sodium Chloride, Peanut Butter, Vegetable Fat, Milk..."
-                    rows={4}
-                  />
+                    rows={4} maxLength={2000} />
                 </div>
               )}
 
@@ -4180,7 +4239,7 @@ function App() {
                       <label className="udhr-label">Lookup type</label>
                       <select className="udhr-input" value={lookupType} onChange={(e) => setLookupType(e.target.value)}>
                         <option value="barcode">Barcode</option>
-                        <option value="search">Product Name</option>
+                        <option value="search">Product name</option>
                       </select>
                     </div>
                     <div style={{ flex: 1 }} className="udhr-form-group">
@@ -4191,8 +4250,7 @@ function App() {
                           className="udhr-input"
                           value={productQuery}
                           onChange={(e) => setProductQuery(e.target.value)}
-                          placeholder={lookupType === 'barcode' ? 'e.g. 737628064502' : 'e.g. wheat bread'}
-                        />
+                          placeholder={lookupType === 'barcode' ? 'e.g. 737628064502' : 'e.g. wheat bread'} maxLength={100} />
                         <button type="button" className="udhr-btn-neutral" style={{ whiteSpace: 'nowrap' }} onClick={handleProductLookup} disabled={loading}>
                           Fetch
                         </button>
@@ -4202,7 +4260,7 @@ function App() {
                   {ingredientsInput && (
                     <div className="udhr-form-group">
                       <label className="udhr-label">Fetched ingredients</label>
-                      <textarea className="udhr-textarea" value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} />
+                      <textarea className="udhr-textarea" value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={2} maxLength={2000} />
                     </div>
                   )}
                 </div>
@@ -4221,7 +4279,7 @@ function App() {
                     <div className="udhr-form-group">
                       <label className="udhr-label">Ingredients read from the photo</label>
                       {ocrNote && <p className="udhr-row-subtitle" style={{ margin: '0 0 6px' }}>{ocrNote}</p>}
-                      <textarea className="udhr-textarea" value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={4} />
+                      <textarea className="udhr-textarea" value={ingredientsInput} onChange={(e) => setIngredientsInput(e.target.value)} rows={4} maxLength={2000} />
                     </div>
                   )}
                   <p style={{ fontSize: '15.5px', color: 'var(--udhr-text-muted)' }}>
@@ -4255,7 +4313,7 @@ function App() {
             </>
           )}
 
-          {/* ===== Lab Results ===== */}
+          {/* ===== Lab results ===== */}
           {patientPortalTab === 'labs' && (
             <>
               <p style={{ color: 'var(--udhr-text-muted)', fontSize: '16px', margin: '0 0 14px' }}>
@@ -4276,14 +4334,14 @@ function App() {
             </>
           )}
 
-          {/* ===== Referral Letter ===== */}
+          {/* ===== Referral letter ===== */}
           {patientPortalTab === 'referral' && (
             <>
               {patientReferral ? (
                 <div className="udhr-card" style={{ maxWidth: '480px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
                     <div>
-                      <p style={{ margin: '0 0 2px', fontSize: '15px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Referral Letter</p>
+                      <p style={{ margin: '0 0 2px', fontSize: '15px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Referral letter</p>
                       <p style={{ margin: 0, fontSize: '16.5px', fontWeight: 700 }}>Present this at the front desk</p>
                     </div>
                     <span className={`udhr-tag ${patientReferral.urgency === 'EMERGENCY' ? 'danger' : patientReferral.urgency === 'URGENT' ? 'warning' : 'info'}`}>
@@ -4291,7 +4349,7 @@ function App() {
                     </span>
                   </div>
                   <div style={{ border: '1px dashed var(--udhr-border)', borderRadius: '10px', padding: '16px', textAlign: 'center', marginBottom: '16px' }}>
-                    <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Referral Code</p>
+                    <p style={{ margin: '0 0 4px', fontSize: '14px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Referral code</p>
                     <p style={{ margin: 0, fontSize: '26px', fontWeight: 800, letterSpacing: '0.02em' }}>REF-{patientReferral.id}</p>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '16px' }}>
@@ -4314,7 +4372,7 @@ function App() {
         {chatWidgetOpen && (
           <div className="udhr-chat-widget">
             <div className="udhr-chat-widget-header">
-              <span><MessageCircle size={16} style={{ verticalAlign: '-3px', marginRight: '6px' }} />Health Assistant</span>
+              <span><MessageCircle size={16} style={{ verticalAlign: '-3px', marginRight: '6px' }} />Health assistant</span>
               <button type="button" className="udhr-chat-widget-close" onClick={() => setChatWidgetOpen(false)} aria-label="Close health assistant">
                 <XCircle size={18} />
               </button>
@@ -4344,8 +4402,7 @@ function App() {
                 placeholder="e.g. I have a headache and fever"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                disabled={chatSending}
-              />
+                disabled={chatSending} maxLength={100} />
               <button type="submit" className="udhr-btn-primary" style={{ width: 'auto', padding: '10px 16px' }} disabled={chatSending || !chatInput.trim()}>
                 <Send size={16} />
               </button>
@@ -4386,7 +4443,7 @@ function App() {
     const clinicalNavItems = isNurse
       ? [
           { key: 'vitals', label: 'Vitals', icon: <Activity size={17} /> },
-          { key: 'labs', label: 'Lab Results', icon: <FileSpreadsheet size={17} /> },
+          { key: 'labs', label: 'Lab results', icon: <FileSpreadsheet size={17} /> },
           { key: 'alerts', label: 'Alerts', icon: <ShieldAlert size={17} /> },
           { key: 'referrals', label: 'Referrals', icon: <CornerUpRight size={17} /> },
         ]
@@ -4466,8 +4523,8 @@ function App() {
                       <option value="URGENT">Urgent</option>
                       <option value="EMERGENCY">Emergency</option>
                     </select>
-                    <input type="text" className="udhr-input" aria-label="Reason for referral" placeholder="Reason for referral" value={referralForm.reason} onChange={(e) => setReferralForm({ ...referralForm, reason: e.target.value })} required />
-                    <textarea className="udhr-textarea" placeholder="Clinical summary" value={referralForm.clinicalSummary} onChange={(e) => setReferralForm({ ...referralForm, clinicalSummary: e.target.value })} rows={2} />
+                    <input type="text" className="udhr-input" aria-label="Reason for referral" placeholder="Reason for referral" value={referralForm.reason} onChange={(e) => setReferralForm({ ...referralForm, reason: e.target.value })} required maxLength={100} />
+                    <textarea className="udhr-textarea" placeholder="Clinical summary" value={referralForm.clinicalSummary} onChange={(e) => setReferralForm({ ...referralForm, clinicalSummary: e.target.value })} rows={2} maxLength={2000} />
                     <button type="submit" className="udhr-btn-primary" disabled={loading}>Send referral</button>
                   </div>
                 </form>
@@ -4476,7 +4533,7 @@ function App() {
               <div className="udhr-lookup-inline">
                 <p className="udhr-label"><Search size={16} aria-hidden="true" /> Look up a patient by ID or file number</p>
               <form onSubmit={handleReferralLookup} className="udhr-search-bar">
-                <input type="text" className="udhr-input" autoComplete="off" value={referralLookupId} onChange={(e) => setReferralLookupId(e.target.value)} placeholder="ID number or file number" aria-label="Patient ID number or MRN" required />
+                <input type="text" className="udhr-input" autoComplete="off" value={referralLookupId} onChange={(e) => setReferralLookupId(e.target.value)} placeholder="ID number or file number" aria-label="Patient ID number or MRN" required maxLength={100} />
                 <button type="submit" className="udhr-btn-compact">Find patient</button>
               </form>
               </div>
@@ -4531,7 +4588,7 @@ function App() {
 
     const renderNurseVitalsPanel = () => (
       <>
-        <h1 className="udhr-page-title">Capture Vitals</h1>
+        <h1 className="udhr-page-title">Capture vitals</h1>
         <p className="udhr-page-subtitle">Patients waiting for vitals. Pick the next one from the list.</p>
 
         {!vitalsPatient && (
@@ -4546,8 +4603,7 @@ function App() {
                 value={vitalsSearchId}
                 onChange={(e) => setVitalsSearchId(e.target.value)}
                 placeholder="ID number or file number"
-                required
-              />
+                required maxLength={100} />
               <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Find'}</button>
             </form>
               <img className="udhr-lookup-art" src="/images/clipboard-care.svg" alt="" aria-hidden="true" />
@@ -4636,7 +4692,7 @@ function App() {
                   </div>
                   <div className="udhr-form-group" style={{ marginTop: '12px' }}>
                     <label className="udhr-label" htmlFor="vital-notes">Notes for the doctor (optional)</label>
-                    <textarea id="vital-notes" className="udhr-textarea" rows={2} placeholder="Anything the doctor should know before seeing the patient..." value={vitalsForm.notes} onChange={(e) => setVitalsForm({ ...vitalsForm, notes: e.target.value })} />
+                    <textarea id="vital-notes" className="udhr-textarea" rows={2} placeholder="Anything the doctor should know before seeing the patient..." value={vitalsForm.notes} onChange={(e) => setVitalsForm({ ...vitalsForm, notes: e.target.value })} maxLength={2000} />
                   </div>
                   <button type="submit" className="udhr-btn-primary" disabled={loading}>{loading ? 'Saving...' : 'Save vitals & send to doctor'}</button>
                 </form>
@@ -4649,7 +4705,7 @@ function App() {
 
     const renderNurseLabsPanel = () => (
       <>
-        <h1 className="udhr-page-title">Lab Results</h1>
+        <h1 className="udhr-page-title">Lab results</h1>
         <p className="udhr-page-subtitle">Look a patient up by ID or file number to attach a lab result to their file.</p>
 
         {!labsPatient && (
@@ -4663,8 +4719,7 @@ function App() {
                 value={labsSearchId}
               onChange={(e) => setLabsSearchId(e.target.value)}
               placeholder="ID number or file number"
-              required
-            />
+              required maxLength={100} />
             <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Find'}</button>
           </form>
             <img className="udhr-lookup-art" src="/images/clipboard-care.svg" alt="" aria-hidden="true" />
@@ -4683,15 +4738,15 @@ function App() {
                 </p></div></div>
                 <form onSubmit={handleAddLabResult} className="udhr-labs-form">
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                    <input type="text" className="udhr-input" placeholder="Test name (e.g. HbA1c)" value={labResultForm.testName} onChange={(e) => setLabResultForm({ ...labResultForm, testName: e.target.value })} required />
-                    <input type="text" className="udhr-input" placeholder="Result" value={labResultForm.result} onChange={(e) => setLabResultForm({ ...labResultForm, result: e.target.value })} required />
+                    <input type="text" className="udhr-input" placeholder="Test name (e.g. HbA1c)" value={labResultForm.testName} onChange={(e) => setLabResultForm({ ...labResultForm, testName: e.target.value })} required maxLength={100} />
+                    <input type="text" className="udhr-input" placeholder="Result" value={labResultForm.result} onChange={(e) => setLabResultForm({ ...labResultForm, result: e.target.value })} required maxLength={100} />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-                    <input type="text" className="udhr-input" placeholder="Unit (e.g. g/dL)" value={labResultForm.unit} onChange={(e) => setLabResultForm({ ...labResultForm, unit: e.target.value })} />
-                    <input type="text" className="udhr-input" placeholder="Normal range" value={labResultForm.normalRange} onChange={(e) => setLabResultForm({ ...labResultForm, normalRange: e.target.value })} />
+                    <input type="text" className="udhr-input" placeholder="Unit (e.g. g/dL)" value={labResultForm.unit} onChange={(e) => setLabResultForm({ ...labResultForm, unit: e.target.value })} maxLength={100} />
+                    <input type="text" className="udhr-input" placeholder="Normal range" value={labResultForm.normalRange} onChange={(e) => setLabResultForm({ ...labResultForm, normalRange: e.target.value })} maxLength={100} />
                   </div>
                   <div className="udhr-form-group">
-                    <textarea className="udhr-textarea" rows={2} placeholder="Notes" value={labResultForm.notes} onChange={(e) => setLabResultForm({ ...labResultForm, notes: e.target.value })} />
+                    <textarea className="udhr-textarea" rows={2} placeholder="Notes" value={labResultForm.notes} onChange={(e) => setLabResultForm({ ...labResultForm, notes: e.target.value })} maxLength={2000} />
                   </div>
                   <button type="submit" className="udhr-btn-primary" style={{ width: '100%' }} disabled={loading}>Save result</button>
                 </form>
@@ -4730,8 +4785,7 @@ function App() {
                 value={searchId}
                 onChange={(e) => setSearchId(e.target.value)}
                 placeholder="ID number or file number"
-                required
-              />
+                required maxLength={100} />
               <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
             </form>
             <img className="udhr-doctor-search-art" src="/images/clipboard-care.svg" alt="" aria-hidden="true" />
@@ -4951,7 +5005,7 @@ function App() {
                       const v = searchedPatientRecord.vitals[0];
                       return (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '14px' }}>
-                          <div><p className="udhr-stat-label">Blood Pressure</p><p className="udhr-stat-value">{v.bloodPressure || 'N/A'}</p></div>
+                          <div><p className="udhr-stat-label">Blood pressure</p><p className="udhr-stat-value">{v.bloodPressure || 'N/A'}</p></div>
                           <div><p className="udhr-stat-label">Temperature</p><p className="udhr-stat-value">{v.temperatureCelsius != null ? `${v.temperatureCelsius}°C` : 'N/A'}</p></div>
                           <div><p className="udhr-stat-label">Pulse</p><p className="udhr-stat-value">{v.pulseBpm != null ? `${v.pulseBpm} bpm` : 'N/A'}</p></div>
                           <div><p className="udhr-stat-label">Respiration</p><p className="udhr-stat-value">{v.respirationRate != null ? `${v.respirationRate}/min` : 'N/A'}</p></div>
@@ -5003,7 +5057,7 @@ function App() {
                       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '10px' }}>
                         <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                           <label className="udhr-label">Allergen</label>
-                          <input type="text" className="udhr-input" placeholder="e.g. Penicillin, Sulfa, Peanuts" value={newAllergyForm.allergen} onChange={(e) => setNewAllergyForm({ ...newAllergyForm, allergen: e.target.value })} required />
+                          <input type="text" className="udhr-input" placeholder="e.g. Penicillin, Sulfa, Peanuts" value={newAllergyForm.allergen} onChange={(e) => setNewAllergyForm({ ...newAllergyForm, allergen: e.target.value })} required maxLength={100} />
                         </div>
                         <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                           <label className="udhr-label">Severity</label>
@@ -5016,7 +5070,7 @@ function App() {
                       </div>
                       <div className="udhr-form-group" style={{ marginTop: '10px' }}>
                         <label className="udhr-label">Reaction / notes (optional)</label>
-                        <input type="text" className="udhr-input" placeholder="e.g. Hives and swelling" value={newAllergyForm.notes} onChange={(e) => setNewAllergyForm({ ...newAllergyForm, notes: e.target.value })} />
+                        <input type="text" className="udhr-input" placeholder="e.g. Hives and swelling" value={newAllergyForm.notes} onChange={(e) => setNewAllergyForm({ ...newAllergyForm, notes: e.target.value })} maxLength={100} />
                       </div>
                       <button type="submit" className="udhr-btn-neutral">Save allergy</button>
                     </form>
@@ -5120,10 +5174,10 @@ function App() {
                     <form onSubmit={handleAddDiagnosis}>
                       <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 10px' }}>Add clinical diagnosis</h4>
                       <div className="udhr-form-group">
-                        <input type="text" className="udhr-input" aria-label="Condition or diagnosis" placeholder="Condition or diagnosis (e.g. Influenza)" value={addDiagnosisForm.conditionName} onChange={(e) => setAddDiagnosisForm({ ...addDiagnosisForm, conditionName: e.target.value })} required />
+                        <input type="text" className="udhr-input" aria-label="Condition or diagnosis" placeholder="Condition or diagnosis (e.g. Influenza)" value={addDiagnosisForm.conditionName} onChange={(e) => setAddDiagnosisForm({ ...addDiagnosisForm, conditionName: e.target.value })} required maxLength={100} />
                       </div>
                       <div className="udhr-form-group">
-                        <textarea className="udhr-textarea" rows={3} placeholder="Clinical notes" value={addDiagnosisForm.notes} onChange={(e) => setAddDiagnosisForm({ ...addDiagnosisForm, notes: e.target.value })} />
+                        <textarea className="udhr-textarea" rows={3} placeholder="Clinical notes" value={addDiagnosisForm.notes} onChange={(e) => setAddDiagnosisForm({ ...addDiagnosisForm, notes: e.target.value })} maxLength={2000} />
                       </div>
                       <button type="submit" className="udhr-btn-neutral">Save diagnosis</button>
                     </form>
@@ -5132,7 +5186,7 @@ function App() {
                       <h4 style={{ fontSize: '16px', fontWeight: 700, margin: '0 0 10px' }}>Issue prescription</h4>
                       <div className="udhr-form-group">
                         <label className="udhr-label">Medication</label>
-                        <input type="text" className="udhr-input" placeholder="e.g. Amoxicillin 250mg" value={addPrescriptionForm.medicationName} onChange={(e) => { setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value }); setPrescriptionAllergyConflicts(null); setAllergyOverrideReason(''); }} required />
+                        <input type="text" className="udhr-input" placeholder="e.g. Amoxicillin 250mg" value={addPrescriptionForm.medicationName} onChange={(e) => { setAddPrescriptionForm({ ...addPrescriptionForm, medicationName: e.target.value }); setPrescriptionAllergyConflicts(null); setAllergyOverrideReason(''); }} required maxLength={100} />
                         {/* What this facility's pharmacy has, so the doctor doesn't
                             prescribe something the patient can't collect here. */}
                         {stockCheck && stockCheck.medication === addPrescriptionForm.medicationName && (
@@ -5172,7 +5226,7 @@ function App() {
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
                         <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                           <label className="udhr-label">Dosage</label>
-                          <input type="text" className="udhr-input" placeholder="e.g. 1 tablet" value={addPrescriptionForm.dosage} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, dosage: e.target.value })} required />
+                          <input type="text" className="udhr-input" placeholder="e.g. 1 tablet" value={addPrescriptionForm.dosage} onChange={(e) => setAddPrescriptionForm({ ...addPrescriptionForm, dosage: e.target.value })} required maxLength={100} />
                         </div>
                         <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                           <label className="udhr-label">Frequency</label>
@@ -5203,7 +5257,7 @@ function App() {
                           </ul>
                           <div className="udhr-form-group" style={{ margin: '10px 0 0' }}>
                             <label className="udhr-label">To prescribe anyway, give your clinical reason (saved and audited)</label>
-                            <textarea className="udhr-input" rows={2} value={allergyOverrideReason} onChange={(e) => setAllergyOverrideReason(e.target.value)} placeholder="e.g. Allergy history checked with patient: rash only as a child, tolerated amoxicillin in 2024" />
+                            <textarea className="udhr-input" rows={2} value={allergyOverrideReason} onChange={(e) => setAllergyOverrideReason(e.target.value)} placeholder="e.g. Allergy history checked with patient: rash only as a child, tolerated amoxicillin in 2024" maxLength={2000} />
                           </div>
                           <button type="button" className="udhr-btn-neutral" style={{ marginTop: '8px' }} onClick={() => { setPrescriptionAllergyConflicts(null); setAllergyOverrideReason(''); }}>
                             Cancel — choose another medicine
@@ -5227,7 +5281,7 @@ function App() {
                         </select>
                       </div>
                       <div className="udhr-form-group">
-                        <textarea className="udhr-textarea" rows={4} placeholder="Alert message / instruction" value={addAlertForm.message} onChange={(e) => setAddAlertForm({ ...addAlertForm, message: e.target.value })} required />
+                        <textarea className="udhr-textarea" rows={4} placeholder="Alert message / instruction" value={addAlertForm.message} onChange={(e) => setAddAlertForm({ ...addAlertForm, message: e.target.value })} required maxLength={2000} />
                       </div>
                       <button type="submit" className="udhr-btn-neutral">Save clinical alert</button>
                     </form>
@@ -5263,7 +5317,7 @@ function App() {
 
     const renderAlertsPanel = () => (
       <>
-        <h1 className="udhr-page-title">Clinical Alerts</h1>
+        <h1 className="udhr-page-title">Clinical alerts</h1>
         <p className="udhr-page-subtitle">
           Automatically fired when a patient shows high medication adherence with poor clinical response, or high-risk drug-food interactions.
         </p>
@@ -5357,7 +5411,7 @@ function App() {
 
     return (
       <div className="udhr-shell">
-        {idleDialog}{accessReasonDialog}
+        {idleDialog}{accessReasonDialog}{databaseBanner}
         {securityDialog}
         <WorkspaceBrandBar workspace={isNurse ? "Nurse workspace" : "Doctor portal" } />
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
@@ -5436,6 +5490,7 @@ function App() {
       { key: 'announcements', label: 'Announcements', icon: <Megaphone size={17} /> },
       { key: 'reports', label: 'Reports', icon: <FileSpreadsheet size={17} /> },
       { key: 'audit', label: 'Audit trail', icon: <Clipboard size={17} /> },
+      { key: 'status', label: 'System status', icon: <Activity size={17} /> },
     ];
 
     const selectSysAdminTab = (key) => {
@@ -5447,6 +5502,7 @@ function App() {
       if (key === 'announcements') fetchAnnouncements();
       if (key === 'reports') fetchSystemReports();
       if (key === 'audit') fetchAuditLog();
+      if (key === 'status') fetchSystemStatus();
     };
 
     // Management numbers for the facility. These used to be open to the front
@@ -5551,7 +5607,7 @@ function App() {
               <form onSubmit={handleAddFacility}>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Name</label>
-                  <input type="text" className="udhr-input" value={newFacilityForm.name} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, name: e.target.value })} required />
+                  <input type="text" className="udhr-input" value={newFacilityForm.name} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, name: e.target.value })} required maxLength={100} />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Type</label>
@@ -5562,11 +5618,11 @@ function App() {
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Province</label>
-                  <input type="text" className="udhr-input" value={newFacilityForm.province} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, province: e.target.value })} required />
+                  <input type="text" className="udhr-input" value={newFacilityForm.province} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, province: e.target.value })} required maxLength={100} />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Address</label>
-                  <textarea className="udhr-textarea" value={newFacilityForm.address} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, address: e.target.value })} rows={2} />
+                  <textarea className="udhr-textarea" value={newFacilityForm.address} onChange={(e) => setNewFacilityForm({ ...newFacilityForm, address: e.target.value })} rows={2} maxLength={2000} />
                 </div>
                 <button type="submit" className="udhr-btn-primary">Add facility</button>
               </form>
@@ -5593,7 +5649,7 @@ function App() {
 
     const renderAnnouncementsPanel = () => (
       <>
-        <h1 className="udhr-page-title">Public Announcements</h1>
+        <h1 className="udhr-page-title">Public announcements</h1>
         <p className="udhr-page-subtitle">
           Published ones rotate as a slideshow on the sign-in screen — use them for vaccination drives, clinic closures, outbreak notices.
         </p>
@@ -5605,15 +5661,15 @@ function App() {
               <form onSubmit={handleCreateAnnouncement}>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Title</label>
-                  <input type="text" className="udhr-input" value={newAnnouncementForm.title} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, title: e.target.value })} required />
+                  <input type="text" className="udhr-input" value={newAnnouncementForm.title} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, title: e.target.value })} required maxLength={100} />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Message</label>
-                  <textarea className="udhr-textarea" rows={3} value={newAnnouncementForm.message} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, message: e.target.value })} required />
+                  <textarea className="udhr-textarea" rows={3} value={newAnnouncementForm.message} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, message: e.target.value })} required maxLength={2000} />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Photo URL (optional)</label>
-                  <input type="text" className="udhr-input" placeholder="https://..." value={newAnnouncementForm.photoUrl} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, photoUrl: e.target.value })} />
+                  <input type="text" className="udhr-input" placeholder="https://..." value={newAnnouncementForm.photoUrl} onChange={(e) => setNewAnnouncementForm({ ...newAnnouncementForm, photoUrl: e.target.value })} maxLength={100} />
                 </div>
                 <button type="submit" className="udhr-btn-primary">Publish announcement</button>
               </form>
@@ -5650,6 +5706,46 @@ function App() {
       </>
     );
 
+
+    const renderSystemStatusPanel = () => (
+      <>
+        <h1 className="udhr-page-title">System status</h1>
+        <p className="udhr-page-subtitle">Whether the system can reach its database, which database it uses, and how much is stored in it.</p>
+        <button type="button" className="udhr-btn-neutral" style={{ marginBottom: '16px', width: 'auto' }} onClick={fetchSystemStatus}>
+          <RefreshCw size={15} style={{ verticalAlign: '-2px', marginRight: '6px' }} />Check again
+        </button>
+        <div className="udhr-record-card">
+          <div className="udhr-record-body">
+            {!systemStatus ? (
+              <p className="udhr-empty-note">Checking…</p>
+            ) : (
+              <>
+                <p className="udhr-row-title">
+                  <span className={`udhr-tag ${systemStatus.database === 'connected' ? 'success' : 'danger'}`}>
+                    {systemStatus.database === 'connected' ? 'Connected' : 'Not reachable'}
+                  </span>{' '}Database
+                </p>
+                {systemStatus.message && <p className="udhr-row-subtitle">{systemStatus.message}</p>}
+                {systemStatus.product && <p className="udhr-row-subtitle">Database software: {systemStatus.product}</p>}
+                {systemStatus.address && <p className="udhr-row-subtitle">Address (password hidden): <code>{systemStatus.address}</code></p>}
+                {systemStatus.configuredIn && <p className="udhr-row-subtitle">Where the address is set: {systemStatus.configuredIn}</p>}
+                {systemStatus.records && (
+                  <div className="udhr-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginTop: '12px' }}>
+                    {[['Patients', 'patients'], ['Staff accounts', 'staff'], ['Visits', 'visits'], ['Stock items', 'stockItems'], ['Audit entries', 'auditEntries']].map(([label, key]) => (
+                      <div key={key} style={{ padding: '12px', borderRadius: '10px', background: 'var(--udhr-bg)', border: '1px solid var(--udhr-border-subtle)' }}>
+                        <p className="udhr-row-subtitle" style={{ margin: 0 }}>{label}</p>
+                        <p className="udhr-row-title" style={{ margin: 0, fontSize: '20px' }}>{systemStatus.records[key]}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {systemStatus.checkedAt && <p className="udhr-row-subtitle" style={{ marginTop: '10px' }}>Checked {formatDateTime(systemStatus.checkedAt)}</p>}
+              </>
+            )}
+          </div>
+        </div>
+      </>
+    );
 
     const renderSecurityAlertsPanel = () => (
       <>
@@ -5766,7 +5862,7 @@ function App() {
                 <form className="udhr-account-search" onSubmit={(e) => { e.preventDefault(); fetchPatientAccounts(0); }}>
                   <input type="search" className="udhr-input" aria-label="Search patient accounts"
                     placeholder="Search name or file number" value={patientAccountSearch}
-                    onChange={(e) => setPatientAccountSearch(e.target.value)} />
+                    onChange={(e) => setPatientAccountSearch(e.target.value)} maxLength={100} />
                   <button type="submit" className="udhr-btn-primary">Search</button>
                 </form>
               </div>
@@ -5835,12 +5931,12 @@ function App() {
               <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 14px' }}>Create account</h3>
               <form onSubmit={handleRegisterStaff}>
                 <div className="udhr-form-group">
-                  <label className="udhr-label">Staff Number</label>
-                  <input type="text" className="udhr-input" value={newStaffForm.staffNumber} onChange={(e) => setNewStaffForm({ ...newStaffForm, staffNumber: e.target.value })} placeholder="e.g. NUR002" required />
+                  <label className="udhr-label">Staff number</label>
+                  <input type="text" className="udhr-input" value={newStaffForm.staffNumber} onChange={(e) => setNewStaffForm({ ...newStaffForm, staffNumber: e.target.value })} placeholder="e.g. NUR002" required maxLength={100} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-                  <input type="text" className="udhr-input" placeholder="First name" value={newStaffForm.firstName} onChange={(e) => setNewStaffForm({ ...newStaffForm, firstName: e.target.value })} required />
-                  <input type="text" className="udhr-input" placeholder="Last name" value={newStaffForm.lastName} onChange={(e) => setNewStaffForm({ ...newStaffForm, lastName: e.target.value })} required />
+                  <input type="text" className="udhr-input" placeholder="First name" value={newStaffForm.firstName} onChange={(e) => setNewStaffForm({ ...newStaffForm, firstName: e.target.value })} required maxLength={100} />
+                  <input type="text" className="udhr-input" placeholder="Last name" value={newStaffForm.lastName} onChange={(e) => setNewStaffForm({ ...newStaffForm, lastName: e.target.value })} required maxLength={100} />
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Role</label>
@@ -5863,12 +5959,12 @@ function App() {
                 </div>
                 <div className="udhr-form-group">
                   <label className="udhr-label">Email</label>
-                  <input type="email" className="udhr-input" value={newStaffForm.email} onChange={(e) => setNewStaffForm({ ...newStaffForm, email: e.target.value })} required />
+                  <input type="email" className="udhr-input" value={newStaffForm.email} onChange={(e) => setNewStaffForm({ ...newStaffForm, email: e.target.value })} required maxLength={120} />
                 </div>
                 <div className="udhr-form-group">
-                  <label className="udhr-label">Temporary Password</label>
+                  <label className="udhr-label">Temporary password</label>
                   <div className="udhr-password-field">
-                    <input type={showNewStaffPassword ? 'text' : 'password'} className="udhr-input" value={newStaffForm.password} onChange={(e) => setNewStaffForm({ ...newStaffForm, password: e.target.value })} required />
+                    <input type={showNewStaffPassword ? 'text' : 'password'} className="udhr-input" value={newStaffForm.password} onChange={(e) => setNewStaffForm({ ...newStaffForm, password: e.target.value })} required maxLength={128} />
                     <button type="button" className="udhr-password-toggle" onClick={() => setShowNewStaffPassword(!showNewStaffPassword)} aria-label={showNewStaffPassword ? 'Hide password' : 'Show password'}>
                       {showNewStaffPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -5993,27 +6089,26 @@ function App() {
                   className="udhr-input"
                   placeholder="e.g. sign in, referral, pharmacy"
                   value={auditFilters.action}
-                  onChange={(e) => setAuditFilters({ ...auditFilters, action: e.target.value })}
-                />
+                  onChange={(e) => setAuditFilters({ ...auditFilters, action: e.target.value })} maxLength={100} />
               </div>
               <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                 <label className="udhr-label">Staff number</label>
                 <input className="udhr-input" placeholder="e.g. DOC001"
                   value={auditFilters.staffNumber}
-                  onChange={(e) => setAuditFilters({ ...auditFilters, staffNumber: e.target.value })} />
+                  onChange={(e) => setAuditFilters({ ...auditFilters, staffNumber: e.target.value })} maxLength={100} />
               </div>
               <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                 <label className="udhr-label">Patient record</label>
                 <input className="udhr-input" placeholder="e.g. MRN-2020-000001"
                   value={auditFilters.patientMrn}
-                  onChange={(e) => setAuditFilters({ ...auditFilters, patientMrn: e.target.value })} />
+                  onChange={(e) => setAuditFilters({ ...auditFilters, patientMrn: e.target.value })} maxLength={100} />
               </div>
               <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                 <label className="udhr-label">Role</label>
                 <select className="udhr-input" value={auditFilters.role}
                   onChange={(e) => setAuditFilters({ ...auditFilters, role: e.target.value })}>
                   <option value="">All roles</option>
-                  <option value="SYSTEM_ADMIN">System Administrator</option>
+                  <option value="SYSTEM_ADMIN">System administrator</option>
                   <option value="ADMIN">Reception</option>
                   <option value="DOCTOR">Doctor</option>
                   <option value="NURSE">Nurse</option>
@@ -6091,7 +6186,7 @@ function App() {
 
     return (
       <div className="udhr-shell">
-        {idleDialog}{accessReasonDialog}
+        {idleDialog}{accessReasonDialog}{databaseBanner}
         {securityDialog}
         <WorkspaceBrandBar workspace={"System administrator" } />
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
@@ -6151,6 +6246,7 @@ function App() {
 
           {systemAdminTab === 'accounts' && renderAccountsPanel()}
           {systemAdminTab === 'alerts' && renderSecurityAlertsPanel()}
+          {systemAdminTab === 'status' && renderSystemStatusPanel()}
           {systemAdminTab === 'facilities' && renderFacilitiesPanel()}
           {systemAdminTab === 'announcements' && renderAnnouncementsPanel()}
           {systemAdminTab === 'reports' && renderReportsPanel()}
@@ -6193,8 +6289,7 @@ function App() {
                 value={pharmacySearchId}
                 onChange={(e) => setPharmacySearchId(e.target.value)}
                 placeholder="ID number or file number"
-                required
-              />
+                required maxLength={100} />
               <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
             </form>
               <img className="udhr-lookup-art" src="/images/clipboard-care.svg" alt="" aria-hidden="true" />
@@ -6303,8 +6398,7 @@ function App() {
                           className="udhr-input"
                           value={dispenseQuantity[p.id] ?? p.totalQuantity ?? ''}
                           onChange={(e) => setDispenseQuantity(prev => ({ ...prev, [p.id]: e.target.value }))}
-                          placeholder="e.g. 30 tablets"
-                        />
+                          placeholder="e.g. 30 tablets" maxLength={100} />
                         <button
                           type="button"
                           onClick={() => handleDispense(p.id)}
@@ -6357,11 +6451,11 @@ function App() {
             <form onSubmit={handleAddStockItem} className="udhr-stock-form" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '10px', alignItems: 'flex-end' }}>
               <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                 <label className="udhr-label">Medication name</label>
-                <input type="text" className="udhr-input" value={newStockItemForm.medicationName} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, medicationName: e.target.value })} required />
+                <input type="text" className="udhr-input" value={newStockItemForm.medicationName} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, medicationName: e.target.value })} required maxLength={100} />
               </div>
               <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                 <label className="udhr-label">Unit</label>
-                <input type="text" className="udhr-input" value={newStockItemForm.unit} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, unit: e.target.value })} />
+                <input type="text" className="udhr-input" value={newStockItemForm.unit} onChange={(e) => setNewStockItemForm({ ...newStockItemForm, unit: e.target.value })} maxLength={100} />
               </div>
               <div className="udhr-form-group" style={{ marginBottom: 0 }}>
                 <label className="udhr-label">Quantity</label>
@@ -6499,7 +6593,7 @@ function App() {
 
     return (
       <div className="udhr-shell">
-        {idleDialog}{accessReasonDialog}
+        {idleDialog}{accessReasonDialog}{databaseBanner}
         {securityDialog}
         <WorkspaceBrandBar workspace={"Pharmacy workspace" } />
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
@@ -6566,7 +6660,7 @@ function App() {
   // presentation change.
   if (token && isAdmin && !mustChangePassword) {
     const adminNavItems = [
-      { key: 'frontdesk', label: 'Front Desk', icon: <Clipboard size={17} /> },
+      { key: 'frontdesk', label: 'Front desk', icon: <Clipboard size={17} /> },
       { key: 'patients', label: 'Registered patients', icon: <Users size={17} /> },
       { key: 'visitors', label: 'Visitors & patient files', icon: <Clock size={17} /> },
       { key: 'staff', label: 'Doctors & staff', icon: <User size={17} /> },
@@ -6598,7 +6692,7 @@ function App() {
             <form className="udhr-search-bar" onSubmit={(e) => { e.preventDefault(); fetchHospitalPatientDirectory(patientDirectoryQuery, 0); }}>
               <input type="search" className="udhr-input" value={patientDirectoryQuery} autoComplete="off"
                 placeholder="Search by name, SA ID, passport, phone or file number (MRN)"
-                aria-label="Search registered patients" onChange={e => setPatientDirectoryQuery(e.target.value)} />
+                aria-label="Search registered patients" onChange={e => setPatientDirectoryQuery(e.target.value)} maxLength={100} />
               <button type="submit" className="udhr-btn-compact" disabled={patientDirectoryLoading}>Search</button>
               <button type="button" className="udhr-btn-neutral" onClick={() => {
                 setPatientDirectoryQuery(''); fetchHospitalPatientDirectory('', 0);
@@ -6669,13 +6763,13 @@ function App() {
             <p className="udhr-row-subtitle">Only doctor, nurse and pharmacist accounts can be created here. The system generates a temporary password, shown once.</p>
             <form onSubmit={handleCreateHospitalStaff} className="udhr-form-grid" style={{ marginTop: '14px' }}>
               <div className="udhr-form-group"><label className="udhr-label">Staff number</label>
-                <input className="udhr-input" required value={hospitalStaffForm.staffNumber} autoComplete="off" onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, staffNumber: e.target.value })}/></div>
+                <input className="udhr-input" required value={hospitalStaffForm.staffNumber} autoComplete="off" onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, staffNumber: e.target.value })} maxLength={100} /></div>
               <div className="udhr-form-group"><label className="udhr-label">First name</label>
-                <input className="udhr-input" required value={hospitalStaffForm.firstName} onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, firstName: e.target.value })}/></div>
+                <input className="udhr-input" required value={hospitalStaffForm.firstName} onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, firstName: e.target.value })} maxLength={100} /></div>
               <div className="udhr-form-group"><label className="udhr-label">Last name</label>
-                <input className="udhr-input" required value={hospitalStaffForm.lastName} onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, lastName: e.target.value })}/></div>
+                <input className="udhr-input" required value={hospitalStaffForm.lastName} onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, lastName: e.target.value })} maxLength={100} /></div>
               <div className="udhr-form-group"><label className="udhr-label">Work email</label>
-                <input className="udhr-input" type="email" required value={hospitalStaffForm.email} onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, email: e.target.value })}/></div>
+                <input className="udhr-input" type="email" required value={hospitalStaffForm.email} onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, email: e.target.value })} maxLength={120} /></div>
               <div className="udhr-form-group"><label className="udhr-label">Role</label>
                 <select className="udhr-input" value={hospitalStaffForm.role} onChange={e => setHospitalStaffForm({ ...hospitalStaffForm, role: e.target.value })}>
                   <option value="NURSE">Nurse</option><option value="DOCTOR">Doctor</option><option value="PHARMACIST">Pharmacist</option>
@@ -6695,13 +6789,13 @@ function App() {
             </div>
           </div>
         )}
-        <p className="udhr-row-subtitle" style={{ marginTop: '12px' }}>For a forgotten staff password, verify identity and contact the System Administrator for a reset. No staff member can view an existing password.</p>
+        <p className="udhr-row-subtitle" style={{ marginTop: '12px' }}>For a forgotten staff password, verify identity and contact the System administrator for a reset. No staff member can view an existing password.</p>
       </>
     );
 
     const renderFrontDeskPanel = () => (
       <>
-        <h1 className="udhr-page-title">Front Desk</h1>
+        <h1 className="udhr-page-title">Front desk</h1>
         <p className="udhr-page-subtitle">{showRegisterForm ? 'Create a new patient record with accurate, secure details.' : "Find the patient first. Check them in if they've been here before, or register them if they're new."}</p>
 
         {issuedPatientPin && (
@@ -6733,8 +6827,7 @@ function App() {
                 value={checkinSearchId}
                 onChange={(e) => { setCheckinSearchId(e.target.value); setFrontDeskResult(null); }}
                 placeholder="ID number or file number"
-                required
-              />
+                required maxLength={100} />
               <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Finding...' : 'Find'}</button>
             </form>
               <img className="udhr-lookup-art" src="/images/clipboard-care.svg" alt="" aria-hidden="true" />
@@ -6749,7 +6842,7 @@ function App() {
                 </p>
                 <div className="udhr-form-group">
                   <label className="udhr-label" htmlFor="checkin-reason">Reason for visit (optional)</label>
-                  <input id="checkin-reason" type="text" className="udhr-input" value={checkinReason} onChange={(e) => setCheckinReason(e.target.value)} placeholder="e.g. Follow-up, flu symptoms..." />
+                  <input id="checkin-reason" type="text" className="udhr-input" value={checkinReason} onChange={(e) => setCheckinReason(e.target.value)} placeholder="e.g. Follow-up, flu symptoms..." maxLength={100} />
                 </div>
                 <button type="submit" className="udhr-btn-primary">Check in</button>
               </form>
@@ -6801,7 +6894,7 @@ function App() {
                   </div>
                   <div className="udhr-form-group">
                     <label className="udhr-label" htmlFor="reg-passport">Passport number</label>
-                    <input id="reg-passport" type="text" className="udhr-input" value={patientRegForm.passportNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, passportNumber: e.target.value })} placeholder="If no South African ID" />
+                    <input id="reg-passport" type="text" className="udhr-input" value={patientRegForm.passportNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, passportNumber: e.target.value })} placeholder="If no South African ID" maxLength={100} />
                   </div>
                 </div>
               </section>
@@ -6817,11 +6910,11 @@ function App() {
                 <div className="udhr-patient-registration-grid">
                   <div className="udhr-form-group">
                     <label className="udhr-label" htmlFor="reg-first-name">First name <span className="udhr-required-mark">*</span></label>
-                    <input id="reg-first-name" type="text" className="udhr-input" value={patientRegForm.firstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, firstName: e.target.value })} placeholder="Enter first name" autoComplete="given-name" required />
+                    <input id="reg-first-name" type="text" className="udhr-input" value={patientRegForm.firstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, firstName: e.target.value })} placeholder="Enter first name" autoComplete="given-name" required maxLength={100} />
                   </div>
                   <div className="udhr-form-group">
                     <label className="udhr-label" htmlFor="reg-last-name">Last name <span className="udhr-required-mark">*</span></label>
-                    <input id="reg-last-name" type="text" className="udhr-input" value={patientRegForm.lastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, lastName: e.target.value })} placeholder="Enter last name" autoComplete="family-name" required />
+                    <input id="reg-last-name" type="text" className="udhr-input" value={patientRegForm.lastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, lastName: e.target.value })} placeholder="Enter last name" autoComplete="family-name" required maxLength={100} />
                   </div>
                   <div className="udhr-form-group">
                     <label className="udhr-label" htmlFor="reg-date-of-birth">Date of birth <span className="udhr-required-mark">*</span></label>
@@ -6850,11 +6943,11 @@ function App() {
                 <div className="udhr-patient-registration-grid">
                   <div className="udhr-form-group">
                     <label className="udhr-label" htmlFor="reg-contact-number">Contact number</label>
-                    <input id="reg-contact-number" type="text" className="udhr-input" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value.replace(/\D/g, '') })} inputMode="numeric" pattern="[0-9]*" placeholder="e.g. 0821234567" />
+                    <input id="reg-contact-number" type="text" className="udhr-input" value={patientRegForm.contactNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, contactNumber: e.target.value.replace(/\D/g, '') })} inputMode="numeric" pattern="[0-9]*" placeholder="e.g. 0821234567" maxLength={100} />
                   </div>
                   <div className="udhr-form-group">
                     <label className="udhr-label" htmlFor="reg-visit-reason">Reason for visit <span className="udhr-label-optional">Optional</span></label>
-                    <input id="reg-visit-reason" type="text" className="udhr-input" value={regReasonForVisit} onChange={(e) => setRegReasonForVisit(e.target.value)} placeholder="e.g. Follow-up or flu symptoms" />
+                    <input id="reg-visit-reason" type="text" className="udhr-input" value={regReasonForVisit} onChange={(e) => setRegReasonForVisit(e.target.value)} placeholder="e.g. Follow-up or flu symptoms" maxLength={100} />
                   </div>
                 </div>
                 <p className="udhr-reg-inline-note"><CheckCircle size={15} aria-hidden="true" /> Add a reason to register and check the patient in for vitals. Leave blank to register only.</p>
@@ -6872,28 +6965,28 @@ function App() {
                       <div className="udhr-patient-registration-grid">
                         <div className="udhr-form-group udhr-patient-registration-email">
                           <label className="udhr-label" htmlFor="reg-email">Email address</label>
-                          <input id="reg-email" type="email" className="udhr-input" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@example.com" />
+                          <input id="reg-email" type="email" className="udhr-input" value={patientRegForm.email} onChange={(e) => setPatientRegForm({ ...patientRegForm, email: e.target.value })} placeholder="patient@example.com" maxLength={120} />
                         </div>
                         <div className="udhr-form-group udhr-patient-registration-address">
                           <label className="udhr-label" htmlFor="reg-address">Residential address</label>
-                          <textarea id="reg-address" className="udhr-textarea" value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} placeholder="Street address and suburb" />
+                          <textarea id="reg-address" className="udhr-textarea" value={patientRegForm.address} onChange={(e) => setPatientRegForm({ ...patientRegForm, address: e.target.value })} rows={2} placeholder="Street address and suburb" maxLength={2000} />
                         </div>
                       </div>
                     </div>
                     <div className="udhr-reg-subsection">
                       <h4>Next of kin</h4>
                       <div className="udhr-patient-registration-grid">
-                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-kin-first">First name</label><input id="reg-kin-first" type="text" className="udhr-input" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} /></div>
-                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-kin-last">Last name</label><input id="reg-kin-last" type="text" className="udhr-input" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} /></div>
-                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-kin-relation">Relationship</label><input id="reg-kin-relation" type="text" className="udhr-input" placeholder="e.g. Parent, spouse" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} /></div>
-                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-kin-phone">Phone number</label><input id="reg-kin-phone" type="text" className="udhr-input" placeholder="Contact number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} /></div>
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-kin-first">First name</label><input id="reg-kin-first" type="text" className="udhr-input" placeholder="First name" value={patientRegForm.nextOfKinFirstName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinFirstName: e.target.value })} maxLength={100} /></div>
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-kin-last">Last name</label><input id="reg-kin-last" type="text" className="udhr-input" placeholder="Last name" value={patientRegForm.nextOfKinLastName} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinLastName: e.target.value })} maxLength={100} /></div>
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-kin-relation">Relationship</label><input id="reg-kin-relation" type="text" className="udhr-input" placeholder="e.g. Parent, spouse" value={patientRegForm.nextOfKinRelationship} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinRelationship: e.target.value })} maxLength={100} /></div>
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-kin-phone">Phone number</label><input id="reg-kin-phone" type="text" className="udhr-input" placeholder="Contact number" value={patientRegForm.nextOfKinPhone} onChange={(e) => setPatientRegForm({ ...patientRegForm, nextOfKinPhone: e.target.value })} maxLength={100} /></div>
                       </div>
                     </div>
                     <div className="udhr-reg-subsection">
                       <h4>Newborn information <span className="udhr-label-optional">If applicable</span></h4>
                       <p className="udhr-reg-subtitle">Leave these fields blank unless registering a baby at birth.</p>
                       <div className="udhr-patient-registration-grid">
-                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-mother-id">Mother's ID number</label><input id="reg-mother-id" type="text" className="udhr-input" placeholder="Mother's SA ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} /></div>
+                        <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-mother-id">Mother's ID number</label><input id="reg-mother-id" type="text" className="udhr-input" placeholder="Mother's SA ID number" value={patientRegForm.motherIdNumber} onChange={(e) => setPatientRegForm({ ...patientRegForm, motherIdNumber: e.target.value })} maxLength={100} /></div>
                       </div>
                       <div className="udhr-patient-registration-grid">
                         <div className="udhr-form-group"><label className="udhr-label" htmlFor="reg-birth-weight">Birth weight (g)</label><input id="reg-birth-weight" type="number" className="udhr-input" placeholder="Weight in grams" value={patientRegForm.birthWeightGrams} onChange={(e) => setPatientRegForm({ ...patientRegForm, birthWeightGrams: e.target.value })} /></div>
@@ -6951,8 +7044,7 @@ function App() {
                 value={adminLookupId}
                 onChange={(e) => setAdminLookupId(e.target.value)}
                 placeholder="ID number or file number"
-                required
-              />
+                required maxLength={100} />
               <button type="submit" className="udhr-btn-compact" disabled={loading}>{loading ? 'Searching...' : 'Search'}</button>
             </form>
               <img className="udhr-lookup-art" src="/images/clipboard-care.svg" alt="" aria-hidden="true" />
@@ -6978,7 +7070,7 @@ function App() {
                   </p>
                   <p className="udhr-row-subtitle" style={{ marginBottom: '8px' }}>Check the patient's ID first. Let them type the PIN themselves; it is never shown again.</p>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <input type="password" className="udhr-input" value={portalPinInput} onChange={(e) => setPortalPinInput(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="new-password" placeholder="New 6-digit PIN" required style={{ maxWidth: '200px' }} />
+                    <input type="password" className="udhr-input" value={portalPinInput} onChange={(e) => setPortalPinInput(e.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="new-password" placeholder="New 6-digit PIN" required style={{ maxWidth: '200px' }} maxLength={128} />
                     <button type="submit" className="udhr-btn-compact">{adminLookupRecord.patient.portalPinSet ? 'Reset PIN' : 'Set PIN'}</button>
                   </div>
                 </form>
@@ -7002,7 +7094,7 @@ function App() {
                   {isUnder18(adminLookupRecord.patient.dateOfBirth) && (
                     <input type="text" className="udhr-input" aria-label="Parent or guardian who agreed" value={consentForm.consentGivenBy}
                       onChange={(e) => setConsentForm({ ...consentForm, consentGivenBy: e.target.value })}
-                      placeholder="Parent or guardian who agreed, e.g. Mother: Thandi Zulu" required style={{ marginBottom: '8px' }} />
+                      placeholder="Parent or guardian who agreed, e.g. Mother: Thandi Zulu" required style={{ marginBottom: '8px' }} maxLength={100} />
                   )}
                   <label className="udhr-checkbox-row">
                     <input type="checkbox" checked={consentForm.explained} onChange={(e) => setConsentForm({ ...consentForm, explained: e.target.checked })} required />
@@ -7077,7 +7169,7 @@ function App() {
         <>
           <h1 className="udhr-page-title">Incoming referrals</h1>
           <p className="udhr-page-subtitle">
-            Patients other facilities are sending to {referralReport?.facilityName || 'your facility'}. When one arrives, find them on the Front Desk tab and check them in.
+            Patients other facilities are sending to {referralReport?.facilityName || 'your facility'}. When one arrives, find them on the Front desk tab and check them in.
           </p>
           {!referralReport ? (
             <p className="udhr-empty-note">Loading...</p>
@@ -7103,7 +7195,7 @@ function App() {
 
     return (
       <div className="udhr-shell">
-        {idleDialog}{accessReasonDialog}
+        {idleDialog}{accessReasonDialog}{databaseBanner}
         {securityDialog}
         <WorkspaceBrandBar workspace={"Reception workspace" } />
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
@@ -7168,7 +7260,7 @@ function App() {
 
   return (
     <div className="app-container">
-      {idleDialog}{accessReasonDialog}
+      {idleDialog}{accessReasonDialog}{databaseBanner}
       {/* Header */}
       <header className="app-header">
         <div className="logo-container">
@@ -7229,15 +7321,14 @@ function App() {
                       className="udhr-input"
                       value={changePasswordForm.currentPassword}
                       onChange={(e) => setChangePasswordForm({ ...changePasswordForm, currentPassword: e.target.value })}
-                      required
-                    />
+                      required maxLength={128} />
                     <button type="button" className="udhr-password-toggle" onClick={() => setShowCurrentPassword(!showCurrentPassword)} aria-label={showCurrentPassword ? 'Hide password' : 'Show password'}>
                       {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
                 </div>
                 <div className="udhr-form-group">
-                  <label className="udhr-label" htmlFor="newPassword">New Password</label>
+                  <label className="udhr-label" htmlFor="newPassword">New password</label>
                   <div className="udhr-password-field">
                     <input
                       type={showNewPassword ? 'text' : 'password'}
@@ -7247,15 +7338,14 @@ function App() {
                       value={changePasswordForm.newPassword}
                       onChange={(e) => setChangePasswordForm({ ...changePasswordForm, newPassword: e.target.value })}
                       required
-                      minLength={8}
-                    />
+                      minLength={8} maxLength={128} />
                     <button type="button" className="udhr-password-toggle" onClick={() => setShowNewPassword(!showNewPassword)} aria-label={showNewPassword ? 'Hide password' : 'Show password'}>
                       {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
                 </div>
                 <div className="udhr-form-group">
-                  <label className="udhr-label" htmlFor="confirmPassword">Confirm New Password</label>
+                  <label className="udhr-label" htmlFor="confirmPassword">Confirm new password</label>
                   <div className="udhr-password-field">
                     <input
                       type={showConfirmPassword ? 'text' : 'password'}
@@ -7264,8 +7354,7 @@ function App() {
                       value={changePasswordForm.confirmPassword}
                       onChange={(e) => setChangePasswordForm({ ...changePasswordForm, confirmPassword: e.target.value })}
                       required
-                      minLength={8}
-                    />
+                      minLength={8} maxLength={128} />
                     <button type="button" className="udhr-password-toggle" onClick={() => setShowConfirmPassword(!showConfirmPassword)} aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}>
                       {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>

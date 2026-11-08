@@ -18,7 +18,7 @@ export default {
   'login.title': 'Sign in',
   'login.subtitle': "Choose how you're accessing UDHR.",
   'login.patient': 'Patient',
-  'login.staff': 'Healthcare Staff',
+  'login.staff': 'Healthcare staff',
   'login.idNumber': 'South African ID number',
   'login.idPlaceholder': '13-digit ID number',
   'login.dateOfBirth': 'Date of birth',

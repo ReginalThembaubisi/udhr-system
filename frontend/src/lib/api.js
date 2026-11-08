@@ -97,8 +97,27 @@ const withToken = (options) => ({
   },
 });
 
+// One banner for "the database can't be reached" (rubric: what happens if
+// the database is moved), on every screen, instead of each screen failing
+// in its own way. Cleared by the next request that succeeds.
+let databaseHandler = () => {};
+export function onDatabaseStatus(handler) {
+  databaseHandler = handler;
+}
+
+function noteDatabase(response) {
+  if (response.status === 503) {
+    response.clone().json()
+      .then(body => { if (body?.databaseUnavailable) databaseHandler(false, body.message); })
+      .catch(() => {});
+  } else if (response.ok) {
+    databaseHandler(true);
+  }
+  return response;
+}
+
 export async function apiFetch(url, options = {}) {
-  let response = await fetch(url, withToken(options));
+  let response = noteDatabase(await fetch(url, withToken(options)));
   // Sign-in, refresh and sign-out answer 401 for their own reasons.
   if (response.status === 401 && !url.startsWith('/api/auth/') && accessToken) {
     const session = await refreshSession();
@@ -106,7 +125,7 @@ export async function apiFetch(url, options = {}) {
       sessionExpiredHandler();
       return response;
     }
-    response = await fetch(url, withToken(options));
+    response = noteDatabase(await fetch(url, withToken(options)));
   }
   return withAccessReason(url, options, response);
 }

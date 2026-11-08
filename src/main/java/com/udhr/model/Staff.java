@@ -50,6 +50,24 @@ public class Staff {
     @Column(name = "contact_number")
     private String contactNumber;
 
+    // "Forgot password": a 6-digit code emailed to the work email above. Only
+    // its hash is kept, it lasts 10 minutes, and 5 wrong tries cancel it.
+    @JsonIgnore
+    @Column(name = "password_reset_code_hash")
+    private String passwordResetCodeHash;
+
+    @JsonIgnore
+    @Column(name = "password_reset_expires_at")
+    private java.time.LocalDateTime passwordResetExpiresAt;
+
+    @JsonIgnore
+    @Column(name = "password_reset_attempts")
+    private Integer passwordResetAttempts;
+
+    @JsonIgnore
+    @Column(name = "password_reset_sent_at")
+    private java.time.LocalDateTime passwordResetSentAt;
+
     @Column(nullable = false)
     private Boolean active = true;
 

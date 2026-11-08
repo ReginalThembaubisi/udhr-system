@@ -152,6 +152,31 @@ public class SystemAdminService {
     }
 
     /**
+     * Changes the email on a staff account: security alerts go to the system
+     * admins' emails, so theirs must be a real inbox someone reads.
+     */
+    public Staff changeEmail(Long staffId, String email, String performedByStaffNumber) {
+        Staff target = staffRepository.findById(staffId)
+                .orElseThrow(() -> new RuntimeException("Staff member not found"));
+        Staff performedBy = resolveActor(performedByStaffNumber);
+        String cleaned = email == null ? "" : email.trim().toLowerCase();
+        if (!cleaned.matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$") || cleaned.length() > 120) {
+            throw new RuntimeException("Enter a valid email address");
+        }
+        boolean taken = staffRepository.findAll().stream()
+                .anyMatch(s -> !s.getId().equals(target.getId()) && cleaned.equalsIgnoreCase(s.getEmail()));
+        if (taken) {
+            throw new RuntimeException("Another account already uses that email");
+        }
+        String previous = target.getEmail();
+        target.setEmail(cleaned);
+        staffRepository.save(target);
+        record(performedBy, "ADMIN_CHANGED_EMAIL", "Changed the email of " + describe(target)
+                + " from " + previous + " to " + cleaned);
+        return target;
+    }
+
+    /**
      * Paginated patient portal accounts for access oversight only. This is NOT
      * a clinical record endpoint: DOB, ID numbers, contact details, PIN hashes
      * and any medical data are deliberately excluded from the response.

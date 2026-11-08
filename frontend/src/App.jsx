@@ -898,6 +898,7 @@ function App() {
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [systemAdminStaff, setSystemAdminStaff] = useState([]);
   const [securityAlerts, setSecurityAlerts] = useState([]);
+  const [alertEmail, setAlertEmail] = useState(null);
   const [accountCategory, setAccountCategory] = useState('staff');
   const [systemAdminPatients, setSystemAdminPatients] = useState([]);
   const [patientAccountSearch, setPatientAccountSearch] = useState('');
@@ -1237,6 +1238,7 @@ function App() {
       } else if (userRole === 'SYSTEM_ADMIN') {
         fetchSystemAdminStaff();
         fetchSecurityAlerts();
+        fetchAlertEmailStatus();
         // The create-account form needs the facility dropdown.
         fetchFacilityList();
       }
@@ -2854,6 +2856,50 @@ function App() {
       const response = await apiFetch('/api/system-admin/security-alerts?days=7', { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (response.ok) setSecurityAlerts(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const fetchAlertEmailStatus = async () => {
+    try {
+      const response = await apiFetch('/api/system-admin/alert-email', { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (response.ok) setAlertEmail(data);
+    } catch {
+      // The alerts themselves still show; only the email line is missing.
+    }
+  };
+
+  const handleSendTestAlertEmail = async () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await apiFetch('/api/system-admin/alert-email/test', { method: 'POST', headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'The test email was not sent');
+      setSuccessMessage(data.message);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
+  const handleChangeStaffEmail = async (staffMember) => {
+    const email = window.prompt(`New email for ${staffMember.firstName} ${staffMember.lastName}:`, staffMember.email || '');
+    if (email === null || email.trim() === '' || email.trim() === staffMember.email) return;
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const response = await apiFetch(`/api/system-admin/staff/${staffMember.id}/email`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ email: email.trim() })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Failed to change the email');
+      setSuccessMessage(`${staffMember.firstName} ${staffMember.lastName}'s email is now ${data.email}.`);
+      fetchSystemAdminStaff();
+      fetchAlertEmailStatus();
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -5006,7 +5052,7 @@ function App() {
       setSystemAdminTab(key);
       setIsMobileNavOpen(false);
       if (key === 'accounts') fetchSystemAdminStaff();
-      if (key === 'alerts') fetchSecurityAlerts();
+      if (key === 'alerts') { fetchSecurityAlerts(); fetchAlertEmailStatus(); }
       if (key === 'facilities') fetchFacilityList();
       if (key === 'announcements') fetchAnnouncements();
       if (key === 'reports') fetchSystemReports();
@@ -5225,6 +5271,23 @@ function App() {
         <button type="button" className="udhr-btn-neutral" style={{ marginBottom: '16px', width: 'auto' }} onClick={fetchSecurityAlerts}>
           <RefreshCw size={15} style={{ verticalAlign: '-2px', marginRight: '6px' }} />Check again
         </button>
+        {alertEmail && (
+          <div className="udhr-record-card" style={{ marginBottom: '16px' }}>
+            <div className="udhr-record-body">
+              {alertEmail.configured ? (
+                <p className="udhr-row-subtitle" style={{ margin: 0 }}>
+                  <strong>Email alerts are on.</strong> High alerts are emailed to{' '}
+                  {alertEmail.recipients.length ? alertEmail.recipients.join(', ') : 'nobody yet: give the system admin accounts real emails (Manage ▾ → Change email)'}.{' '}
+                  <button type="button" className="udhr-btn-neutral" style={{ width: 'auto', marginLeft: '6px' }} onClick={handleSendTestAlertEmail}>Send test email</button>
+                </p>
+              ) : (
+                <p className="udhr-row-subtitle" style={{ margin: 0 }}>
+                  <strong>Email alerts are off.</strong> Add BREVO_API_KEY and ALERT_EMAIL_FROM on Render to have high alerts emailed to the system admins.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
         <div className="udhr-record-card">
           <div className="udhr-record-body">
             {securityAlerts.length === 0 ? (
@@ -5448,6 +5511,7 @@ function App() {
                       <div className="udhr-menu-list">
                         <button type="button" onClick={(e) => { e.currentTarget.closest('details').open = false; handleResetStaffPassword(member); }}>Reset password</button>
                         <button type="button" onClick={(e) => { e.currentTarget.closest('details').open = false; handleForceLogout(member); }}>End all sessions</button>
+                        <button type="button" onClick={(e) => { e.currentTarget.closest('details').open = false; handleChangeStaffEmail(member); }}>Change email</button>
                         {member.twoFactorEnabled && (
                           <button type="button" onClick={(e) => { e.currentTarget.closest('details').open = false; handleResetTwoFactor(member); }}>Reset sign-in app (lost phone)</button>
                         )}

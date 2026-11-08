@@ -12,6 +12,8 @@
 let accessToken = '';
 let refreshInFlight = null;
 let sessionExpiredHandler = () => {};
+let accessReasonHandler = null;
+let reasonInFlight = null;
 
 export function setAccessToken(token) {
   accessToken = token || '';
@@ -23,6 +25,39 @@ export function getAccessToken() {
 
 export function onSessionExpired(handler) {
   sessionExpiredHandler = handler;
+}
+
+// Opening a patient who isn't on today's list at your clinic needs a reason
+// (the server answers 428 with reasonRequired). The handler shows the dialog
+// and resolves with the reason, or null if the person cancels.
+export function onAccessReasonRequired(handler) {
+  accessReasonHandler = handler;
+}
+
+async function withAccessReason(url, options, response) {
+  if (response.status !== 428 || !accessReasonHandler) {
+    return response;
+  }
+  let body;
+  try {
+    body = await response.clone().json();
+  } catch {
+    return response;
+  }
+  if (!body?.reasonRequired) {
+    return response;
+  }
+  // Opening one patient fires several reads at once: ask once, share the answer.
+  if (!reasonInFlight) {
+    reasonInFlight = Promise.resolve(accessReasonHandler(body.message))
+      .finally(() => setTimeout(() => { reasonInFlight = null; }, 0));
+  }
+  const reason = await reasonInFlight;
+  if (!reason) {
+    return response;
+  }
+  const headers = { ...(options.headers || {}), 'X-Access-Reason': encodeURIComponent(reason) };
+  return fetch(url, withToken({ ...options, headers }));
 }
 
 // Trades the refresh cookie for a new access token. Calls that fail at the same
@@ -63,15 +98,15 @@ const withToken = (options) => ({
 });
 
 export async function apiFetch(url, options = {}) {
-  const response = await fetch(url, withToken(options));
+  let response = await fetch(url, withToken(options));
   // Sign-in, refresh and sign-out answer 401 for their own reasons.
-  if (response.status !== 401 || url.startsWith('/api/auth/') || !accessToken) {
-    return response;
+  if (response.status === 401 && !url.startsWith('/api/auth/') && accessToken) {
+    const session = await refreshSession();
+    if (!session) {
+      sessionExpiredHandler();
+      return response;
+    }
+    response = await fetch(url, withToken(options));
   }
-  const session = await refreshSession();
-  if (!session) {
-    sessionExpiredHandler();
-    return response;
-  }
-  return fetch(url, withToken(options));
+  return withAccessReason(url, options, response);
 }

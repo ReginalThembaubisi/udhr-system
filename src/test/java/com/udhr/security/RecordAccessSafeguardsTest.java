@@ -7,9 +7,11 @@ import com.udhr.audit.AuditFloodGuard;
 import com.udhr.model.AuditLog;
 import com.udhr.model.Patient;
 import com.udhr.model.Staff;
+import com.udhr.model.Visit;
 import com.udhr.repository.AuditLogRepository;
 import com.udhr.repository.PatientRepository;
 import com.udhr.repository.StaffRepository;
+import com.udhr.repository.VisitRepository;
 import com.udhr.service.SecurityAlertService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +52,8 @@ class RecordAccessSafeguardsTest {
     @Autowired private SecurityAlertService securityAlertService;
     @Autowired private AuditFloodGuard auditFloodGuard;
     @Autowired private BCryptPasswordEncoder passwordEncoder;
+    @Autowired private VisitRepository visitRepository;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @Test
     void openingAPatientOutsideTodaysListNeedsAReason() throws Exception {
@@ -95,6 +99,37 @@ class RecordAccessSafeguardsTest {
         String doctor = login("DOC001", "Doctor@123");
         mvc.perform(get("/api/patients/9001015000083").header("Authorization", "Bearer " + doctor))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void aVisitLeftOpenForWeeksDoesNotCountAsToday() throws Exception {
+        // Found on the live site: visits are often never closed, and a patient
+        // with one left open since September skipped the prompt for good.
+        Staff doctor = staffRepository.findByStaffNumber("DOC001").orElseThrow();
+        Patient stale = patient("PSTALE01", "MRN-STALE-000001");
+        openVisit(stale, doctor, LocalDateTime.now().minusDays(10));
+        Patient recent = patient("PRECENT01", "MRN-RECENT-000001");
+        openVisit(recent, doctor, LocalDateTime.now().minusDays(1));
+
+        String token = login("DOC001", "Doctor@123");
+        mvc.perform(get("/api/patients/PSTALE01").header("Authorization", "Bearer " + token))
+                .andExpect(status().is(428));
+        mvc.perform(get("/api/patients/PRECENT01").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+    }
+
+    private void openVisit(Patient patient, Staff staff, LocalDateTime when) {
+        Visit visit = new Visit();
+        visit.setPatient(patient);
+        visit.setStaff(staff);
+        visit.setFacility(staff.getFacility());
+        visit.setVisitDate(when);
+        visit.setReason("Left open");
+        visit.setStatus("VITALS_DONE");
+        visit = visitRepository.save(visit);
+        // A visit stamps "now" when saved and its date can't be changed through
+        // JPA (updatable = false), so the test sets it in the table.
+        jdbc.update("update visits set visit_date = ? where id = ?", when, visit.getId());
     }
 
     @Test

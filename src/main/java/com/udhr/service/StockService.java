@@ -43,6 +43,9 @@ public class StockService {
     @Autowired
     private AuditService auditService;
 
+    @Autowired
+    private MedicationCatalog medicationCatalog;
+
     @Transactional
     public StockItem addStockItem(StockItemRequest request, String staffNumber) {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
@@ -345,16 +348,48 @@ public class StockService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * The stock item a prescription is dispensed from. The same name first; if
+     * none, any item for the same medicine (MedicationCatalog), so a
+     * prescription for "Panado" draws on "Paracetamol 500mg" (fix list P1-11).
+     * Among several, current stock with enough on hand wins over expired or
+     * short stock, so one expired batch doesn't block dispensing from a good one.
+     */
+    private StockItem pickStockFor(Facility facility, String medicationName, int needed) {
+        if (medicationName == null || medicationName.isBlank()) {
+            return null;
+        }
+        List<StockItem> stock = stockItemRepository.findByFacilityIdOrderByMedicationNameAsc(facility.getId());
+        java.util.Optional<MedicationCatalog.Medicine> medicine = medicationCatalog.identify(medicationName);
+        List<StockItem> candidates = stock.stream()
+                .filter(item -> item.getMedicationName().equalsIgnoreCase(medicationName.trim())
+                        || (medicine.isPresent() && medicationCatalog.identify(item.getMedicationName())
+                                .map(m -> m.generic().equals(medicine.get().generic())).orElse(false)))
+                .collect(Collectors.toList());
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        return candidates.stream()
+                .sorted(Comparator
+                        .comparing((StockItem item) -> item.isExpired())
+                        .thenComparing(item -> item.getQuantityOnHand() < needed)
+                        .thenComparing(item -> !item.getMedicationName().equalsIgnoreCase(medicationName.trim()))
+                        .thenComparing(StockItem::getQuantityOnHand, Comparator.reverseOrder()))
+                .findFirst().orElse(null);
+    }
+
     // Called when a prescription is dispensed. Best-effort: if this facility
     // isn't tracking the medication, or the dispensed quantity can't be
     // parsed as a number, dispensing proceeds without touching stock — not
     // every facility will have inventory set up for every medication.
+    // Returns the stock item drawn from, or null when none was.
     @Transactional
-    public void decrementForDispense(Facility facility, String medicationName, String quantityDispensedText, Staff staff, Long prescriptionId) {
-        StockItem item = stockItemRepository.findByFacilityIdAndMedicationNameIgnoreCase(facility.getId(), medicationName)
-                .orElse(null);
+    public StockItem decrementForDispense(Facility facility, String medicationName, String quantityDispensedText, Staff staff, Long prescriptionId) {
+        Matcher wanted = LEADING_INT.matcher(quantityDispensedText == null ? "" : quantityDispensedText);
+        int needed = wanted.find() ? Integer.parseInt(wanted.group(1)) : 0;
+        StockItem item = pickStockFor(facility, medicationName, needed);
         if (item == null) {
-            return;
+            return null;
         }
 
         // Expired stock is never dispensed, whatever the quantity on hand says.
@@ -370,11 +405,10 @@ public class StockService {
                     + ". Write it off and dispense from a current batch.");
         }
 
-        Matcher matcher = LEADING_INT.matcher(quantityDispensedText == null ? "" : quantityDispensedText);
-        if (!matcher.find()) {
-            return;
+        if (needed == 0) {
+            return null;
         }
-        int quantity = Integer.parseInt(matcher.group(1));
+        int quantity = needed;
 
         if (item.getQuantityOnHand() < quantity) {
             throw new RuntimeException("Insufficient stock: only " + item.getQuantityOnHand() + " " + item.getUnit()
@@ -382,6 +416,7 @@ public class StockService {
         }
 
         applyTransaction(item, StockTransaction.Type.DISPENSED, -quantity, staff, "Dispensed for prescription #" + prescriptionId);
+        return item;
     }
 
     private StockItem applyTransaction(StockItem item, StockTransaction.Type type, int quantityChange, Staff staff, String notes) {

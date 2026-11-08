@@ -106,6 +106,20 @@ public class Patient {
     @Column(name = "must_change_portal_pin")
     private Boolean mustChangePortalPin;
 
+    // New device: after the right PIN on a phone or computer this patient
+    // hasn't used before, a 6-digit code is texted to the cellphone on file.
+    @JsonIgnore
+    @Column(name = "device_code_hash")
+    private String deviceCodeHash;
+
+    @JsonIgnore
+    @Column(name = "device_code_expires_at")
+    private LocalDateTime deviceCodeExpiresAt;
+
+    @JsonIgnore
+    @Column(name = "device_code_attempts")
+    private Integer deviceCodeAttempts;
+
     // "Forgot PIN": a 6-digit code texted to the cellphone on file. Only its
     // hash is kept, it lasts 10 minutes, and 5 wrong tries cancel it.
     @JsonIgnore

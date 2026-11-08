@@ -52,6 +52,11 @@ public class TokenService {
     @Autowired
     private JwtUtil jwtUtil;
 
+    // Ending every session also forgets every remembered device, so a stolen
+    // laptop needs the authenticator code again.
+    @Autowired
+    private com.udhr.repository.TrustedDeviceRepository trustedDeviceRepository;
+
     @Value("${jwt.refresh-expiration}")
     private long refreshExpiration;
 
@@ -108,6 +113,7 @@ public class TokenService {
         staff.setSessionsValidFrom(LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
         staffRepository.save(staff);
         refreshTokenRepository.revokeAllForStaff(staff.getId());
+        trustedDeviceRepository.deleteByStaffId(staff.getId());
     }
 
     /**
@@ -206,6 +212,7 @@ public class TokenService {
     @Transactional
     public void revokePatientRefreshTokens(Patient patient) {
         refreshTokenRepository.revokeAllForPatient(patient.getId());
+        trustedDeviceRepository.deleteByPatientId(patient.getId());
     }
 
     @Transactional

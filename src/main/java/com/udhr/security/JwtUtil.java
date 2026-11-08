@@ -18,6 +18,7 @@ import java.util.UUID;
 public class JwtUtil {
 
     public static final String TWO_FACTOR_CHALLENGE = "2fa-challenge";
+    public static final String PATIENT_DEVICE_CHALLENGE = "patient-device-challenge";
 
     @Value("${jwt.secret}")
     private String secretKey;
@@ -90,6 +91,26 @@ public class JwtUtil {
                 .setExpiration(new Date(System.currentTimeMillis() + 5 * 60 * 1000))
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
+    }
+
+    /**
+     * A patient got their ID, date of birth and PIN right on a new device and
+     * now needs the code texted to their cellphone. Good for 10 minutes and
+     * only for entering that code; never accepted as a sign-in.
+     */
+    public String generatePatientDeviceChallenge(Long patientId) {
+        return Jwts.builder()
+                .setId(UUID.randomUUID().toString())
+                .setSubject(String.valueOf(patientId))
+                .claim("purpose", PATIENT_DEVICE_CHALLENGE)
+                .setIssuedAt(new Date())
+                .setExpiration(new Date(System.currentTimeMillis() + 10 * 60 * 1000))
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    public String extractSubject(String token) {
+        return getClaims(token).getSubject();
     }
 
     /** Set only on special-purpose tokens, which must never count as a sign-in. */

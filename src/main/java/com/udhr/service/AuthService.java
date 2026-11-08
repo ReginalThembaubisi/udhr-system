@@ -50,6 +50,9 @@ public class AuthService {
 
     // "required": every staff account must set up an authenticator app at its
     // next sign-in. "optional" (default): each person chooses.
+    @Autowired
+    private TrustedDeviceService trustedDeviceService;
+
     @Value("${udhr.staff-2fa:optional}")
     private String staffTwoFactor;
 
@@ -75,6 +78,10 @@ public class AuthService {
      * further attempts for 15 minutes, even with the right password (P1-5).
      */
     public LoginResponse login(LoginRequest request, String clientAddress) {
+        return login(request, clientAddress, null);
+    }
+
+    public LoginResponse login(LoginRequest request, String clientAddress, String deviceCookie) {
         String accountKey = LoginAttemptService.accountKey(request.getStaffNumber());
         String addressKey = LoginAttemptService.addressKey(clientAddress);
 
@@ -115,6 +122,12 @@ public class AuthService {
         // With an authenticator app set up, the password alone isn't enough.
         // The failure counter is not reset here: someone who knows the password
         // still only gets 5 tries at the code.
+        if (staff.isTwoFactorEnabled() && trustedDeviceService.isTrusted(deviceCookie, staff)) {
+            // A device that gave the authenticator code before (and was kept):
+            // the password is enough here for 30 days. A new device still needs it.
+            loginAttemptService.reset(accountKey);
+            return signedIn(staff, "Signed in on a remembered device (authenticator code given there before)");
+        }
         if (staff.isTwoFactorEnabled()) {
             recordSecurityEvent(staff, "LOGIN_PASSWORD_OK", "Password accepted; waiting for the authenticator code");
             LoginResponse challenge = new LoginResponse();

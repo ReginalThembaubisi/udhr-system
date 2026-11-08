@@ -12,6 +12,7 @@ import com.udhr.service.PatientPortalService;
 import com.udhr.service.TwoFactorService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import com.udhr.model.Staff;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
@@ -53,6 +54,12 @@ public class AuthController {
 
     @Autowired
     private com.udhr.service.StaffPasswordResetService staffPasswordResetService;
+
+    @Autowired
+    private com.udhr.service.TrustedDeviceService trustedDeviceService;
+
+    @Autowired
+    private com.udhr.repository.StaffRepository staffRepository;
 
     @Autowired
     private TwoFactorService twoFactorService;
@@ -134,14 +141,51 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest request, HttpServletRequest httpRequest) {
-        return signIn(() -> authService.login(request, clientAddress(httpRequest)));
+    public ResponseEntity<?> login(@RequestBody LoginRequest request,
+                                   @CookieValue(name = com.udhr.service.TrustedDeviceService.COOKIE, required = false) String device,
+                                   HttpServletRequest httpRequest) {
+        return signIn(() -> authService.login(request, clientAddress(httpRequest), device));
     }
 
-    /** Second step of a staff sign-in: the code from the authenticator app. */
+    /**
+     * Second step of a staff sign-in: the code from the authenticator app.
+     * With "remember this device" ticked, this browser skips the code for 30 days.
+     */
     @PostMapping("/login/verify")
-    public ResponseEntity<?> verifyTwoFactor(@RequestBody Map<String, String> body, HttpServletRequest httpRequest) {
-        return signIn(() -> authService.verifyTwoFactor(body.get("challengeToken"), body.get("code"), clientAddress(httpRequest)));
+    public ResponseEntity<?> verifyTwoFactor(@RequestBody Map<String, String> body,
+                                             @CookieValue(name = com.udhr.service.TrustedDeviceService.COOKIE, required = false) String device,
+                                             HttpServletRequest httpRequest) {
+        ResponseEntity<?> result = signIn(() -> authService.verifyTwoFactor(body.get("challengeToken"), body.get("code"), clientAddress(httpRequest)));
+        return rememberStaffDevice(result, body, device, httpRequest);
+    }
+
+    // After a successful authenticator code, keep this browser if asked.
+    private ResponseEntity<?> rememberStaffDevice(ResponseEntity<?> result, Map<String, String> body, String device,
+                                                  HttpServletRequest httpRequest) {
+        if (!result.getStatusCode().is2xxSuccessful() || !(result.getBody() instanceof LoginResponse session)
+                || session.getStaffNumber() == null || "false".equals(body.get("rememberDevice"))) {
+            return result;
+        }
+        Staff staff = staffRepository.findByStaffNumber(session.getStaffNumber()).orElse(null);
+        if (staff == null) {
+            return result;
+        }
+        return withDeviceCookie(result, trustedDeviceService.trust(device, staff,
+                httpRequest.getHeader("User-Agent"), clientAddress(httpRequest)));
+    }
+
+    private static ResponseEntity<?> withDeviceCookie(ResponseEntity<?> result, String value) {
+        ResponseCookie cookie = ResponseCookie.from(com.udhr.service.TrustedDeviceService.COOKIE, value)
+                .httpOnly(true)
+                .secure(true)
+                .sameSite("Strict")
+                .path("/api/auth")
+                .maxAge(java.time.Duration.ofDays(com.udhr.service.TrustedDeviceService.DAYS))
+                .build();
+        HttpHeaders headers = new HttpHeaders();
+        result.getHeaders().forEach((name, values) -> headers.put(name, new java.util.ArrayList<>(values)));
+        headers.add(HttpHeaders.SET_COOKIE, cookie.toString());
+        return new ResponseEntity<>(result.getBody(), headers, result.getStatusCode());
     }
 
     // ---- Two-step sign-in setup, for the signed-in staff member ------------------
@@ -157,8 +201,32 @@ public class AuthController {
     }
 
     @PostMapping("/2fa/confirm")
-    public ResponseEntity<?> twoFactorConfirm(@RequestBody Map<String, String> body, HttpServletRequest httpRequest) {
-        return staffAction(httpRequest, staffNumber -> withSession(twoFactorService.confirm(staffNumber, body.get("code"), extractToken(httpRequest))));
+    public ResponseEntity<?> twoFactorConfirm(@RequestBody Map<String, String> body,
+                                              @CookieValue(name = com.udhr.service.TrustedDeviceService.COOKIE, required = false) String device,
+                                              HttpServletRequest httpRequest) {
+        ResponseEntity<?> result = staffAction(httpRequest, staffNumber -> withSession(twoFactorService.confirm(staffNumber, body.get("code"), extractToken(httpRequest))));
+        // The device the app was just set up on has given a code: remember it too.
+        return rememberStaffDevice(result, body, device, httpRequest);
+    }
+
+    /** The devices that skip the authenticator code for this account, for Sign-in security. */
+    @GetMapping("/devices")
+    public ResponseEntity<?> trustedDevices(HttpServletRequest httpRequest) {
+        return staffAction(httpRequest, staffNumber -> ResponseEntity.ok(staffRepository.findByStaffNumber(staffNumber)
+                .map(staff -> trustedDeviceService.devicesOf(staff).stream().map(d -> Map.of(
+                        "label", d.getLabel() == null ? "Unknown browser" : d.getLabel(),
+                        "lastUsedAt", String.valueOf(d.getLastUsedAt()),
+                        "expiresAt", String.valueOf(d.getExpiresAt()))).toList())
+                .orElse(java.util.List.of())));
+    }
+
+    /** "Forget all my devices": every device needs the authenticator code again. */
+    @PostMapping("/devices/forget")
+    public ResponseEntity<?> forgetDevices(HttpServletRequest httpRequest) {
+        return staffAction(httpRequest, staffNumber -> {
+            staffRepository.findByStaffNumber(staffNumber).ifPresent(trustedDeviceService::forgetAll);
+            return ResponseEntity.ok(Map.of("message", "Every device will ask for the authenticator code again."));
+        });
     }
 
     @PostMapping("/2fa/disable")
@@ -182,8 +250,25 @@ public class AuthController {
     }
 
     @PostMapping("/patient/login")
-    public ResponseEntity<?> patientLogin(@RequestBody PatientLoginRequest request, HttpServletRequest httpRequest) {
-        return signIn(() -> patientPortalService.login(request, clientAddress(httpRequest)));
+    public ResponseEntity<?> patientLogin(@RequestBody PatientLoginRequest request,
+                                          @CookieValue(name = com.udhr.service.TrustedDeviceService.COOKIE, required = false) String device,
+                                          HttpServletRequest httpRequest) {
+        return signIn(() -> patientPortalService.login(request, clientAddress(httpRequest), device));
+    }
+
+    /** New device, step 2: the code texted to the patient's cellphone. */
+    @PostMapping("/patient/login/verify")
+    public ResponseEntity<?> patientVerifyDevice(@RequestBody Map<String, String> body,
+                                                 @CookieValue(name = com.udhr.service.TrustedDeviceService.COOKIE, required = false) String device,
+                                                 HttpServletRequest httpRequest) {
+        ResponseEntity<?> result = signIn(() -> patientPortalService.verifyNewDevice(body.get("challengeToken"), body.get("code")));
+        if (!result.getStatusCode().is2xxSuccessful() || !(result.getBody() instanceof com.udhr.dto.PatientLoginResponse session)
+                || "false".equals(body.get("rememberDevice"))) {
+            return result;
+        }
+        return withDeviceCookie(result, trustedDeviceService.trust(device,
+                patientPortalService.patientForSession(session.getIdNumber()),
+                httpRequest.getHeader("User-Agent"), clientAddress(httpRequest)));
     }
 
     /** Staff forgot password, step 1: emails a code to the account's work email. */

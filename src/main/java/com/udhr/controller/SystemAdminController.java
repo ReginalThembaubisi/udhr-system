@@ -40,6 +40,9 @@ public class SystemAdminController {
     private com.udhr.service.AlertEmailSender alertEmailSender;
 
     @Autowired
+    private com.udhr.repository.DemoEmailRepository demoEmailRepository;
+
+    @Autowired
     private JwtUtil jwtUtil;
 
     private String extractStaffNumber(HttpServletRequest request) {
@@ -155,6 +158,12 @@ public class SystemAdminController {
                 "recipients", securityAlertMailer.recipients()));
     }
 
+    /** Demo mode: the emails that would have been sent, newest first. */
+    @GetMapping("/demo-inbox")
+    public ResponseEntity<?> demoInbox() {
+        return ResponseEntity.ok(demoEmailRepository.findTop20ByOrderBySentAtDesc());
+    }
+
     /** Sends a test email to the system admins, to check the setup works. */
     @PostMapping("/alert-email/test")
     public ResponseEntity<?> sendTestAlertEmail(HttpServletRequest request) {
@@ -162,14 +171,13 @@ public class SystemAdminController {
         if (actor == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
         }
-        if (!alertEmailSender.configured()) {
-            return ResponseEntity.badRequest().body(Map.of("message",
-                    "Alert emails aren't set up yet: add BREVO_API_KEY and ALERT_EMAIL_FROM on Render."));
-        }
         int sentTo = securityAlertMailer.sendTest(actor);
         if (sentTo == 0) {
             return ResponseEntity.badRequest().body(Map.of("message",
                     "The test email wasn't sent. Check the system admins have real emails, and that the sender is verified in Brevo."));
+        }
+        if (!alertEmailSender.configured()) {
+            return ResponseEntity.ok(Map.of("message", "Demo mode: the test email is in the demo inbox below."));
         }
         return ResponseEntity.ok(Map.of("message", "Test email sent to " + sentTo + " system admin" + (sentTo == 1 ? "" : "s") + "."));
     }

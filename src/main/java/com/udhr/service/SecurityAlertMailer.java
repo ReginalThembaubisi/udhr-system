@@ -49,9 +49,8 @@ public class SecurityAlertMailer {
 
     @Scheduled(initialDelay = 120_000, fixedDelay = 300_000)
     public void scheduledCheck() {
-        if (sender.configured()) {
-            sendNewAlerts();
-        }
+        // Runs in demo mode too: the emails then land in the demo inbox.
+        sendNewAlerts();
     }
 
     /** Emails each new HIGH alert; returns how many were sent. */

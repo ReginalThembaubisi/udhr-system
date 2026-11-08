@@ -44,4 +44,16 @@ class RealServerStatusTest {
         ResponseEntity<String> anonymous = rest.getForEntity("/api/visits/today", String.class);
         assertThat(anonymous.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
+
+    @Test
+    void picturesAndPagesOutsideTheApiLoadWithoutSigningIn() {
+        // Browsers fetch pictures without the sign-in token. The static files
+        // aren't built into the test classpath, so "not 401" is what matters:
+        // in the app these return the file, or the "Page not found" page.
+        for (String path : new String[] {"/images/clipboard-care.svg", "/help.html", "/error/404.html", "/an/old/bookmark"}) {
+            assertThat(rest.getForEntity(path, String.class).getStatusCode()).as(path).isNotEqualTo(HttpStatus.UNAUTHORIZED);
+        }
+        // The API itself is still closed.
+        assertThat(rest.getForEntity("/api/patients/9001015000083", String.class).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
 }

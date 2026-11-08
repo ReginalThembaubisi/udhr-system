@@ -91,6 +91,15 @@ public class SecurityConfig {
                 // that carries no sign-in. Left protected, every 403 ("not
                 // allowed") turned into a 401 ("not signed in") on a real server.
                 .requestMatchers("/error").permitAll()
+                // Any other page address outside the API (pictures under
+                // /images, /help.html, a mistyped link) is public: browsers load
+                // pictures without the sign-in token, and an address that doesn't
+                // exist gets the friendly "Page not found" page instead of a bare
+                // 401. No data lives outside /api, so nothing is exposed.
+                // (Restored: a later merge dropped this rule and every picture,
+                // the F1 help page and the 404 page stopped loading.)
+                .requestMatchers(request -> "GET".equals(request.getMethod())
+                        && !request.getRequestURI().startsWith("/api/")).permitAll()
                 .requestMatchers("/api/auth/change-password").authenticated()
                 .requestMatchers("/api/auth/2fa/**").authenticated()
                 .requestMatchers("/api/auth/**").permitAll()

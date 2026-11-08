@@ -63,6 +63,10 @@ public class PatientService {
      * since not every patient has an ID number.
      */
     public Patient findByIdentifier(String identifier) {
+        // A missing identifier is never a match (see PatientRepository).
+        if (identifier == null || identifier.isBlank()) {
+            throw new RuntimeException("Patient not found");
+        }
         return patientRepository.findByIdNumber(identifier)
                 .or(() -> patientRepository.findByMrn(identifier))
                 .or(() -> patientRepository.findByPassportNumber(identifier))

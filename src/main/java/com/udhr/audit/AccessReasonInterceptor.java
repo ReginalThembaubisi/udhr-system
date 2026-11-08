@@ -34,8 +34,9 @@ import java.util.regex.Pattern;
  * it can't be skipped by calling the API directly.
  *
  * On today's list: a visit at the staff member's clinic today, a visit there
- * that is still open, or a recent referral to or from that clinic. A reason
- * given once covers that patient for that staff member for 12 hours.
+ * that is still open and began in the last 3 days, or a recent referral to or
+ * from that clinic. A reason given once covers that patient for that staff
+ * member for 12 hours.
  *
  * The browser sends the reason in the X-Access-Reason header after the
  * server answers 428 with {"reasonRequired": true}.
@@ -46,6 +47,7 @@ public class AccessReasonInterceptor implements HandlerInterceptor {
     public static final String ACTION = "ACCESS_OUTSIDE_QUEUE";
     public static final String HEADER = "X-Access-Reason";
     private static final int GRANT_HOURS = 12;
+    private static final int OPEN_VISIT_DAYS = 3;
     private static final Set<String> ROLES = Set.of("DOCTOR", "NURSE");
     private static final Set<String> FINISHED = Set.of("COMPLETE", "REFERRED", "DISCHARGED", "CANCELLED");
 
@@ -138,7 +140,11 @@ public class AccessReasonInterceptor implements HandlerInterceptor {
                 continue;
             }
             boolean todays = visit.getVisitDate() != null && visit.getVisitDate().toLocalDate().equals(today);
-            if (todays || !FINISHED.contains(visit.getStatus())) {
+            // An open visit counts only while it's recent: visits are often never
+            // closed, and one left open since September must not count as "today".
+            boolean recentOpen = !FINISHED.contains(visit.getStatus()) && visit.getVisitDate() != null
+                    && !visit.getVisitDate().toLocalDate().isBefore(today.minusDays(OPEN_VISIT_DAYS));
+            if (todays || recentOpen) {
                 return true;
             }
         }

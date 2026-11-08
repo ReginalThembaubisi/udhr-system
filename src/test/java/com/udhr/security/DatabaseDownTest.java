@@ -43,8 +43,10 @@ class DatabaseDownTest {
         mvc.perform(get("/api/system-status"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.database").value("unavailable"));
-        // The pages themselves still load, so the message can be shown.
-        mvc.perform(get("/")).andExpect(status().isOk());
+        // Pages outside /api aren't held back, so the message can be shown.
+        // (No built frontend in the test run, so "/" may be 404, but never 503.)
+        mvc.perform(get("/")).andExpect(result ->
+                org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus()).isNotEqualTo(503));
     }
 
     @Test

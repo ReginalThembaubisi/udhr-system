@@ -49,6 +49,9 @@ public class AuthController {
     private PatientPortalService patientPortalService;
 
     @Autowired
+    private com.udhr.service.PatientPinResetService patientPinResetService;
+
+    @Autowired
     private TwoFactorService twoFactorService;
 
     @Autowired
@@ -178,6 +181,28 @@ public class AuthController {
     @PostMapping("/patient/login")
     public ResponseEntity<?> patientLogin(@RequestBody PatientLoginRequest request, HttpServletRequest httpRequest) {
         return signIn(() -> patientPortalService.login(request, clientAddress(httpRequest)));
+    }
+
+    /** Forgot PIN, step 1: texts a code to the cellphone on the patient's record. */
+    @PostMapping("/patient/forgot-pin")
+    public ResponseEntity<?> forgotPin(@RequestBody Map<String, String> body, HttpServletRequest httpRequest) {
+        try {
+            return ResponseEntity.ok(Map.of("message", patientPinResetService.sendCode(
+                    body.get("idNumber"), body.get("dateOfBirth"), clientAddress(httpRequest))));
+        } catch (LoginLockedException e) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    /** Forgot PIN, step 2: the code from the text message and a new PIN. */
+    @PostMapping("/patient/reset-pin")
+    public ResponseEntity<?> resetPin(@RequestBody Map<String, String> body) {
+        try {
+            patientPinResetService.resetPin(body.get("idNumber"), body.get("dateOfBirth"), body.get("code"), body.get("newPin"));
+            return ResponseEntity.ok(Map.of("message", "Your new PIN is set. Sign in with it now."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
     }
 
     /**

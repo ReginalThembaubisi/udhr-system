@@ -24,7 +24,7 @@ export default {
   'login.dateOfBirth': 'Date of birth',
   'login.pin': 'Portal PIN',
   'login.pinPlaceholder': '6-digit PIN from your clinic',
-  'login.pinHelp': 'No PIN yet, or forgot it? Ask the front desk at your clinic.',
+  'login.pinHelp': 'No PIN yet? Ask the front desk at your clinic.',
   'login.submit': 'Sign in',
   'login.submitting': 'Signing in...',
 

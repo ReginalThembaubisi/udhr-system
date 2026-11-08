@@ -65,7 +65,24 @@ public class PatientPortalService {
     // out which ID numbers are registered or which part was wrong.
     private static final String INVALID = "ID number, date of birth or PIN is incorrect";
 
+    @Autowired
+    private TrustedDeviceService trustedDeviceService;
+
+    @Autowired
+    private PatientPinResetService patientTexts;
+
+    private final java.security.SecureRandom random = new java.security.SecureRandom();
+    private static final int DEVICE_CODE_MINUTES = 10;
+
+    // "on" (default): a new device needs a code texted to the patient's cellphone.
+    @org.springframework.beans.factory.annotation.Value("${udhr.patient-new-device-check:on}")
+    private String newDeviceCheck;
+
     public PatientLoginResponse login(PatientLoginRequest request, String clientAddress) {
+        return login(request, clientAddress, null);
+    }
+
+    public PatientLoginResponse login(PatientLoginRequest request, String clientAddress, String deviceCookie) {
         // Each patient account locks after 5 failures (below). This also stops
         // one machine guessing across many ID numbers, the same limit as staff.
         String addressKey = LoginAttemptService.addressKey(clientAddress);
@@ -123,10 +140,79 @@ public class PatientPortalService {
 
         patient.setFailedLoginAttempts(0);
         patient.setLoginLockedUntil(null);
+
+        // A phone or computer this patient hasn't used before: the right PIN
+        // isn't enough, a code is also texted to the cellphone on their record.
+        // (Without a cellphone on file there is nothing to send to, so the PIN
+        // alone still signs them in, as before.)
+        if (!"off".equalsIgnoreCase(newDeviceCheck) && PatientPinResetService.hasCellphone(patient)
+                && !trustedDeviceService.isTrusted(deviceCookie, patient)) {
+            String code = String.format("%06d", random.nextInt(1_000_000));
+            patient.setDeviceCodeHash(passwordEncoder.encode(code));
+            patient.setDeviceCodeExpiresAt(LocalDateTime.now().plusMinutes(DEVICE_CODE_MINUTES));
+            patient.setDeviceCodeAttempts(0);
+            patientRepository.save(patient);
+            patientTexts.sendText(patient, "Text message: new device sign-in code",
+                    "UDHR: someone is signing in to your health record on a new device. If it's you, your code is " + code
+                            + ". It works for " + DEVICE_CODE_MINUTES + " minutes. If it's NOT you, don't share it: "
+                            + "change your PIN or tell the front desk at your clinic.");
+            auditService.recordEvent(null, patient, "PATIENT_NEW_DEVICE_CODE_SENT",
+                    "signed in with the right PIN on a new device; code texted to "
+                            + AfricasTalkingService.mask(patient.getContactNumber().trim()), "PATIENT", patient.getId());
+            PatientLoginResponse challenge = new PatientLoginResponse();
+            challenge.setDeviceCodeRequired(true);
+            challenge.setChallengeToken(jwtUtil.generatePatientDeviceChallenge(patient.getId()));
+            challenge.setCodeSentTo(AfricasTalkingService.mask(patient.getContactNumber().trim()));
+            return challenge;
+        }
+
         patientRepository.save(patient);
         auditService.recordEvent(null, patient, "PATIENT_LOGIN_SUCCESS",
                 "signed in to their patient portal", "PATIENT", patient.getId());
         return buildSession(patient);
+    }
+
+    /** Second step on a new device: the code texted to the patient's cellphone. */
+    public PatientLoginResponse verifyNewDevice(String challengeToken, String code) {
+        Patient patient;
+        try {
+            if (!jwtUtil.validateToken(challengeToken)
+                    || !JwtUtil.PATIENT_DEVICE_CHALLENGE.equals(jwtUtil.extractPurpose(challengeToken))) {
+                throw new RuntimeException();
+            }
+            patient = patientRepository.findById(Long.parseLong(jwtUtil.extractSubject(challengeToken))).orElseThrow();
+        } catch (Exception e) {
+            throw new RuntimeException("Sign-in timed out. Enter your details again.");
+        }
+        if (patient.getDeviceCodeHash() == null || patient.getDeviceCodeExpiresAt() == null
+                || patient.getDeviceCodeExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("That code has expired. Enter your details again for a new one.");
+        }
+        if (code == null || !passwordEncoder.matches(code.trim(), patient.getDeviceCodeHash())) {
+            int tries = (patient.getDeviceCodeAttempts() == null ? 0 : patient.getDeviceCodeAttempts()) + 1;
+            patient.setDeviceCodeAttempts(tries);
+            if (tries >= MAX_FAILED_ATTEMPTS) {
+                patient.setDeviceCodeHash(null);
+                patient.setDeviceCodeExpiresAt(null);
+            }
+            patientRepository.save(patient);
+            auditService.recordEvent(null, patient, "PATIENT_NEW_DEVICE_CODE_FAILED",
+                    "entered a wrong new-device code", "PATIENT", patient.getId());
+            throw new RuntimeException(tries >= MAX_FAILED_ATTEMPTS
+                    ? "Too many wrong codes. Enter your details again for a new one."
+                    : "That code isn't right. Check the text message and try again.");
+        }
+        patient.setDeviceCodeHash(null);
+        patient.setDeviceCodeExpiresAt(null);
+        patient.setDeviceCodeAttempts(0);
+        patientRepository.save(patient);
+        auditService.recordEvent(null, patient, "PATIENT_LOGIN_SUCCESS",
+                "signed in to their patient portal on a new device (code texted to their cellphone)", "PATIENT", patient.getId());
+        return buildSession(patient);
+    }
+
+    public Patient patientForSession(String idNumber) {
+        return patientService.findByIdentifier(idNumber);
     }
 
     private void recordAddressFailure(String addressKey, String clientAddress) {

@@ -96,16 +96,7 @@ public class PatientPinResetService {
 
         String text = "UDHR: your code to reset your PIN is " + code + ". It works for " + CODE_MINUTES
                 + " minutes. Don't share it with anyone, not even clinic staff.";
-        if (sms.configured()) {
-            sms.sendSMS(patient.getContactNumber(), text);
-        } else {
-            DemoEmail demo = new DemoEmail();
-            demo.setKind("SMS");
-            demo.setRecipients("Cellphone " + AfricasTalkingService.mask(patient.getContactNumber().trim()));
-            demo.setSubject("Text message: PIN reset code");
-            demo.setBody(text);
-            demoInbox.save(demo);
-        }
+        sendText(patient, "Text message: PIN reset code", text);
         auditService.recordEvent(null, patient, "PATIENT_PIN_RESET_CODE_SENT",
                 "asked for a PIN reset code, texted to " + AfricasTalkingService.mask(patient.getContactNumber().trim()),
                 "PATIENT", patient.getId());
@@ -147,6 +138,28 @@ public class PatientPinResetService {
                 "chose a new portal PIN using a code texted to their cellphone", "PATIENT", patient.getId());
     }
 
+    /**
+     * Texts the patient's cellphone; with no SMS service (the demo) the text
+     * goes to the demo inbox instead, never back to the browser.
+     */
+    public void sendText(Patient patient, String subject, String text) {
+        if (sms.configured()) {
+            sms.sendSMS(patient.getContactNumber(), text);
+        } else {
+            DemoEmail demo = new DemoEmail();
+            demo.setKind("SMS");
+            demo.setRecipients("Cellphone " + AfricasTalkingService.mask(patient.getContactNumber().trim()));
+            demo.setSubject(subject);
+            demo.setBody(text);
+            demoInbox.save(demo);
+        }
+    }
+
+    public static boolean hasCellphone(Patient patient) {
+        String phone = patient.getContactNumber();
+        return phone != null && phone.replaceAll("\\D", "").length() >= 9;
+    }
+
     private Patient match(String idNumber, String dateOfBirth) {
         if (idNumber == null || idNumber.isBlank() || dateOfBirth == null) {
             return null;
@@ -157,11 +170,6 @@ public class PatientPinResetService {
         } catch (Exception e) {
             return null;
         }
-    }
-
-    private static boolean hasCellphone(Patient patient) {
-        String phone = patient.getContactNumber();
-        return phone != null && phone.replaceAll("\\D", "").length() >= 9;
     }
 
     private static void clearCode(Patient patient) {

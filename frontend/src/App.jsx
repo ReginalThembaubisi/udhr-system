@@ -511,6 +511,45 @@ function AccessReasonDialog({ message, onDone }) {
   );
 }
 
+
+// Devices that skip the authenticator code for 30 days, with a way to forget
+// them all (a lost laptop, a shared clinic PC).
+function RememberedDevices() {
+  const [devices, setDevices] = useState(null);
+  const [note, setNote] = useState('');
+  const load = () => apiFetch('/api/auth/devices', { headers: { Authorization: `Bearer ${getAccessToken()}` } })
+    .then(r => (r.ok ? r.json() : []))
+    .then(setDevices)
+    .catch(() => setDevices([]));
+  useEffect(() => { load(); }, []);
+  const forget = async () => {
+    const r = await apiFetch('/api/auth/devices/forget', { method: 'POST', headers: { Authorization: `Bearer ${getAccessToken()}` } });
+    const data = await parseResponseBody(r);
+    setNote(r.ok ? data.message : 'Could not forget the devices');
+    load();
+  };
+  if (!devices) return null;
+  return (
+    <div style={{ marginBottom: '14px' }}>
+      <p className="udhr-label" style={{ marginBottom: '6px' }}>Remembered devices</p>
+      {devices.length === 0 ? (
+        <p className="udhr-row-subtitle">None. Every device asks for the code from your app.</p>
+      ) : (
+        <>
+          <ul style={{ margin: '0 0 8px', paddingLeft: '18px' }}>
+            {devices.map((d, i) => (
+              <li key={i} className="udhr-row-subtitle">{d.label}, last used {new Date(d.lastUsedAt).toLocaleString()}</li>
+            ))}
+          </ul>
+          <p className="udhr-row-subtitle">These skip the code for 30 days. A new device always asks for it.</p>
+          <button type="button" className="udhr-btn-neutral" style={{ width: 'auto' }} onClick={forget}>Forget all devices</button>
+        </>
+      )}
+      {note && <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>{note}</p>}
+    </div>
+  );
+}
+
 function TwoFactorSettings({ required, onSession }) {
   const [status, setStatus] = useState(null);
   const [setup, setSetup] = useState(null); // { secret, qr }
@@ -537,7 +576,7 @@ function TwoFactorSettings({ required, onSession }) {
 
   const confirm = async (e) => {
     e.preventDefault();
-    const response = await apiFetch('/api/auth/2fa/confirm', { method: 'POST', headers: headers(), body: JSON.stringify({ code }) });
+    const response = await apiFetch('/api/auth/2fa/confirm', { method: 'POST', headers: headers(), body: JSON.stringify({ code, rememberDevice: 'true' }) });
     const data = await parseResponseBody(response);
     if (!response.ok) return setMessage({ type: 'error', text: errorText(data, 'That code isn\'t right') });
     setSetup(null);
@@ -561,6 +600,7 @@ function TwoFactorSettings({ required, onSession }) {
   if (!status) return <p className="udhr-empty-note">Loading...</p>;
   return (
     <div className="udhr-two-factor">
+      {status.enabled && <RememberedDevices />}
       {message && <p className={`udhr-two-factor-message ${message.type}`}>{message.text}</p>}
       {status.enabled ? (
         <>
@@ -667,6 +707,11 @@ function App() {
   // authenticator code is being entered.
   const [twoFactorChallenge, setTwoFactorChallenge] = useState(null);
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  // "This is my own device": skip the code on this browser for 30 days.
+  const [rememberDevice, setRememberDevice] = useState(true);
+  // Patient on a new device: the code texted to their cellphone.
+  const [patientDeviceChallenge, setPatientDeviceChallenge] = useState(null);
+  const [patientDeviceCode, setPatientDeviceCode] = useState('');
   // STAFF_2FA=required and this account has no authenticator app yet.
   const [twoFactorSetupRequired, setTwoFactorSetupRequired] = useState(false);
   const [showSecurity, setShowSecurity] = useState(false);
@@ -1093,6 +1138,14 @@ function App() {
         throw new Error(typeof data === 'string' ? data : data.message || 'Login failed');
       }
 
+      // Patient PIN right, but a new device: the code texted to their cellphone is needed.
+      if (data.deviceCodeRequired) {
+        setPatientDeviceChallenge({ token: data.challengeToken, sentTo: data.codeSentTo });
+        setPatientDeviceCode('');
+        setPatientPin('');
+        return;
+      }
+
       // Password right, authenticator code still needed.
       if (data.twoFactorRequired) {
         setTwoFactorChallenge(data.challengeToken);
@@ -1115,6 +1168,32 @@ function App() {
   };
 
   // Second step of a staff sign-in: the 6-digit code from the authenticator app.
+  const handleVerifyPatientDevice = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setLoading(true);
+    try {
+      const { response, data } = await requestSignIn('/api/auth/patient/login/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeToken: patientDeviceChallenge.token, code: patientDeviceCode, rememberDevice: String(rememberDevice) })
+      });
+      if (!response.ok) {
+        const text = typeof data === 'string' ? data : data?.message || 'Sign-in failed';
+        if (/timed out|expired|Too many/.test(text)) setPatientDeviceChallenge(null);
+        throw new Error(text);
+      }
+      setPatientDeviceChallenge(null);
+      setPatientDeviceCode('');
+      applySession(data);
+      showSignInNotice(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleVerifyCode = async (e) => {
     e.preventDefault();
     setErrorMessage('');
@@ -1123,7 +1202,7 @@ function App() {
       const { response, data } = await requestSignIn('/api/auth/login/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeToken: twoFactorChallenge, code: twoFactorCode })
+        body: JSON.stringify({ challengeToken: twoFactorChallenge, code: twoFactorCode, rememberDevice: String(rememberDevice) })
       });
       if (!response.ok) {
         // A timed-out challenge means starting again from the password.
@@ -1141,6 +1220,14 @@ function App() {
       setLoading(false);
     }
   };
+
+  // Shown with every "new device" code: untick on a shared or public computer.
+  const rememberBox = (
+    <label className="udhr-row-subtitle" style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', margin: '0 0 12px', cursor: 'pointer' }}>
+      <input type="checkbox" checked={rememberDevice} onChange={(e) => setRememberDevice(e.target.checked)} style={{ marginTop: '3px' }} />
+      <span>This is my own device: don't ask for a code here for 30 days. Untick on a shared or public computer.</span>
+    </label>
+  );
 
   // Logout. Tells the server first so the tokens are actually revoked:
   // clearing the browser alone would leave them working for anyone else
@@ -3374,7 +3461,29 @@ function App() {
               </button>
             </div>
 
-            {twoFactorChallenge ? (
+            {patientDeviceChallenge && loginRole === 'patient' ? (
+              <form onSubmit={handleVerifyPatientDevice}>
+                <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 6px' }}>New device: check it's you</h3>
+                <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>
+                  This is the first time you've signed in on this phone or computer. We've texted a 6-digit code to your
+                  cellphone {patientDeviceChallenge.sentTo ? `(${patientDeviceChallenge.sentTo})` : ''}. It works for 10 minutes.
+                </p>
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="patientDeviceCode">Code from the text message</label>
+                  <input id="patientDeviceCode" type="text" className="udhr-input udhr-code-input" value={patientDeviceCode} placeholder="6 digits"
+                    onChange={(e) => setPatientDeviceCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric" autoComplete="one-time-code" autoFocus required />
+                </div>
+                {rememberBox}
+                <button type="submit" className="udhr-btn-primary" disabled={loading || patientDeviceCode.length !== 6} aria-busy={loading}>
+                  {loading ? t('login.submitting') : 'Verify'}
+                </button>
+                <button type="button" className="udhr-link-button" style={{ marginTop: '12px' }} onClick={() => { setPatientDeviceChallenge(null); setErrorMessage(''); }}>
+                  Didn't get a code? Start again
+                </button>
+                <p className="udhr-row-subtitle" style={{ marginTop: '10px' }}>New cellphone number? Ask the front desk at your clinic to update it.</p>
+              </form>
+            ) : twoFactorChallenge ? (
               <form onSubmit={handleVerifyCode}>
                 <div className="udhr-form-group">
                   <label className="udhr-label" htmlFor="twoFactorCode">Code from your authenticator app</label>
@@ -3385,6 +3494,7 @@ function App() {
                     Open Google or Microsoft Authenticator on your phone and type the 6-digit code shown for UDHR. Lost your phone? Ask your system administrator.
                   </p>
                 </div>
+                {rememberBox}
                 <button type="submit" className="udhr-btn-primary" disabled={loading || twoFactorCode.length !== 6} aria-busy={loading}>
                   {loading ? t('login.submitting') : 'Verify'}
                 </button>

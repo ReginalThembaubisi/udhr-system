@@ -563,6 +563,11 @@
   color: var(--udhr-primary);
 }
 
+.udhr-tag.success {
+  background: var(--udhr-success-tint);
+  color: var(--udhr-success-text);
+}
+
 .udhr-tag.danger {
   background: var(--udhr-danger-tint);
   color: var(--udhr-danger-text);
@@ -1892,4 +1897,16 @@
   font-size: 20px;
   cursor: pointer;
   color: var(--udhr-text-muted);
+}
+
+/* Rubric 0.1.4: fields you can't edit look different from ones you can. */
+.udhr-input:disabled,
+.udhr-input[readonly],
+select.udhr-input:disabled,
+textarea.udhr-input:disabled,
+textarea.udhr-input[readonly] {
+  background: #eef1f5;
+  color: var(--udhr-text-muted);
+  border-style: dashed;
+  cursor: not-allowed;
 }

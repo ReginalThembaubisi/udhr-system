@@ -112,6 +112,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/change-password").authenticated()
                 .requestMatchers("/api/auth/2fa/**").authenticated()
                 .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/system-status").permitAll()
 
                 // ---- System administrator: oversight of the system itself ----
                 // Account management, forced logouts and the audit trail. Kept

@@ -140,7 +140,7 @@
   --danger: #ef4444;
   
   --font-sans: 'Inter', sans-serif;
-  --font-heading: 'Outfit', sans-serif;
+  --font-heading: 'Inter', sans-serif; /* one font everywhere (rubric 0.2.1) */
 }
 
 * {

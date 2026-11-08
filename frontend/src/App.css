@@ -1682,6 +1682,10 @@
 .udhr-menu-list button:hover {
   background: var(--udhr-bg);
 }
+.udhr-menu-up .udhr-menu-list {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
 .udhr-menu-list .udhr-menu-danger {
   color: var(--udhr-danger);
 }

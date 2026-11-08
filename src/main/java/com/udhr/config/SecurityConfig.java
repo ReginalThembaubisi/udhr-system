@@ -1,6 +1,7 @@
 package com.udhr.config;
 
 import com.udhr.security.JwtAuthenticationFilter;
+import com.udhr.audit.AuditFloodGuard;
 import com.udhr.service.AuditService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,8 +42,10 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final AuditService auditService;
+    private final AuditFloodGuard auditFloodGuard;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, AuditService auditService) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, AuditService auditService, AuditFloodGuard auditFloodGuard) {
+        this.auditFloodGuard = auditFloodGuard;
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.auditService = auditService;
     }
@@ -60,9 +63,15 @@ public class SecurityConfig {
                     response.setStatus(HttpStatus.UNAUTHORIZED.value());
                     if (request.getRequestURI().startsWith("/api/")
                             && !request.getRequestURI().startsWith("/api/auth/")) {
-                        auditService.recordSecurityEvent(null, "SECURITY_ACCESS_DENIED",
-                                "attempted an API request without valid authentication: "
-                                        + request.getMethod() + " " + request.getRequestURI());
+                        // Limited per address, so signed-out requests can't flood the trail.
+                        AuditFloodGuard.Decision decision = auditFloodGuard.check(request);
+                        if (decision != AuditFloodGuard.Decision.SKIP) {
+                            auditService.recordSecurityEvent(null, "SECURITY_ACCESS_DENIED",
+                                    "attempted an API request without valid authentication: "
+                                            + request.getMethod() + " " + request.getRequestURI()
+                                            + (decision == AuditFloodGuard.Decision.RECORD_LIMIT_REACHED
+                                                    ? " (more from this address in the next 10 minutes are refused but not recorded)" : ""));
+                        }
                     }
                 })
                 .accessDeniedHandler((request, response, exception) -> {

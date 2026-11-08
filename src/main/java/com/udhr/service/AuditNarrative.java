@@ -40,6 +40,7 @@ public final class AuditNarrative {
         Map.entry("QUEUE_CANCELLED", "Queue entry cancelled"),
         Map.entry("DISPENSE_MEDICATION", "Medication dispensed"),
         Map.entry("DISPENSE_PRESCRIPTION", "Prescription marked as dispensed"),
+        Map.entry("ACCESS_OUTSIDE_QUEUE", "Record opened outside today's list (reason given)"),
         Map.entry("ADD_PRESCRIPTION", "Prescription issued"),
         Map.entry("ADD_DIAGNOSIS", "Diagnosis recorded"),
         Map.entry("ADD_ALLERGY", "Allergy recorded"),

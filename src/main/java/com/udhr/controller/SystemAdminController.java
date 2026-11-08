@@ -31,6 +31,9 @@ public class SystemAdminController {
     private TwoFactorService twoFactorService;
 
     @Autowired
+    private com.udhr.service.SecurityAlertService securityAlertService;
+
+    @Autowired
     private JwtUtil jwtUtil;
 
     private String extractStaffNumber(HttpServletRequest request) {
@@ -120,6 +123,16 @@ public class SystemAdminController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
         }
+    }
+
+    /** Warnings worked out from the audit trail: unusual record access, sign-ins from new places, lockouts. */
+    @GetMapping("/security-alerts")
+    public ResponseEntity<?> securityAlerts(@RequestParam(required = false, defaultValue = "7") int days,
+                                            HttpServletRequest request) {
+        if (extractStaffNumber(request) == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+        return ResponseEntity.ok(securityAlertService.alerts(Math.max(1, Math.min(30, days))));
     }
 
     /** List registered patient portal accounts; excludes clinical and secret information. */

@@ -20,4 +20,10 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long>, org.s
     Optional<AuditLog> findFirstByStaffIdAndActionOrderByCreatedAtDesc(Long staffId, String action);
 
     long countByStaffIdAndActionInAndCreatedAtAfter(Long staffId, Collection<String> actions, LocalDateTime after);
+
+    // A reason given to open a patient outside today's list covers them for a while.
+    boolean existsByStaffIdAndPatientIdAndActionAndCreatedAtAfter(Long staffId, Long patientId, String action, LocalDateTime after);
+
+    // The security alerts read recent entries of these kinds.
+    List<AuditLog> findByActionInAndCreatedAtAfterOrderByCreatedAtAsc(Collection<String> actions, LocalDateTime after);
 }

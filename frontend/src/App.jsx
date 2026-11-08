@@ -13,7 +13,7 @@ import './udhr-standard.css';
 import './udhr-audit.css';
 import './udhr-patient-accounts.css';
 import './udhr-registration.css';
-import { apiFetch, getAccessToken, onSessionExpired, refreshSession, setAccessToken } from './lib/api';
+import { apiFetch, getAccessToken, onAccessReasonRequired, onSessionExpired, refreshSession, setAccessToken } from './lib/api';
 import { LANGUAGES, getLanguage, setLanguage, t } from './i18n';
 
 // Sign-out after inactivity on shared clinic computers (fix list P1-4).
@@ -464,6 +464,53 @@ function BulkStockImport({ stockItems, onDone }) {
   );
 }
 
+// "Break the glass": opening a patient who isn't on today's list at your clinic
+// asks why. The reason is saved in the audit trail (see AccessReasonInterceptor).
+const ACCESS_REASONS = [
+  'Follow-up of an earlier visit',
+  'Referred from another clinic',
+  'Emergency',
+  'Reviewing results',
+  'Covering for a colleague',
+  'Other',
+];
+
+function AccessReasonDialog({ message, onDone }) {
+  const [choice, setChoice] = useState('');
+  const [details, setDetails] = useState('');
+  const needsDetails = choice === 'Other';
+  const ready = choice && (!needsDetails || details.trim().length >= 3);
+  const submit = (e) => {
+    e.preventDefault();
+    if (!ready) return;
+    onDone(details.trim() ? `${choice}: ${details.trim()}` : choice);
+  };
+  return createPortal(
+    <div className="udhr-idle-overlay" role="dialog" aria-modal="true" aria-labelledby="udhr-access-reason-title">
+      <form className="udhr-idle-dialog" onSubmit={submit} style={{ maxWidth: '460px', textAlign: 'left' }}>
+        <h2 id="udhr-access-reason-title">Why are you opening this record?</h2>
+        <p>{message}</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', margin: '10px 0' }}>
+          {ACCESS_REASONS.map(reason => (
+            <label key={reason} style={{ display: 'flex', gap: '8px', alignItems: 'center', cursor: 'pointer' }}>
+              <input type="radio" name="access-reason" value={reason} checked={choice === reason} onChange={() => setChoice(reason)} />
+              {reason}
+            </label>
+          ))}
+        </div>
+        <label className="udhr-label" htmlFor="access-reason-details">{needsDetails ? 'Explain (required)' : 'Details (optional)'}</label>
+        <input id="access-reason-details" type="text" className="udhr-input" maxLength={150} value={details}
+          onChange={(e) => setDetails(e.target.value)} placeholder="e.g. patient phoned about results" />
+        <div className="udhr-idle-actions" style={{ marginTop: '14px' }}>
+          <button type="button" className="udhr-btn-neutral" onClick={() => onDone(null)}>Cancel</button>
+          <button type="submit" className="udhr-btn-primary" disabled={!ready}>Open record</button>
+        </div>
+      </form>
+    </div>,
+    document.body
+  );
+}
+
 function TwoFactorSettings({ required, onSession }) {
   const [status, setStatus] = useState(null);
   const [setup, setSetup] = useState(null); // { secret, qr }
@@ -631,6 +678,11 @@ function App() {
     setLanguageState(code);
   };
   const [idleWarning, setIdleWarning] = useState(false);
+  // { message, resolve } while the "why are you opening this record?" dialog is open.
+  const [accessReasonAsk, setAccessReasonAsk] = useState(null);
+  useEffect(() => {
+    onAccessReasonRequired((message) => new Promise(resolve => setAccessReasonAsk({ message, resolve })));
+  }, []);
   const [changePasswordForm, setChangePasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [changePinForm, setChangePinForm] = useState({ currentPin: '', newPin: '', confirmPin: '' });
 
@@ -845,6 +897,7 @@ function App() {
   const [systemAdminTab, setSystemAdminTab] = useState('accounts');
   const [showCreateAccount, setShowCreateAccount] = useState(false);
   const [systemAdminStaff, setSystemAdminStaff] = useState([]);
+  const [securityAlerts, setSecurityAlerts] = useState([]);
   const [accountCategory, setAccountCategory] = useState('staff');
   const [systemAdminPatients, setSystemAdminPatients] = useState([]);
   const [patientAccountSearch, setPatientAccountSearch] = useState('');
@@ -1183,6 +1236,7 @@ function App() {
         fetchRecentCheckIns();
       } else if (userRole === 'SYSTEM_ADMIN') {
         fetchSystemAdminStaff();
+        fetchSecurityAlerts();
         // The create-account form needs the facility dropdown.
         fetchFacilityList();
       }
@@ -2794,6 +2848,17 @@ function App() {
     }
   };
 
+  // Warnings worked out from the audit trail (SecurityAlertService).
+  const fetchSecurityAlerts = async () => {
+    try {
+      const response = await apiFetch('/api/system-admin/security-alerts?days=7', { headers: getAuthHeaders() });
+      const data = await parseResponseBody(response);
+      if (response.ok) setSecurityAlerts(data);
+    } catch (err) {
+      setErrorMessage(err.message);
+    }
+  };
+
   const fetchAuditLogForStaff = async (staffId) => {
     setErrorMessage('');
     try {
@@ -2942,6 +3007,13 @@ function App() {
   // Shown on every signed-in screen from 10 minutes without activity. Drawn
   // straight into <body> so nothing on the page (like the chat bubble) can
   // sit on top of it.
+  const accessReasonDialog = accessReasonAsk ? (
+    <AccessReasonDialog
+      message={accessReasonAsk.message}
+      onDone={(reason) => { accessReasonAsk.resolve(reason); setAccessReasonAsk(null); }}
+    />
+  ) : null;
+
   const idleDialog = idleWarning ? createPortal(
     <div className="udhr-idle-overlay" role="alertdialog" aria-modal="true" aria-labelledby="udhr-idle-title">
       <div className="udhr-idle-dialog">
@@ -3032,7 +3104,7 @@ function App() {
   if (token && twoFactorSetupRequired && !mustChangePassword) {
     return (
       <div className="udhr-restoring" style={{ alignItems: 'flex-start', paddingTop: '60px' }}>
-        {idleDialog}
+        {idleDialog}{accessReasonDialog}
         <div className="udhr-idle-dialog" style={{ maxWidth: '480px' }}>
           <h2>Set up two-step sign-in</h2>
           <p>Your clinic requires a code from an authenticator app as well as your password.</p>
@@ -3257,7 +3329,7 @@ function App() {
 
     return (
       <div className="udhr-page">
-        {idleDialog}
+        {idleDialog}{accessReasonDialog}
         <div className="udhr-page-inner">
           <header className="udhr-page-header">
             <div className="udhr-page-logo">
@@ -4849,7 +4921,7 @@ function App() {
 
     return (
       <div className="udhr-shell">
-        {idleDialog}
+        {idleDialog}{accessReasonDialog}
         {securityDialog}
         <WorkspaceBrandBar workspace={isNurse ? "Nurse workspace" : "Doctor portal" } />
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
@@ -4923,6 +4995,7 @@ function App() {
   if (token && isSystemAdmin && !mustChangePassword) {
     const sysAdminNavItems = [
       { key: 'accounts', label: 'Accounts', icon: <Users size={17} /> },
+      { key: 'alerts', label: securityAlerts.length ? `Security alerts (${securityAlerts.length})` : 'Security alerts', icon: <ShieldAlert size={17} /> },
       { key: 'facilities', label: 'Facilities', icon: <Building2 size={17} /> },
       { key: 'announcements', label: 'Announcements', icon: <Megaphone size={17} /> },
       { key: 'reports', label: 'Reports', icon: <FileSpreadsheet size={17} /> },
@@ -4933,6 +5006,7 @@ function App() {
       setSystemAdminTab(key);
       setIsMobileNavOpen(false);
       if (key === 'accounts') fetchSystemAdminStaff();
+      if (key === 'alerts') fetchSecurityAlerts();
       if (key === 'facilities') fetchFacilityList();
       if (key === 'announcements') fetchAnnouncements();
       if (key === 'reports') fetchSystemReports();
@@ -5140,6 +5214,55 @@ function App() {
       </>
     );
 
+
+    const renderSecurityAlertsPanel = () => (
+      <>
+        <h1 className="udhr-page-title">Security alerts</h1>
+        <p className="udhr-page-subtitle">
+          Worked out from the audit trail for the last 7 days: unusual record access, records opened outside today's list,
+          sign-ins from new places, and failed sign-ins. Check each one; most have an innocent reason.
+        </p>
+        <button type="button" className="udhr-btn-neutral" style={{ marginBottom: '16px', width: 'auto' }} onClick={fetchSecurityAlerts}>
+          <RefreshCw size={15} style={{ verticalAlign: '-2px', marginRight: '6px' }} />Check again
+        </button>
+        <div className="udhr-record-card">
+          <div className="udhr-record-body">
+            {securityAlerts.length === 0 ? (
+              <p className="udhr-empty-note">No security alerts in the last 7 days.</p>
+            ) : (
+              securityAlerts.map((alert, i) => (
+                <div key={i} className="udhr-list-row" style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  <div style={{ flex: '1 1 380px' }}>
+                    <p className="udhr-row-title">
+                      <span className={`udhr-tag ${alert.severity === 'HIGH' ? 'danger' : 'warning'}`}>{alert.severity === 'HIGH' ? 'High' : 'Check'}</span>{' '}
+                      {alert.title}
+                    </p>
+                    <p className="udhr-row-subtitle">
+                      {alert.staffName ? `${alert.staffName} · ${alert.staffNumber} · ${(alert.role || '').toLowerCase().replace('_', ' ')}` : 'No account (by address)'}
+                      {' · '}{formatDateTime(alert.lastSeen)}
+                      {alert.firstSeen !== alert.lastSeen ? ` (since ${formatDateTime(alert.firstSeen)})` : ''}
+                    </p>
+                    <p className="udhr-row-subtitle">{alert.detail}</p>
+                  </div>
+                  {alert.staffId && (
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      <button type="button" className="udhr-btn-neutral" onClick={() => fetchAuditLogForStaff(alert.staffId)}>View activity</button>
+                      <button type="button" className="udhr-btn-neutral"
+                        onClick={() => {
+                          const [firstName, ...rest] = (alert.staffName || '').split(' ');
+                          if (window.confirm(`End every session for ${alert.staffName}? They will have to sign in again.`)) {
+                            handleForceLogout({ id: alert.staffId, firstName, lastName: rest.join(' ') });
+                          }
+                        }}>End all sessions</button>
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </>
+    );
 
     const renderAccountsPanel = () => (
       <>
@@ -5493,7 +5616,7 @@ function App() {
 
     return (
       <div className="udhr-shell">
-        {idleDialog}
+        {idleDialog}{accessReasonDialog}
         {securityDialog}
         <WorkspaceBrandBar workspace={"System administrator" } />
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
@@ -5552,6 +5675,7 @@ function App() {
           )}
 
           {systemAdminTab === 'accounts' && renderAccountsPanel()}
+          {systemAdminTab === 'alerts' && renderSecurityAlertsPanel()}
           {systemAdminTab === 'facilities' && renderFacilitiesPanel()}
           {systemAdminTab === 'announcements' && renderAnnouncementsPanel()}
           {systemAdminTab === 'reports' && renderReportsPanel()}
@@ -5838,7 +5962,7 @@ function App() {
 
     return (
       <div className="udhr-shell">
-        {idleDialog}
+        {idleDialog}{accessReasonDialog}
         {securityDialog}
         <WorkspaceBrandBar workspace={"Pharmacy workspace" } />
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
@@ -6442,7 +6566,7 @@ function App() {
 
     return (
       <div className="udhr-shell">
-        {idleDialog}
+        {idleDialog}{accessReasonDialog}
         {securityDialog}
         <WorkspaceBrandBar workspace={"Reception workspace" } />
         {isMobileNavOpen && <div className="udhr-shell-backdrop" onClick={() => setIsMobileNavOpen(false)} />}
@@ -6507,7 +6631,7 @@ function App() {
 
   return (
     <div className="app-container">
-      {idleDialog}
+      {idleDialog}{accessReasonDialog}
       {/* Header */}
       <header className="app-header">
         <div className="logo-container">

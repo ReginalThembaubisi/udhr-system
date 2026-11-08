@@ -1197,7 +1197,7 @@ function App() {
     if (!token || mustChangePassword || twoFactorSetupRequired) return;
     const sources = {
       NURSE: ['/api/visits/queue/WAITING_VITALS', setNurseVitalsQueue],
-      DOCTOR: ['/api/visits/queue/VITALS_DONE', setDoctorConsultQueue],
+      DOCTOR: ['/api/visits/queue/VITALS_DONE,DIAGNOSED', setDoctorConsultQueue],
       PHARMACIST: ['/api/pharmacy/queue', setPharmacyQueue],
       ADMIN: ['/api/checkin/recent', setRecentCheckIns],
     };
@@ -1264,7 +1264,7 @@ function App() {
     try {
       const response = await apiFetch('/api/announcements/public');
       if (response.ok) {
-        const data = await response.json();
+        const data = await parseResponseBody(response);
         setPublicAnnouncements(data);
       }
     } catch (err) {
@@ -1276,7 +1276,7 @@ function App() {
     try {
       const response = await apiFetch('/api/announcements', { headers: getAuthHeaders() });
       if (response.ok) {
-        const data = await response.json();
+        const data = await parseResponseBody(response);
         setAnnouncements(data);
       }
     } catch (err) {
@@ -1288,7 +1288,7 @@ function App() {
     try {
       const response = await apiFetch('/api/referrals/report', { headers: getAuthHeaders() });
       if (response.ok) {
-        const data = await response.json();
+        const data = await parseResponseBody(response);
         setReferralReport(data);
       }
     } catch (err) {
@@ -1307,7 +1307,7 @@ function App() {
         headers: getAuthHeaders(),
         body: JSON.stringify(newAnnouncementForm)
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(typeof data === 'string' ? data : 'Failed to create announcement');
       setNewAnnouncementForm({ title: '', message: '', photoUrl: '' });
       setSuccessMessage('Announcement created.');
@@ -1461,7 +1461,7 @@ function App() {
 
     try {
       const response = await apiFetch(`/api/patients/${idToSearch}/record`, { headers: getAuthHeaders() });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(data.message || 'Patient record not found');
       }
@@ -1648,7 +1648,7 @@ function App() {
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(data.message || 'Failed to add diagnosis');
       }
@@ -1804,7 +1804,7 @@ function App() {
     if (idOverride) setPharmacySearchId(idOverride);
     try {
       const response = await apiFetch(`/api/pharmacy/patient/${idToSearch}`, { headers: getAuthHeaders() });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(data.message || 'Patient not found');
       }
@@ -1830,7 +1830,7 @@ function App() {
         method: 'POST',
         headers: getAuthHeaders()
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(data.message || 'Failed to dispense prescription');
       }
@@ -1854,7 +1854,7 @@ function App() {
         headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(data.message || 'Failed to save lab result');
       }
@@ -1908,7 +1908,7 @@ function App() {
     setLoading(true);
     try {
       const response = await apiFetch('/api/facilities', { headers: getAuthHeaders() });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to load facilities');
       setFacilityList(data);
     } catch (err) {
@@ -1949,7 +1949,7 @@ function App() {
         headers: getAuthHeaders(),
         body: JSON.stringify(newFacilityForm)
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to add facility');
       setSuccessMessage(`Facility '${data.name}' added.`);
       setNewFacilityForm({ name: '', type: 'CLINIC', province: '', address: '' });
@@ -1966,7 +1966,7 @@ function App() {
     setErrorMessage('');
     try {
       const response = await apiFetch('/api/checkin/recent', { headers: getAuthHeaders() });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to load check-ins');
       setRecentCheckIns(data);
     } catch (err) {
@@ -2200,7 +2200,7 @@ function App() {
           message: addAlertForm.message
         })
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(data.message || 'Failed to add custom alert');
       }
@@ -2232,7 +2232,7 @@ function App() {
         headers: getAuthHeaders(),
         body: JSON.stringify(selectedSymptoms)
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(data.message || 'Symptom check triage failed');
       }
@@ -2262,7 +2262,7 @@ function App() {
         headers: getAuthHeaders(),
         body: JSON.stringify({ message: text })
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(typeof data === 'string' ? data : 'The health assistant could not respond right now.');
       }
@@ -2297,7 +2297,7 @@ function App() {
         headers: getAuthHeaders(),
         body: JSON.stringify({ status, notes })
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to update adherence status');
       setSuccessMessage(`Medication marked as ${status.toLowerCase()}!`);
       setAdherenceNotes(prev => ({ ...prev, [adherenceId]: '' }));
@@ -2353,7 +2353,7 @@ function App() {
       const response = await apiFetch(`/api/food-checker/search?type=${lookupType}&query=${productQuery}`, {
         headers: getAuthHeaders()
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Product ingredients search failed');
       setIngredientsInput(data.ingredients);
       setSuccessMessage('Ingredients fetched from Open Food Facts!');
@@ -2382,7 +2382,7 @@ function App() {
         headers: getAuthHeaders(),
         body: JSON.stringify({ ingredients: ingredientsInput })
       });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Analysis failed');
       setCheckResults(data);
       setSuccessMessage('Ingredients cross-checked against your medical record!');
@@ -2410,7 +2410,7 @@ function App() {
 
   const fetchDoctorConsultQueue = async () => {
     try {
-      const response = await apiFetch('/api/visits/queue/VITALS_DONE', { headers: getAuthHeaders() });
+      const response = await apiFetch('/api/visits/queue/VITALS_DONE,DIAGNOSED', { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'Failed to load the consultation queue');
       setDoctorConsultQueue(data);
@@ -2530,7 +2530,7 @@ function App() {
     setLoading(true);
     try {
       const response = await apiFetch(`/api/patients/${labsSearchId}`, { headers: getAuthHeaders() });
-      const data = await response.json();
+      const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(data.message || 'Patient not found');
       }
@@ -4249,7 +4249,10 @@ function App() {
                     <div key={visit.id} className="udhr-list-row udhr-patient-queue-row">
                       <span className="udhr-patient-avatar" aria-hidden="true"><User size={23} /></span>
                       <div className="udhr-queue-details">
-                        <p className="udhr-row-title">{visit.patient.firstName} {visit.patient.lastName}</p>
+                        <p className="udhr-row-title">
+                          {visit.patient.firstName} {visit.patient.lastName}
+                          {visit.status === 'DIAGNOSED' && <> <span className="udhr-tag info">Seen: send to pharmacy or discharge</span></>}
+                        </p>
                         <p className="udhr-row-subtitle">
                           {visit.patient.idNumber ? `ID: ${visit.patient.idNumber} · ` : ''}File no. {visit.patient.mrn}
                         </p>

@@ -127,10 +127,22 @@ public class VisitService {
      * facility currently sitting in that status" — no ID search needed.
      * Nurse asks for WAITING_VITALS, doctor asks for VITALS_DONE.
      */
+    /**
+     * One or more statuses, comma-separated: the doctor's queue asks for
+     * "VITALS_DONE,DIAGNOSED" so a patient whose diagnosis is saved stays on it
+     * until they are sent to the pharmacy or discharged (they used to vanish
+     * from the queue as soon as the diagnosis was saved).
+     */
     public List<Visit> getFacilityQueue(String staffNumber, String status) {
         Staff staff = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Staff not found"));
-        return visitRepository.findByFacilityIdAndStatusOrderByVisitDateAsc(staff.getFacility().getId(), status);
+        return java.util.Arrays.stream(status.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .flatMap(s -> visitRepository.findByFacilityIdAndStatusOrderByVisitDateAsc(staff.getFacility().getId(), s).stream())
+                .sorted(Comparator.comparing(Visit::getVisitDate, Comparator.nullsLast(Comparator.naturalOrder())))
+                .collect(Collectors.toList());
     }
 
     /**

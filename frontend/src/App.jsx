@@ -899,6 +899,8 @@ function App() {
   const [systemAdminStaff, setSystemAdminStaff] = useState([]);
   const [securityAlerts, setSecurityAlerts] = useState([]);
   const [alertEmail, setAlertEmail] = useState(null);
+  const [demoInbox, setDemoInbox] = useState([]);
+  const [openDemoEmail, setOpenDemoEmail] = useState(null);
   const [accountCategory, setAccountCategory] = useState('staff');
   const [systemAdminPatients, setSystemAdminPatients] = useState([]);
   const [patientAccountSearch, setPatientAccountSearch] = useState('');
@@ -2865,7 +2867,14 @@ function App() {
     try {
       const response = await apiFetch('/api/system-admin/alert-email', { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
-      if (response.ok) setAlertEmail(data);
+      if (response.ok) {
+        setAlertEmail(data);
+        if (!data.configured) {
+          const inbox = await apiFetch('/api/system-admin/demo-inbox', { headers: getAuthHeaders() });
+          const emails = await parseResponseBody(inbox);
+          if (inbox.ok) setDemoInbox(emails);
+        }
+      }
     } catch {
       // The alerts themselves still show; only the email line is missing.
     }
@@ -2879,6 +2888,7 @@ function App() {
       const data = await parseResponseBody(response);
       if (!response.ok) throw new Error(data.message || 'The test email was not sent');
       setSuccessMessage(data.message);
+      fetchAlertEmailStatus();
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -5281,9 +5291,29 @@ function App() {
                   <button type="button" className="udhr-btn-neutral" style={{ width: 'auto', marginLeft: '6px' }} onClick={handleSendTestAlertEmail}>Send test email</button>
                 </p>
               ) : (
-                <p className="udhr-row-subtitle" style={{ margin: 0 }}>
-                  <strong>Email alerts are off.</strong> Add BREVO_API_KEY and ALERT_EMAIL_FROM on Render to have high alerts emailed to the system admins.
-                </p>
+                <>
+                  <p className="udhr-row-subtitle" style={{ margin: 0 }}>
+                    <strong>Email alerts: demo mode.</strong> High alerts are "emailed" to{' '}
+                    {alertEmail.recipients.length ? alertEmail.recipients.join(', ') : 'the system admins'}, but kept in this inbox
+                    instead of being sent (no email service is connected).{' '}
+                    <button type="button" className="udhr-btn-neutral" style={{ width: 'auto', marginLeft: '6px' }} onClick={handleSendTestAlertEmail}>Send test email</button>
+                  </p>
+                  <p className="udhr-row-title" style={{ marginTop: '14px' }}>Demo inbox</p>
+                  {demoInbox.length === 0 ? (
+                    <p className="udhr-empty-note">No emails yet. Press "Send test email", or lock an account with wrong passwords and wait up to 5 minutes.</p>
+                  ) : (
+                    demoInbox.map(email => (
+                      <div key={email.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'stretch', cursor: 'pointer' }}
+                        onClick={() => setOpenDemoEmail(openDemoEmail === email.id ? null : email.id)}>
+                        <p className="udhr-row-title" style={{ margin: 0 }}>✉ {email.subject}</p>
+                        <p className="udhr-row-subtitle" style={{ margin: 0 }}>To {email.recipients} · {formatDateTime(email.sentAt)}</p>
+                        {openDemoEmail === email.id && (
+                          <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.9rem', background: 'var(--udhr-bg)', border: '1px solid var(--udhr-border-subtle)', padding: '12px', borderRadius: '8px', marginTop: '8px' }}>{email.body}</pre>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </>
               )}
             </div>
           </div>

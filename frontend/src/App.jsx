@@ -5512,7 +5512,7 @@ function App() {
             {systemAdminStaff.length === 0 ? (
               <p className="udhr-empty-note">No staff accounts found.</p>
             ) : (
-              systemAdminStaff.map(member => (
+              systemAdminStaff.map((member, index) => (
                 <div key={member.id} className="udhr-list-row">
                   <div>
                     <p className="udhr-row-title">
@@ -5536,7 +5536,8 @@ function App() {
                     </button>
                     {/* The less common actions live in one menu instead of three
                         more buttons on every row. */}
-                    <details className="udhr-menu">
+                    {/* The last rows open their menu upwards, so the card's edge doesn't cut it off. */}
+                    <details className={`udhr-menu${index >= systemAdminStaff.length - 2 && systemAdminStaff.length > 2 ? ' udhr-menu-up' : ''}`}>
                       <summary className="udhr-btn-neutral">Manage ▾</summary>
                       <div className="udhr-menu-list">
                         <button type="button" onClick={(e) => { e.currentTarget.closest('details').open = false; handleResetStaffPassword(member); }}>Reset password</button>

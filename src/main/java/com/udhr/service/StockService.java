@@ -66,6 +66,10 @@ public class StockService {
         StockItem saved = stockItemRepository.save(item);
 
         int initialQuantity = request.getQuantityOnHand() != null ? request.getQuantityOnHand() : 0;
+        checkSize(initialQuantity, "A starting quantity");
+        if (initialQuantity < 0) {
+            throw new RuntimeException("The starting quantity can't be below zero");
+        }
         if (initialQuantity > 0) {
             applyTransaction(saved, StockTransaction.Type.RECEIVED, initialQuantity, staff, "Initial stock on hand");
         }
@@ -73,6 +77,28 @@ public class StockService {
                 "added " + saved.getMedicationName() + " to the medicine inventory at " + facility.getName()
                         + " (stock item #" + saved.getId() + ")", "STOCK_ITEM", saved.getId());
         return saved;
+    }
+
+    /**
+     * The most that can be added, removed or counted in one go. A real
+     * delivery to a clinic is far smaller; anything bigger is almost always a
+     * typing mistake (an extra zero) and is refused instead of saved.
+     */
+    public static final int MAX_SINGLE_CHANGE = 10_000;
+
+    private static void checkSize(int quantity, String what) {
+        if (Math.abs(quantity) > MAX_SINGLE_CHANGE) {
+            throw new RuntimeException(what + " of " + quantity + " is more than " + String.format("%,d", MAX_SINGLE_CHANGE)
+                    + " at once. Check the number: it's probably a typing mistake.");
+        }
+    }
+
+    private static String requireReason(String notes) {
+        String reason = notes == null ? "" : notes.replaceAll("\\s+", " ").trim();
+        if (reason.length() < 3) {
+            throw new RuntimeException("Say why the stock is changing (delivery, damaged, expired or a stock count)");
+        }
+        return reason.length() > 200 ? reason.substring(0, 200) : reason;
     }
 
     /** How many rows one bulk import may hold. */
@@ -149,6 +175,7 @@ public class StockService {
         for (StockItemRequest row : rows) {
             String name = row.getMedicationName().trim();
             int quantity = row.getQuantityOnHand() != null ? row.getQuantityOnHand() : 0;
+            checkSize(quantity, name + ": a quantity");
             StockItem existing = stockItemRepository.findByFacilityIdAndMedicationNameIgnoreCase(facility.getId(), name).orElse(null);
             if (existing == null) {
                 StockItem item = new StockItem();
@@ -197,6 +224,7 @@ public class StockService {
         if (quantity <= 0) {
             throw new RuntimeException("Quantity received must be greater than zero");
         }
+        checkSize(quantity, "A delivery");
 
         // A delivery brings its own expiry date, so receiving stock updates the
         // shelf date to the batch just delivered. Receiving stock that has
@@ -212,7 +240,8 @@ public class StockService {
             }
             item.setExpiryDate(request.getExpiryDate());
         }
-        return applyTransaction(item, StockTransaction.Type.RECEIVED, quantity, staff, request.getNotes());
+        return applyTransaction(item, StockTransaction.Type.RECEIVED, quantity, staff,
+                request.getNotes() == null || request.getNotes().isBlank() ? "Delivery received" : request.getNotes());
     }
 
     @Transactional
@@ -227,13 +256,74 @@ public class StockService {
         if (change == 0) {
             throw new RuntimeException("Adjustment quantity cannot be zero");
         }
+        checkSize(change, "A change");
+        String reason = requireReason(request.getNotes());
         if (change > 0) {
-            return applyTransaction(item, StockTransaction.Type.RECEIVED, change, staff, request.getNotes());
+            return applyTransaction(item, StockTransaction.Type.RECEIVED, change, staff, reason);
         }
         if (item.getQuantityOnHand() + change < 0) {
             throw new RuntimeException("Adjustment would take stock below zero — only " + item.getQuantityOnHand() + " " + item.getUnit() + " on hand");
         }
-        return applyTransaction(item, StockTransaction.Type.ADJUSTED, change, staff, request.getNotes());
+        return applyTransaction(item, StockTransaction.Type.ADJUSTED, change, staff, reason);
+    }
+
+    /**
+     * "I counted the shelf": sets the exact number on hand. The difference is
+     * recorded as a stock count correction, so the history still adds up.
+     */
+    @Transactional
+    public StockItem countStock(Long stockItemId, Integer counted, String note, String staffNumber) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        StockItem item = stockItemRepository.findById(stockItemId)
+                .orElseThrow(() -> new RuntimeException("Stock item not found"));
+        requireSameFacility(item, staff);
+        if (counted == null || counted < 0) {
+            throw new RuntimeException("Enter how many are on the shelf (0 or more)");
+        }
+        checkSize(counted, "A count");
+        int change = counted - item.getQuantityOnHand();
+        if (change == 0) {
+            return item;
+        }
+        String reason = "Stock count correction: counted " + counted + " " + item.getUnit() + ", the system had "
+                + item.getQuantityOnHand() + (note == null || note.isBlank() ? "" : ". " + note.trim());
+        return applyTransaction(item, change > 0 ? StockTransaction.Type.RECEIVED : StockTransaction.Type.ADJUSTED,
+                change, staff, reason.length() > 250 ? reason.substring(0, 250) : reason);
+    }
+
+    /** Corrects an item's expiry date, reorder level or unit. Quantities only change through the history. */
+    @Transactional
+    public StockItem updateDetails(Long stockItemId, StockItemRequest request, String staffNumber) {
+        Staff staff = staffRepository.findByStaffNumber(staffNumber)
+                .orElseThrow(() -> new RuntimeException("Staff not found"));
+        StockItem item = stockItemRepository.findById(stockItemId)
+                .orElseThrow(() -> new RuntimeException("Stock item not found"));
+        requireSameFacility(item, staff);
+        StringBuilder changes = new StringBuilder();
+        if (request.getExpiryDate() != null && !request.getExpiryDate().equals(item.getExpiryDate())) {
+            changes.append("expiry ").append(item.getExpiryDate()).append(" -> ").append(request.getExpiryDate()).append("; ");
+            item.setExpiryDate(request.getExpiryDate());
+        }
+        if (request.getReorderLevel() != null && !request.getReorderLevel().equals(item.getReorderLevel())) {
+            if (request.getReorderLevel() < 0 || request.getReorderLevel() > MAX_SINGLE_CHANGE) {
+                throw new RuntimeException("The reorder level must be between 0 and " + String.format("%,d", MAX_SINGLE_CHANGE));
+            }
+            changes.append("reorder level ").append(item.getReorderLevel()).append(" -> ").append(request.getReorderLevel()).append("; ");
+            item.setReorderLevel(request.getReorderLevel());
+        }
+        if (request.getUnit() != null && !request.getUnit().isBlank() && !request.getUnit().trim().equals(item.getUnit())) {
+            changes.append("unit ").append(item.getUnit()).append(" -> ").append(request.getUnit().trim()).append("; ");
+            item.setUnit(request.getUnit().trim());
+        }
+        if (changes.length() == 0) {
+            return item;
+        }
+        StockItem saved = stockItemRepository.save(item);
+        auditService.recordEvent(staff, null, "UPDATE_STOCK_ITEM",
+                "corrected " + item.getMedicationName() + ": " + changes.toString().replaceAll("; $", ""),
+                "STOCK_ITEM", item.getId());
+        return saved;
     }
 
     public List<StockItem> getStockForFacility(String staffNumber) {

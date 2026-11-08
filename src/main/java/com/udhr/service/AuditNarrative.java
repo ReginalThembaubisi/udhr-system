@@ -41,6 +41,7 @@ public final class AuditNarrative {
         Map.entry("DISPENSE_MEDICATION", "Medication dispensed"),
         Map.entry("DISPENSE_PRESCRIPTION", "Prescription marked as dispensed"),
         Map.entry("ACCESS_OUTSIDE_QUEUE", "Record opened outside today's list (reason given)"),
+        Map.entry("UPDATE_STOCK_ITEM", "Stock item details corrected"),
         Map.entry("PATIENT_NEW_DEVICE_CODE_SENT", "Patient signed in on a new device; code texted"),
         Map.entry("PATIENT_NEW_DEVICE_CODE_FAILED", "Wrong new-device code entered"),
         Map.entry("PASSWORD_RESET_CODE_SENT", "Password reset code emailed"),

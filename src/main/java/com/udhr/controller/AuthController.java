@@ -52,6 +52,9 @@ public class AuthController {
     private com.udhr.service.PatientPinResetService patientPinResetService;
 
     @Autowired
+    private com.udhr.service.StaffPasswordResetService staffPasswordResetService;
+
+    @Autowired
     private TwoFactorService twoFactorService;
 
     @Autowired
@@ -181,6 +184,28 @@ public class AuthController {
     @PostMapping("/patient/login")
     public ResponseEntity<?> patientLogin(@RequestBody PatientLoginRequest request, HttpServletRequest httpRequest) {
         return signIn(() -> patientPortalService.login(request, clientAddress(httpRequest)));
+    }
+
+    /** Staff forgot password, step 1: emails a code to the account's work email. */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> body, HttpServletRequest httpRequest) {
+        try {
+            return ResponseEntity.ok(Map.of("message",
+                    staffPasswordResetService.sendCode(body.get("staffNumber"), clientAddress(httpRequest))));
+        } catch (LoginLockedException e) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    /** Staff forgot password, step 2: the code from the email and a new password. */
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> body) {
+        try {
+            staffPasswordResetService.resetPassword(body.get("staffNumber"), body.get("code"), body.get("newPassword"));
+            return ResponseEntity.ok(Map.of("message", "Your new password is set. Sign in with it now."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
     }
 
     /** Forgot PIN, step 1: texts a code to the cellphone on the patient's record. */

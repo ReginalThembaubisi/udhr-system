@@ -689,6 +689,10 @@ function App() {
   const [loginRole, setLoginRole] = useState('patient'); // 'patient' or 'staff'
   const [staffNumber, setStaffNumber] = useState('');
   const [staffPassword, setStaffPassword] = useState('');
+  // Staff "Forgot your password?": null, 'start' (staff number) or 'code'.
+  const [forgotPasswordStep, setForgotPasswordStep] = useState(null);
+  const [newResetPassword, setNewResetPassword] = useState('');
+  const [newResetPasswordAgain, setNewResetPasswordAgain] = useState('');
   const [patientIdNumber, setPatientIdNumber] = useState('');
   const [patientDob, setPatientDob] = useState('');
   const [patientPin, setPatientPin] = useState('');
@@ -958,6 +962,56 @@ function App() {
   };
 
   // Log in user
+  const handleForgotPasswordStart = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffNumber: staffNumber.trim() })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Could not send a code. Try again, or ask your system administrator.');
+      setForgotPinNote(data.message);
+      setResetCode('');
+      setNewResetPassword('');
+      setNewResetPasswordAgain('');
+      setForgotPasswordStep('code');
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPasswordFinish = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    if (newResetPassword !== newResetPasswordAgain) {
+      setErrorMessage('The two passwords are different. Type the same password twice.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffNumber: staffNumber.trim(), code: resetCode, newPassword: newResetPassword })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'The password was not changed');
+      setForgotPasswordStep(null);
+      setStaffPassword('');
+      setSuccessMessage(data.message);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleForgotPinStart = async (e) => {
     e.preventDefault();
     setErrorMessage('');
@@ -3338,6 +3392,61 @@ function App() {
                   Use a different account
                 </button>
               </form>
+            ) : loginRole === 'staff' && forgotPasswordStep === 'start' ? (
+              <form onSubmit={handleForgotPasswordStart}>
+                <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 6px' }}>Forgot your password?</h3>
+                <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>
+                  We'll email a code to the work email on your account. You'll use it to choose a new password.
+                </p>
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="resetStaffNum">Staff Number</label>
+                  <input type="text" id="resetStaffNum" className="udhr-input" value={staffNumber} required
+                    onChange={(e) => setStaffNumber(e.target.value)} placeholder="e.g. DOC001 or NUR001" />
+                </div>
+                <button type="submit" className="udhr-btn-primary" disabled={loading} aria-busy={loading}>
+                  {loading ? 'Sending…' : 'Email me a code'}
+                </button>
+                <div className="udhr-record-card" style={{ marginTop: '16px' }}>
+                  <div className="udhr-record-body">
+                    <p className="udhr-row-title" style={{ margin: '0 0 4px' }}>No access to your work email?</p>
+                    <p className="udhr-row-subtitle" style={{ margin: 0 }}>
+                      Ask your system administrator. They check it's you and give you a temporary password, which you change when you
+                      sign in. Lost the phone with your authenticator app? They can reset that too.
+                    </p>
+                  </div>
+                </div>
+                <button type="button" className="udhr-link-button" style={{ marginTop: '12px' }} onClick={() => { setForgotPasswordStep(null); setErrorMessage(''); }}>
+                  Back to sign in
+                </button>
+              </form>
+            ) : loginRole === 'staff' && forgotPasswordStep === 'code' ? (
+              <form onSubmit={handleForgotPasswordFinish}>
+                <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 6px' }}>Choose a new password</h3>
+                <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>{forgotPinNote}</p>
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="staffResetCode">Code from the email</label>
+                  <input id="staffResetCode" type="text" className="udhr-input udhr-code-input" value={resetCode} placeholder="6 digits"
+                    onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric" autoComplete="one-time-code" autoFocus required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="newResetPassword">New password (at least 8 characters)</label>
+                  <input id="newResetPassword" type="password" className="udhr-input" value={newResetPassword} autoComplete="new-password" required
+                    onChange={(e) => setNewResetPassword(e.target.value)} />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="newResetPasswordAgain">New password again</label>
+                  <input id="newResetPasswordAgain" type="password" className="udhr-input" value={newResetPasswordAgain} autoComplete="new-password" required
+                    onChange={(e) => setNewResetPasswordAgain(e.target.value)} />
+                </div>
+                <button type="submit" className="udhr-btn-primary"
+                  disabled={loading || resetCode.length !== 6 || newResetPassword.length < 8 || !newResetPasswordAgain} aria-busy={loading}>
+                  {loading ? 'Saving…' : 'Save new password'}
+                </button>
+                <button type="button" className="udhr-link-button" style={{ marginTop: '12px' }} onClick={() => { setForgotPasswordStep('start'); setErrorMessage(''); }}>
+                  Didn't get a code? Send another
+                </button>
+              </form>
             ) : loginRole === 'patient' && forgotPinStep === 'start' ? (
               <form onSubmit={handleForgotPinStart}>
                 <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 6px' }}>Forgot your PIN?</h3>
@@ -3481,6 +3590,10 @@ function App() {
                           {showStaffPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
                       </div>
+                      <button type="button" className="udhr-link-button" style={{ marginTop: '6px' }}
+                        onClick={() => { setForgotPasswordStep('start'); setErrorMessage(''); setSuccessMessage(''); }}>
+                        Forgot your password?
+                      </button>
                     </div>
                   </>
                 )}

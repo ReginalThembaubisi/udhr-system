@@ -86,9 +86,9 @@ class DispensingTest {
     @Test
     void aTypedQuantityWinsAndTheSameMedicineUnderAnotherNameIsUsed() throws Exception {
         Staff pharmacist = staffRepository.findByStaffNumber("PHARM001").orElseThrow();
-        // Stocked as the generic; prescribed by brand (MedicationCatalog: Zithromax is azithromycin).
-        StockItem stock = stock(pharmacist, "Azithromycin 500mg dispense-test", 100, LocalDate.now().plusYears(1));
-        Prescription p = prescription(pharmacist, "Zithromax", "1 tablet", "Once daily", 3, true);
+        // Stocked as the generic; prescribed by brand (MedicationCatalog: Diflucan is fluconazole).
+        StockItem stock = stock(pharmacist, "Fluconazole 150mg dispense-test", 100, LocalDate.now().plusYears(1));
+        Prescription p = prescription(pharmacist, "Diflucan", "1 tablet", "Once daily", 3, true);
         String token = login();
         mvc.perform(post("/api/pharmacy/dispense/" + p.getId()).header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"quantityDispensed\":\"6 tablets\"}"))

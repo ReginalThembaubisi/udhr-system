@@ -692,6 +692,13 @@ function App() {
   const [patientIdNumber, setPatientIdNumber] = useState('');
   const [patientDob, setPatientDob] = useState('');
   const [patientPin, setPatientPin] = useState('');
+  // "Forgot your PIN?": null (signing in), 'start' (ID + date of birth), or 'code'
+  // (code from the text message + new PIN).
+  const [forgotPinStep, setForgotPinStep] = useState(null);
+  const [forgotPinNote, setForgotPinNote] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newResetPin, setNewResetPin] = useState('');
+  const [newResetPinAgain, setNewResetPinAgain] = useState('');
   const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [showNewStaffPassword, setShowNewStaffPassword] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
@@ -951,6 +958,56 @@ function App() {
   };
 
   // Log in user
+  const handleForgotPinStart = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    setLoading(true);
+    try {
+      const response = await fetch('/api/auth/patient/forgot-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idNumber: patientIdNumber, dateOfBirth: patientDob })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'Could not send a code. Try again, or go to the front desk.');
+      setForgotPinNote(data.message);
+      setResetCode('');
+      setNewResetPin('');
+      setNewResetPinAgain('');
+      setForgotPinStep('code');
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPinFinish = async (e) => {
+    e.preventDefault();
+    setErrorMessage('');
+    if (newResetPin !== newResetPinAgain) {
+      setErrorMessage('The two PINs are different. Type the same 6 digits twice.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await fetch('/api/auth/patient/reset-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idNumber: patientIdNumber, dateOfBirth: patientDob, code: resetCode, newPin: newResetPin })
+      });
+      const data = await parseResponseBody(response);
+      if (!response.ok) throw new Error(data.message || 'The PIN was not changed');
+      setForgotPinStep(null);
+      setPatientPin('');
+      setSuccessMessage(data.message);
+    } catch (err) {
+      setErrorMessage(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setErrorMessage('');
@@ -2869,12 +2926,11 @@ function App() {
       const data = await parseResponseBody(response);
       if (response.ok) {
         setAlertEmail(data);
-        if (!data.configured) {
-          const inbox = await apiFetch('/api/system-admin/demo-inbox', { headers: getAuthHeaders() });
-          const emails = await parseResponseBody(inbox);
-          if (inbox.ok) setDemoInbox(emails);
-        }
       }
+      // Demo emails and demo text messages (PIN reset codes).
+      const inbox = await apiFetch('/api/system-admin/demo-inbox', { headers: getAuthHeaders() });
+      const emails = await parseResponseBody(inbox);
+      if (inbox.ok) setDemoInbox(emails);
     } catch {
       // The alerts themselves still show; only the email line is missing.
     }
@@ -3282,6 +3338,72 @@ function App() {
                   Use a different account
                 </button>
               </form>
+            ) : loginRole === 'patient' && forgotPinStep === 'start' ? (
+              <form onSubmit={handleForgotPinStart}>
+                <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 6px' }}>Forgot your PIN?</h3>
+                <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>
+                  We'll text a code to the cellphone number on your health record. You'll use it to choose a new PIN.
+                </p>
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="resetId">{t('login.idNumber')}</label>
+                  <input type="text" id="resetId" className="udhr-input" value={patientIdNumber} inputMode="numeric" required
+                    placeholder={t('login.idPlaceholder')}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
+                      setPatientIdNumber(digits);
+                      const parsed = parseSaId(digits);
+                      if (parsed?.dateOfBirth) setPatientDob(parsed.dateOfBirth);
+                    }} />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="resetDob">{t('login.dateOfBirth')}</label>
+                  <DateOfBirthField id="resetDob" value={patientDob} onChange={setPatientDob} required />
+                </div>
+                <button type="submit" className="udhr-btn-primary" disabled={loading} aria-busy={loading}>
+                  {loading ? 'Sending…' : 'Text me a code'}
+                </button>
+                <div className="udhr-record-card" style={{ marginTop: '16px' }}>
+                  <div className="udhr-record-body">
+                    <p className="udhr-row-title" style={{ margin: '0 0 4px' }}>No cellphone, or a new number?</p>
+                    <p className="udhr-row-subtitle" style={{ margin: 0 }}>
+                      Go to the front desk at any UDHR clinic with your ID book or card. They check it's you and give you a new PIN
+                      in a minute. You choose your own PIN the next time you sign in.
+                    </p>
+                  </div>
+                </div>
+                <button type="button" className="udhr-link-button" style={{ marginTop: '12px' }} onClick={() => { setForgotPinStep(null); setErrorMessage(''); }}>
+                  Back to sign in
+                </button>
+              </form>
+            ) : loginRole === 'patient' && forgotPinStep === 'code' ? (
+              <form onSubmit={handleForgotPinFinish}>
+                <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 6px' }}>Choose a new PIN</h3>
+                <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>{forgotPinNote}</p>
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="resetCode">Code from the text message</label>
+                  <input id="resetCode" type="text" className="udhr-input udhr-code-input" value={resetCode} placeholder="6 digits"
+                    onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputMode="numeric" autoComplete="one-time-code" autoFocus required />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="newResetPin">New PIN (6 digits)</label>
+                  <input id="newResetPin" type="password" className="udhr-input" value={newResetPin} inputMode="numeric" autoComplete="new-password" required
+                    onChange={(e) => setNewResetPin(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+                </div>
+                <div className="udhr-form-group">
+                  <label className="udhr-label" htmlFor="newResetPinAgain">New PIN again</label>
+                  <input id="newResetPinAgain" type="password" className="udhr-input" value={newResetPinAgain} inputMode="numeric" autoComplete="new-password" required
+                    onChange={(e) => setNewResetPinAgain(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+                  <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>Avoid easy PINs like 123456 or your birthday.</p>
+                </div>
+                <button type="submit" className="udhr-btn-primary"
+                  disabled={loading || resetCode.length !== 6 || newResetPin.length !== 6 || newResetPinAgain.length !== 6} aria-busy={loading}>
+                  {loading ? 'Saving…' : 'Save new PIN'}
+                </button>
+                <button type="button" className="udhr-link-button" style={{ marginTop: '12px' }} onClick={() => { setForgotPinStep('start'); setErrorMessage(''); }}>
+                  Didn't get a code? Send another
+                </button>
+              </form>
             ) : (
               <form onSubmit={handleLogin}>
                 {loginRole === 'patient' ? (
@@ -3323,6 +3445,10 @@ function App() {
                         required
                       />
                       <p className="udhr-row-subtitle" style={{ marginTop: '6px' }}>{t('login.pinHelp')}</p>
+                      <button type="button" className="udhr-link-button" style={{ marginTop: '4px' }}
+                        onClick={() => { setForgotPinStep('start'); setErrorMessage(''); setSuccessMessage(''); }}>
+                        Forgot your PIN?
+                      </button>
                     </div>
                   </>
                 ) : (
@@ -5298,14 +5424,14 @@ function App() {
                     instead of being sent (no email service is connected).{' '}
                     <button type="button" className="udhr-btn-neutral" style={{ width: 'auto', marginLeft: '6px' }} onClick={handleSendTestAlertEmail}>Send test email</button>
                   </p>
-                  <p className="udhr-row-title" style={{ marginTop: '14px' }}>Demo inbox</p>
+                  <p className="udhr-row-title" style={{ marginTop: '14px' }}>Demo inbox (emails and text messages)</p>
                   {demoInbox.length === 0 ? (
                     <p className="udhr-empty-note">No emails yet. Press "Send test email", or lock an account with wrong passwords and wait up to 5 minutes.</p>
                   ) : (
                     demoInbox.map(email => (
                       <div key={email.id} className="udhr-list-row" style={{ flexDirection: 'column', alignItems: 'stretch', cursor: 'pointer' }}
                         onClick={() => setOpenDemoEmail(openDemoEmail === email.id ? null : email.id)}>
-                        <p className="udhr-row-title" style={{ margin: 0 }}>✉ {email.subject}</p>
+                        <p className="udhr-row-title" style={{ margin: 0 }}>{email.kind === 'SMS' ? '📱' : '✉'} {email.subject}</p>
                         <p className="udhr-row-subtitle" style={{ margin: 0 }}>To {email.recipients} · {formatDateTime(email.sentAt)}</p>
                         {openDemoEmail === email.id && (
                           <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: '0.9rem', background: 'var(--udhr-bg)', border: '1px solid var(--udhr-border-subtle)', padding: '12px', borderRadius: '8px', marginTop: '8px' }}>{email.body}</pre>

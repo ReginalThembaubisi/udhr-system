@@ -106,6 +106,24 @@ public class Patient {
     @Column(name = "must_change_portal_pin")
     private Boolean mustChangePortalPin;
 
+    // "Forgot PIN": a 6-digit code texted to the cellphone on file. Only its
+    // hash is kept, it lasts 10 minutes, and 5 wrong tries cancel it.
+    @JsonIgnore
+    @Column(name = "pin_reset_code_hash")
+    private String pinResetCodeHash;
+
+    @JsonIgnore
+    @Column(name = "pin_reset_expires_at")
+    private LocalDateTime pinResetExpiresAt;
+
+    @JsonIgnore
+    @Column(name = "pin_reset_attempts")
+    private Integer pinResetAttempts;
+
+    @JsonIgnore
+    @Column(name = "pin_reset_sent_at")
+    private LocalDateTime pinResetSentAt;
+
     @JsonIgnore
     @Column(name = "failed_login_attempts")
     private Integer failedLoginAttempts;

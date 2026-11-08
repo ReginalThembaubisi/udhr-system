@@ -6,8 +6,8 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * An email the system would have sent, kept here instead because no email
- * service is set up (the school demo). Shown in the demo inbox on the system
+ * An email or text message the system would have sent, kept here instead
+ * because no email or SMS service is set up (the school demo). Shown in the demo inbox on the system
  * admin's Security alerts page.
  */
 @Data
@@ -29,6 +29,10 @@ public class DemoEmail {
     private String body;
 
     private LocalDateTime sentAt;
+
+    // "SMS" for a text message (PIN reset codes); null or "EMAIL" for an email.
+    @Column(length = 10)
+    private String kind;
 
     @PrePersist
     void stamp() {

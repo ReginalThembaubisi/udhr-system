@@ -19,6 +19,11 @@ public class AfricasTalkingService {
     @Value("${africastalking.api.key:mock_key}")
     private String apiKey;
 
+    /** False in demo mode (no API key): nothing is really sent. */
+    public boolean configured() {
+        return apiKey != null && !apiKey.trim().isEmpty() && !"mock_key".equals(apiKey);
+    }
+
     public void sendSMS(String to, String message) {
         // Server logs are read by people who have no business seeing patient
         // details, so only a masked number is logged and never the message.
@@ -60,7 +65,7 @@ public class AfricasTalkingService {
     }
 
     /** "0821234567" becomes "******4567". */
-    static String mask(String phone) {
+    public static String mask(String phone) {
         if (phone == null || phone.length() <= 4) {
             return "****";
         }

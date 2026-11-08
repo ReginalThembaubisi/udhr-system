@@ -126,7 +126,7 @@ class AccessControlTest {
                 .andExpect(status().isCreated())
                 .andReturn();
         long itemId = json.readTree(created.getResponse().getContentAsString()).get("id").asLong();
-        String adjust = json.writeValueAsString(Map.of("stockItemId", itemId, "quantityChange", -5));
+        String adjust = json.writeValueAsString(Map.of("stockItemId", itemId, "quantityChange", -5, "notes", "Damaged"));
 
         String other = login("PHARM900", "Pharmacist@900");
         mvc.perform(post("/api/stock/adjust").header("Authorization", bearer(other))

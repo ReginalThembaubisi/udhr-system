@@ -947,7 +947,8 @@ function App() {
   const [stockItems, setStockItems] = useState([]);
   const [stockAddMode, setStockAddMode] = useState('one'); // 'one' | 'bulk'
   const [newStockItemForm, setNewStockItemForm] = useState({ medicationName: '', unit: 'tablets', quantityOnHand: 0, reorderLevel: 10, expiryDate: '' });
-  const [stockAdjustAmount, setStockAdjustAmount] = useState({});
+  // The "Update stock" panel open on one stock row: what's happening and the numbers.
+  const [stockEdit, setStockEdit] = useState(null);
 
   // System administrator screen — account oversight and the audit trail.
   const [systemAdminTab, setSystemAdminTab] = useState('accounts');
@@ -2966,20 +2967,50 @@ function App() {
     }
   };
 
-  const handleAdjustStock = async (stockItemId) => {
-    const quantityChange = parseInt(stockAdjustAmount[stockItemId], 10);
-    if (!quantityChange) return;
+  const openStockEdit = (item, mode) => setStockEdit({
+    id: item.id, mode, qty: '', reason: 'Damaged', otherReason: '',
+    expiry: item.expiryDate || '', reorder: String(item.reorderLevel ?? '')
+  });
+
+  // One place for the four ways stock changes, each saved with a reason.
+  const handleStockUpdate = async (item) => {
+    const edit = stockEdit;
+    const qty = parseInt(edit.qty, 10);
+    let url; let method = 'POST'; let body; let done;
+    if (edit.mode === 'delivery') {
+      if (!(qty > 0)) return setErrorMessage('Enter how many arrived.');
+      if (qty > 1000 && !window.confirm(`Add ${qty} ${item.unit} of ${item.medicationName}? That's a big delivery: check the number.`)) return;
+      url = '/api/stock/receive';
+      body = { stockItemId: item.id, quantityChange: qty, expiryDate: edit.expiry || null, notes: 'Delivery received' };
+      done = `Added ${qty} ${item.unit} of ${item.medicationName}.`;
+    } else if (edit.mode === 'remove') {
+      if (!(qty > 0)) return setErrorMessage('Enter how many to remove.');
+      const reason = edit.reason === 'Other' ? edit.otherReason.trim() : edit.reason;
+      if (!reason || reason.length < 3) return setErrorMessage('Say why the stock is being removed.');
+      url = '/api/stock/adjust';
+      body = { stockItemId: item.id, quantityChange: -qty, notes: reason };
+      done = `Removed ${qty} ${item.unit} of ${item.medicationName} (${reason}).`;
+    } else if (edit.mode === 'count') {
+      if (Number.isNaN(qty) || qty < 0) return setErrorMessage('Enter how many are on the shelf (0 or more).');
+      const diff = qty - item.quantityOnHand;
+      if (Math.abs(diff) > 1000 && !window.confirm(`The system has ${item.quantityOnHand} ${item.unit}; you counted ${qty}. Change it by ${diff > 0 ? '+' : ''}${diff}?`)) return;
+      url = `/api/stock/${item.id}/count`;
+      body = { countedQuantity: qty };
+      done = `${item.medicationName} set to ${qty} ${item.unit} after a stock count.`;
+    } else {
+      url = `/api/stock/${item.id}`;
+      method = 'PUT';
+      body = { expiryDate: edit.expiry || null, reorderLevel: edit.reorder === '' ? null : parseInt(edit.reorder, 10) };
+      done = `${item.medicationName} details saved.`;
+    }
     setErrorMessage('');
     setSuccessMessage('');
     try {
-      const response = await apiFetch('/api/stock/adjust', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ stockItemId, quantityChange, notes: 'Manual adjustment' })
-      });
+      const response = await apiFetch(url, { method, headers: getAuthHeaders(), body: JSON.stringify(body) });
       const data = await parseResponseBody(response);
-      if (!response.ok) throw new Error(data.message || 'Failed to adjust stock');
-      setStockAdjustAmount(prev => ({ ...prev, [stockItemId]: '' }));
+      if (!response.ok) throw new Error(data.message || 'The stock was not updated');
+      setStockEdit(null);
+      setSuccessMessage(done);
       fetchStockItems();
     } catch (err) {
       setErrorMessage(err.message);
@@ -6362,7 +6393,7 @@ function App() {
               <p className="udhr-empty-note">No stock items tracked yet. Add one above.</p>
             ) : (
               stockItems.map(item => (
-                <div key={item.id} className="udhr-list-row">
+                <div key={item.id} className="udhr-list-row" style={{ flexWrap: 'wrap' }}>
                   <div>
                     <p className="udhr-row-title">
                       {item.medicationName}{' '}
@@ -6386,16 +6417,78 @@ function App() {
                     </p>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <input
-                      type="number"
-                      className="udhr-input"
-                      placeholder="±qty" aria-label="Quantity to add (+) or write off (−)" title="Quantity to add (+) or write off (−)"
-                      value={stockAdjustAmount[item.id] || ''}
-                      onChange={(e) => setStockAdjustAmount(prev => ({ ...prev, [item.id]: e.target.value }))}
-                      style={{ width: '90px' }}
-                    />
-                    <button type="button" className="udhr-btn-neutral" onClick={() => handleAdjustStock(item.id)}>Adjust</button>
+                    <button type="button" className="udhr-btn-neutral"
+                      onClick={() => (stockEdit?.id === item.id ? setStockEdit(null) : openStockEdit(item, 'delivery'))}>
+                      {stockEdit?.id === item.id ? 'Close' : 'Update stock'}
+                    </button>
                   </div>
+                  {stockEdit?.id === item.id && (
+                    <div style={{ flexBasis: '100%', marginTop: '10px', padding: '14px', borderRadius: '10px', background: 'var(--udhr-bg)', border: '1px solid var(--udhr-border-subtle)' }}>
+                      <div className="udhr-segmented" style={{ marginBottom: '12px', flexWrap: 'wrap' }}>
+                        {[['delivery', 'Delivery arrived'], ['remove', 'Remove stock'], ['count', 'I counted the shelf'], ['details', 'Fix expiry / reorder level']].map(([mode, label]) => (
+                          <button key={mode} type="button" className={`udhr-segmented-btn ${stockEdit.mode === mode ? 'active' : ''}`}
+                            onClick={() => openStockEdit(item, mode)}>{label}</button>
+                        ))}
+                      </div>
+                      <form onSubmit={(e) => { e.preventDefault(); handleStockUpdate(item); }}
+                        style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                        {stockEdit.mode === 'delivery' && (<>
+                          <label className="udhr-label" style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>How many arrived ({item.unit})
+                            <input type="number" min="1" max="10000" className="udhr-input" value={stockEdit.qty} autoFocus required
+                              onChange={(e) => setStockEdit({ ...stockEdit, qty: e.target.value })} style={{ width: '140px' }} />
+                          </label>
+                          <label className="udhr-label" style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>Expiry date on the box
+                            <input type="date" className="udhr-input" value={stockEdit.expiry}
+                              onChange={(e) => setStockEdit({ ...stockEdit, expiry: e.target.value })} />
+                          </label>
+                        </>)}
+                        {stockEdit.mode === 'remove' && (<>
+                          <label className="udhr-label" style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>How many to remove ({item.unit})
+                            <input type="number" min="1" max={item.quantityOnHand} className="udhr-input" value={stockEdit.qty} autoFocus required
+                              onChange={(e) => setStockEdit({ ...stockEdit, qty: e.target.value })} style={{ width: '140px' }} />
+                          </label>
+                          <label className="udhr-label" style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>Why
+                            <select className="udhr-input" value={stockEdit.reason} onChange={(e) => setStockEdit({ ...stockEdit, reason: e.target.value })}>
+                              <option>Damaged</option>
+                              <option>Expired</option>
+                              <option>Lost or missing</option>
+                              <option>Returned to supplier</option>
+                              <option>Other</option>
+                            </select>
+                          </label>
+                          {stockEdit.reason === 'Other' && (
+                            <label className="udhr-label" style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>Say what happened
+                              <input type="text" className="udhr-input" value={stockEdit.otherReason} maxLength={150} required
+                                onChange={(e) => setStockEdit({ ...stockEdit, otherReason: e.target.value })} />
+                            </label>
+                          )}
+                        </>)}
+                        {stockEdit.mode === 'count' && (
+                          <label className="udhr-label" style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>How many are on the shelf now ({item.unit})
+                            <input type="number" min="0" max="10000" className="udhr-input" value={stockEdit.qty} autoFocus required
+                              onChange={(e) => setStockEdit({ ...stockEdit, qty: e.target.value })} style={{ width: '160px' }} />
+                          </label>
+                        )}
+                        {stockEdit.mode === 'details' && (<>
+                          <label className="udhr-label" style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>Expiry date
+                            <input type="date" className="udhr-input" value={stockEdit.expiry}
+                              onChange={(e) => setStockEdit({ ...stockEdit, expiry: e.target.value })} />
+                          </label>
+                          <label className="udhr-label" style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>Reorder when below
+                            <input type="number" min="0" max="10000" className="udhr-input" value={stockEdit.reorder}
+                              onChange={(e) => setStockEdit({ ...stockEdit, reorder: e.target.value })} style={{ width: '120px' }} />
+                          </label>
+                        </>)}
+                        <button type="submit" className="udhr-btn-primary" style={{ width: 'auto' }}>Save</button>
+                      </form>
+                      <p className="udhr-row-subtitle" style={{ marginTop: '8px', marginBottom: 0 }}>
+                        {stockEdit.mode === 'delivery' && 'Adds to what\'s on hand. Dispensing takes stock off by itself.'}
+                        {stockEdit.mode === 'remove' && 'Takes stock off for something other than dispensing. The reason is kept in the stock history.'}
+                        {stockEdit.mode === 'count' && `The system has ${item.quantityOnHand}. Type what you actually counted; the difference is saved as a stock count correction.`}
+                        {stockEdit.mode === 'details' && 'Changes the details only, not the quantity.'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))
             )}

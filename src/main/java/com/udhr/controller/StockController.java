@@ -146,6 +146,45 @@ public class StockController {
         }
     }
 
+    /** "I counted the shelf": sets the exact number on hand; the difference goes in the history. */
+    @PostMapping("/{stockItemId}/count")
+    public ResponseEntity<?> countStock(@PathVariable Long stockItemId, @RequestBody java.util.Map<String, Object> body,
+                                        HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+        try {
+            Object raw = body.get("countedQuantity");
+            Integer counted = raw == null ? null : Integer.valueOf(String.valueOf(raw).trim());
+            Object note = body.get("notes");
+            return ResponseEntity.ok(stockService.countStock(stockItemId, counted, note == null ? null : String.valueOf(note), staffNumber));
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(java.util.Map.of("message", e.getMessage()));
+        } catch (NumberFormatException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", "Enter a whole number"));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
+        }
+    }
+
+    /** Corrects an item's expiry date, reorder level or unit. */
+    @PutMapping("/{stockItemId}")
+    public ResponseEntity<?> updateStockItem(@PathVariable Long stockItemId, @RequestBody com.udhr.dto.StockItemRequest body,
+                                             HttpServletRequest request) {
+        String staffNumber = extractStaffNumber(request);
+        if (staffNumber == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or missing token");
+        }
+        try {
+            return ResponseEntity.ok(stockService.updateDetails(stockItemId, body, staffNumber));
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(java.util.Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(java.util.Map.of("message", e.getMessage()));
+        }
+    }
+
     @GetMapping("/report")
     public ResponseEntity<?> getReport(
             @RequestParam(required = false) String startDate,

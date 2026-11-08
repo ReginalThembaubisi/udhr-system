@@ -862,7 +862,8 @@ function App() {
   // password over. Never fetched again — the server only ever returns it here.
   const [resetResult, setResetResult] = useState(null);
   const [dispenseHistory, setDispenseHistory] = useState([]);
-  const [dispenseLogForm, setDispenseLogForm] = useState({ prescriptionId: '', quantityDispensed: '', daysSupply: '', pharmacyNotes: '' });
+  // Quantity to hand over per prescription; starts as the prescription's own total.
+  const [dispenseQuantity, setDispenseQuantity] = useState({});
 
   // Setup Authorization headers
   const getAuthHeaders = () => {
@@ -1825,18 +1826,27 @@ function App() {
     if (warnings && !window.confirm(`ALLERGY WARNING\n\n${warnings.join('\n')}\n\nHave you confirmed with the prescriber and the patient that it is safe to dispense?`)) {
       return;
     }
+    const prescription = pharmacyRecord?.pendingPrescriptions?.find(p => p.id === prescriptionId);
+    const quantity = (dispenseQuantity[prescriptionId] ?? prescription?.totalQuantity ?? '').trim();
     try {
       const response = await apiFetch(`/api/pharmacy/dispense/${prescriptionId}`, {
         method: 'POST',
-        headers: getAuthHeaders()
+        headers: getAuthHeaders(),
+        body: JSON.stringify(quantity ? { quantityDispensed: quantity } : {})
       });
       const data = await parseResponseBody(response);
       if (!response.ok) {
         throw new Error(data.message || 'Failed to dispense prescription');
       }
-      setSuccessMessage('Marked as dispensed.');
-      handleSearchPharmacyPatient();
+      const medicine = data.prescription?.medication || prescription?.medication || 'medicine';
+      const done = `Dispensed ${data.quantityDispensed && data.quantityDispensed !== 'As prescribed' ? data.quantityDispensed + ' of ' : ''}${medicine}.`
+        + (data.stockLeft ? ` ${data.stockItem}: ${data.stockLeft} left.` : ' This medicine is not tracked in stock.');
+      setDispenseQuantity(prev => { const next = { ...prev }; delete next[prescriptionId]; return next; });
+      if (pharmacyRecord) fetchDispenseHistoryForPatient(pharmacyRecord.patient.id);
+      // Reloading the patient clears messages, so the confirmation comes after.
+      await handleSearchPharmacyPatient();
       fetchPharmacyQueue();
+      setSuccessMessage(done);
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -2726,26 +2736,6 @@ function App() {
       const response = await apiFetch(`/api/dispensing/patient/${patientId}`, { headers: getAuthHeaders() });
       const data = await parseResponseBody(response);
       if (response.ok) setDispenseHistory(data);
-    } catch (err) {
-      setErrorMessage(err.message);
-    }
-  };
-
-  const handleLogDispense = async (e) => {
-    e.preventDefault();
-    setErrorMessage('');
-    setSuccessMessage('');
-    try {
-      const response = await apiFetch('/api/dispensing', {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(dispenseLogForm)
-      });
-      const data = await parseResponseBody(response);
-      if (!response.ok) throw new Error(data.message || 'Failed to log dispense');
-      setSuccessMessage('Dispense event logged and stock updated.');
-      setDispenseLogForm({ prescriptionId: '', quantityDispensed: '', daysSupply: '', pharmacyNotes: '' });
-      if (pharmacyRecord) fetchDispenseHistoryForPatient(pharmacyRecord.patient.id);
     } catch (err) {
       setErrorMessage(err.message);
     }
@@ -5622,8 +5612,12 @@ function App() {
                   Object.values(pharmacyQueue.reduce((byPatient, item) => {
                     const entry = byPatient[item.patient.id] || { ...item, prescriptionCount: 0, doctors: [] };
                     entry.prescriptionCount += item.pendingPrescriptions.length;
-                    const doctor = item.currentVisit.staff ? `${item.currentVisit.staff.firstName} ${item.currentVisit.staff.lastName}` : 'doctor';
-                    if (!entry.doctors.includes(doctor)) entry.doctors.push(doctor);
+                    // The prescribing doctor, not whoever opened the visit
+                    // (that was the front desk: "from Front Desk Clerk").
+                    for (const p of item.pendingPrescriptions) {
+                      const doctor = p.doctor ? `${p.doctor.firstName} ${p.doctor.lastName}` : 'doctor';
+                      if (!entry.doctors.includes(doctor)) entry.doctors.push(doctor);
+                    }
                     byPatient[item.patient.id] = entry;
                     return byPatient;
                   }, {})).map(item => (
@@ -5662,8 +5656,8 @@ function App() {
                 </div>
                 {pharmacyRecord.currentVisit ? (
                   <p className="udhr-row-subtitle" style={{ marginTop: '8px' }}>
-                    Coming from: {pharmacyRecord.currentVisit.staff ? `${pharmacyRecord.currentVisit.staff.firstName} ${pharmacyRecord.currentVisit.staff.lastName} (${pharmacyRecord.currentVisit.staff.role})` : 'Unknown staff member'} — {pharmacyRecord.currentVisit.reason}
-                    <br />Visit status: <span className="udhr-tag info" style={{ marginLeft: '4px' }}>{pharmacyRecord.currentVisit.status}</span>
+                    Reason for visit: {pharmacyRecord.currentVisit.reason}
+                    <br />Visit status: <span className="udhr-tag info" style={{ marginLeft: '4px' }}>{visitStatusLabel(pharmacyRecord.currentVisit.status)}</span>
                   </p>
                 ) : (
                   <p className="udhr-row-subtitle" style={{ marginTop: '8px' }}>No visit on file for this patient yet.</p>
@@ -5684,7 +5678,10 @@ function App() {
                     <div key={p.id} className="udhr-list-row">
                       <div>
                         <p className="udhr-row-title">{p.medication}</p>
-                        <p className="udhr-row-subtitle">{p.dosage} · {p.frequency}</p>
+                        <p className="udhr-row-subtitle">
+                          {p.dosage} · {p.frequency}{p.durationDays ? ` · ${p.durationDays} days` : ''}
+                          {p.totalQuantity && <> · <strong>hand over {p.totalQuantity}</strong></>}
+                        </p>
                         <p className="udhr-row-subtitle">Prescribed by {p.doctor ? `${p.doctor.firstName} ${p.doctor.lastName}` : 'doctor'} on {formatDate(p.createdAt)}</p>
                         {p.notes && <p className="udhr-row-subtitle" style={{ fontStyle: 'italic' }}>{p.notes}</p>}
                         {pharmacyRecord.allergyWarnings?.[p.id] && (
@@ -5699,55 +5696,43 @@ function App() {
                           </div>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDispense(p.id)}
-                        style={{ padding: '8px 14px', border: 'none', borderRadius: '8px', background: 'var(--udhr-success)', color: '#fff', fontSize: '15.5px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
-                      >
-                        Mark dispensed
-                      </button>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'stretch', flexShrink: 0, width: '190px' }}>
+                        <label className="udhr-label" htmlFor={`dispense-qty-${p.id}`} style={{ margin: 0 }}>Quantity to hand over</label>
+                        <input
+                          id={`dispense-qty-${p.id}`}
+                          type="text"
+                          className="udhr-input"
+                          value={dispenseQuantity[p.id] ?? p.totalQuantity ?? ''}
+                          onChange={(e) => setDispenseQuantity(prev => ({ ...prev, [p.id]: e.target.value }))}
+                          placeholder="e.g. 30 tablets"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleDispense(p.id)}
+                          style={{ padding: '8px 14px', border: 'none', borderRadius: '8px', background: 'var(--udhr-success)', color: '#fff', fontSize: '15.5px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                        >
+                          Dispense
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}
               </div>
             </div>
 
-            <div className="udhr-record-card">
-              <div className="udhr-record-body">
-                <h3 style={{ fontSize: '16.5px', fontWeight: 700, margin: '0 0 14px' }}>Log dispense event</h3>
-                <form onSubmit={handleLogDispense} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div className="udhr-form-group" style={{ marginBottom: 0 }}>
-                    <label className="udhr-label">Prescription ID</label>
-                    <input type="number" className="udhr-input" placeholder="Prescription ID" value={dispenseLogForm.prescriptionId} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, prescriptionId: e.target.value })} required />
-                  </div>
-                  <div className="udhr-form-group" style={{ marginBottom: 0 }}>
-                    <label className="udhr-label">Quantity dispensed</label>
-                    <input type="text" className="udhr-input" placeholder="Quantity dispensed (e.g. 30 tablets)" value={dispenseLogForm.quantityDispensed} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, quantityDispensed: e.target.value })} required />
-                  </div>
-                  <div className="udhr-form-group" style={{ marginBottom: 0 }}>
-                    <label className="udhr-label">Days supply</label>
-                    <input type="number" className="udhr-input" placeholder="Days supply" value={dispenseLogForm.daysSupply} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, daysSupply: e.target.value })} />
-                  </div>
-                  <div className="udhr-form-group" style={{ marginBottom: 0 }}>
-                    <label className="udhr-label">Pharmacy notes (optional)</label>
-                    <input type="text" className="udhr-input" placeholder="Pharmacy notes" value={dispenseLogForm.pharmacyNotes} onChange={(e) => setDispenseLogForm({ ...dispenseLogForm, pharmacyNotes: e.target.value })} />
-                  </div>
-                  <button type="submit" className="udhr-btn-neutral" style={{ gridColumn: '1 / -1' }}>Log dispense</button>
-                </form>
-
-                {dispenseHistory.length > 0 && (
-                  <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: '1px dashed var(--udhr-border)' }}>
-                    <p style={{ fontSize: '15px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Dispense history</p>
-                    {dispenseHistory.map(d => (
-                      <div key={d.id} className="udhr-list-row">
-                        <p className="udhr-row-title" style={{ fontSize: '16px' }}>{d.prescription.medication} — {d.quantityDispensed}{d.daysSupply ? ` (${d.daysSupply} days)` : ''}</p>
-                        <p className="udhr-row-subtitle">by {d.dispensedBy.firstName} {d.dispensedBy.lastName} on {formatDate(d.dispensedAt)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+            {dispenseHistory.length > 0 && (
+              <div className="udhr-record-card">
+                <div className="udhr-record-body">
+                  <p style={{ fontSize: '15px', fontWeight: 700, color: 'var(--udhr-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 10px' }}>Dispense history</p>
+                  {dispenseHistory.map(d => (
+                    <div key={d.id} className="udhr-list-row">
+                      <p className="udhr-row-title" style={{ fontSize: '16px' }}>{d.prescription.medication} — {d.quantityDispensed}{d.daysSupply ? ` (${d.daysSupply} days)` : ''}</p>
+                      <p className="udhr-row-subtitle">by {d.dispensedBy.firstName} {d.dispensedBy.lastName} on {formatDate(d.dispensedAt)}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </>
         ) : null}
       </>

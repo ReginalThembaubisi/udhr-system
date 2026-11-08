@@ -2,6 +2,12 @@ package com.udhr.service;
 
 import com.udhr.dto.PharmacyLookupResponse;
 import com.udhr.model.Allergy;
+import com.udhr.model.Dispense;
+import com.udhr.model.StockItem;
+import com.udhr.repository.DispenseRepository;
+import com.udhr.util.DispenseQuantity;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.LocalDate;
 import com.udhr.model.Patient;
 import com.udhr.model.Prescription;
 import com.udhr.model.Staff;
@@ -43,6 +49,12 @@ public class PharmacyService {
 
     @Autowired
     private AllergyCheckService allergyCheckService;
+
+    @Autowired
+    private DispenseRepository dispenseRepository;
+
+    @Autowired
+    private StockService stockService;
 
     /**
      * Pharmacist looks the patient up by ID number or MRN — no need to ask
@@ -102,22 +114,64 @@ public class PharmacyService {
                 .collect(Collectors.toList());
     }
 
+    /** The outcome of one dispensing: the closed prescription and its dispensing record. */
+    public record Dispensed(Prescription prescription, Dispense dispense, StockItem stockItem) {}
+
     public Prescription dispense(Long prescriptionId, String staffNumber) {
-        Prescription prescription = prescriptionRepository.findById(prescriptionId)
-                .orElseThrow(() -> new RuntimeException("Prescription not found"));
+        return dispense(prescriptionId, staffNumber, null, null, null).prescription();
+    }
 
-        if (Boolean.TRUE.equals(prescription.getDispensed())) {
-            throw new RuntimeException("Prescription already dispensed");
-        }
-
+    /**
+     * Hands over a prescription: the one dispensing path (fix list P1-9). It
+     * used to be two that disagreed: "Mark dispensed" closed the prescription
+     * without touching stock, and "Log dispense event" took stock without
+     * closing it, even for a prescription already handed over. Now both:
+     * check the prescription can still be dispensed (P1-10), work out the
+     * quantity when none is typed (2 tablets twice daily for 5 days = 20
+     * tablets), take it from the matching stock item, keep the dispensing
+     * record, close the prescription and, when it was the last one, the visit.
+     */
+    @Transactional
+    public Dispensed dispense(Long prescriptionId, String staffNumber, String quantityText, Integer daysSupply, String notes) {
         Staff pharmacist = staffRepository.findByStaffNumber(staffNumber)
                 .orElseThrow(() -> new RuntimeException("Logged in staff not found"));
+        // Locked until this transaction ends: a second "Dispense" waits, then
+        // sees the prescription already dispensed.
+        Prescription prescription = prescriptionRepository.findByIdForUpdate(prescriptionId)
+                .orElseThrow(() -> new RuntimeException("Prescription not found"));
 
         // Prescription ids are sequential; without this a pharmacist anywhere
         // could close out another facility's prescriptions by trying ids.
         if (!isAtFacility(prescription, pharmacist)) {
             throw new AccessDeniedException("This prescription was issued at another facility");
         }
+        if (Boolean.TRUE.equals(prescription.getDispensed())) {
+            throw new RuntimeException("Prescription already dispensed");
+        }
+        if (!Boolean.TRUE.equals(prescription.getActive())) {
+            throw new RuntimeException("This prescription has been stopped and can't be dispensed");
+        }
+        if (prescription.getEndDate() != null && prescription.getEndDate().isBefore(LocalDate.now())) {
+            throw new RuntimeException("This prescription ended on " + prescription.getEndDate()
+                    + ". Ask the doctor for a new one.");
+        }
+
+        String quantity = quantityText != null && !quantityText.isBlank()
+                ? quantityText.trim()
+                : DispenseQuantity.total(prescription).orElse(null);
+        // Throws (and nothing is saved) on expired or short stock.
+        StockItem drawnFrom = stockService.decrementForDispense(pharmacist.getFacility(), prescription.getMedication(),
+                quantity, pharmacist, prescription.getId());
+
+        Dispense record = new Dispense();
+        record.setPrescription(prescription);
+        record.setPatient(prescription.getPatient());
+        record.setFacility(pharmacist.getFacility());
+        record.setDispensedBy(pharmacist);
+        record.setQuantityDispensed(quantity != null ? quantity : "As prescribed");
+        record.setDaysSupply(daysSupply != null ? daysSupply : (int) DispenseQuantity.days(prescription));
+        record.setPharmacyNotes(notes);
+        Dispense savedRecord = dispenseRepository.save(record);
 
         prescription.setDispensed(true);
         prescription.setDispensedAt(LocalDateTime.now());
@@ -138,11 +192,13 @@ public class PharmacyService {
         }
 
         auditService.recordChange(pharmacist, saved.getPatient(), "DISPENSE_PRESCRIPTION",
-                "Dispensed " + saved.getMedication() + " (prescription #" + saved.getId() + ")",
+                "Dispensed " + (quantity != null ? quantity + " of " : "") + saved.getMedication()
+                        + " (prescription #" + saved.getId() + ")"
+                        + (drawnFrom != null ? " from stock item " + drawnFrom.getMedicationName() : ""),
                 "Pending dispensing",
                 "Dispensed on " + saved.getDispensedAt());
 
-        return saved;
+        return new Dispensed(saved, savedRecord, drawnFrom);
     }
 
     private boolean isAtFacility(Prescription prescription, Staff staff) {

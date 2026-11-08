@@ -85,4 +85,13 @@ public class Prescription {
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
     }
+
+    // For the pharmacy screen: "5 days", "10 tablets". Calculated, not stored.
+    public long getDurationDays() {
+        return com.udhr.util.DispenseQuantity.days(this);
+    }
+
+    public String getTotalQuantity() {
+        return com.udhr.util.DispenseQuantity.total(this).orElse(null);
+    }
 }

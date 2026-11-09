@@ -3820,9 +3820,6 @@ function App() {
                 <button type="submit" className="udhr-btn-primary" disabled={loading} aria-busy={loading}>
                   {loading ? t('login.submitting') : t('login.submit')}
                 </button>
-                {loading && <p className="udhr-row-subtitle" role="status" style={{ marginTop: '10px' }}>
-                  Connecting securely… If the server does not respond, you will see an error instead of waiting indefinitely.
-                </p>}
               </form>
             )}
           </div>

@@ -155,7 +155,7 @@ public class ClinicalAlertController {
     public ResponseEntity<?> getLoggedInPatientAlerts() {
         try {
             String idNumber = getLoggedInPatientId();
-            Patient patient = patientRepository.findByIdNumber(idNumber)
+            Patient patient = patientRepository.findBySessionId(idNumber)
                     .orElseThrow(() -> new RuntimeException("Patient not found"));
             List<ClinicalAlert> activeAlerts = alertRepository.findByPatientIdAndIsResolvedFalse(patient.getId());
             return ResponseEntity.ok(activeAlerts);
@@ -168,7 +168,7 @@ public class ClinicalAlertController {
     public ResponseEntity<?> getPatientDrugFoodConflicts() {
         try {
             String idNumber = getLoggedInPatientId();
-            Patient patient = patientRepository.findByIdNumber(idNumber)
+            Patient patient = patientRepository.findBySessionId(idNumber)
                     .orElseThrow(() -> new RuntimeException("Patient not found"));
             List<Map<String, Object>> conflicts = drugFoodAuditService.auditDrugFoodConflicts(patient.getId());
             return ResponseEntity.ok(conflicts);

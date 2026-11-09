@@ -146,7 +146,7 @@ public class ReferralService {
     // The patient's most recent still-relevant referral — the "letter" to
     // present at the destination facility's front desk.
     public Referral getActiveReferralForPatient(String idNumber) {
-        Patient patient = patientRepository.findByIdNumber(idNumber)
+        Patient patient = patientRepository.findBySessionId(idNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
         return referralRepository.findByPatientIdOrderByReferredAtDesc(patient.getId()).stream()
                 .filter(r -> r.getStatus() == Referral.Status.PENDING || r.getStatus() == Referral.Status.ACCEPTED)

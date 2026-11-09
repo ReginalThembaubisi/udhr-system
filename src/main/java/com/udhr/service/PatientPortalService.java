@@ -225,13 +225,16 @@ public class PatientPortalService {
     /** A fresh access token and refresh token, after sign-in or a refresh. */
     public PatientLoginResponse buildSession(Patient patient) {
         boolean requiresPinChange = Boolean.TRUE.equals(patient.getMustChangePortalPin());
-        String token = jwtUtil.generatePatientToken(patient.getIdNumber(), requiresPinChange);
+        // SA ID number when the patient has one, otherwise the file number (MRN).
+        String sessionId = patient.getIdNumber() != null && !patient.getIdNumber().isBlank()
+                ? patient.getIdNumber() : patient.getMrn();
+        String token = jwtUtil.generatePatientToken(sessionId, requiresPinChange);
         String fullName = patient.getFirstName() + " " + patient.getLastName();
 
         return new PatientLoginResponse(
                 token,
                 tokenService.issueRefreshToken(patient),
-                patient.getIdNumber(),
+                sessionId,
                 fullName,
                 "PATIENT",
                 requiresPinChange
@@ -281,7 +284,7 @@ public class PatientPortalService {
     }
 
     public Patient getPatientProfile(String idNumber) {
-        Patient patient = patientRepository.findByIdNumber(idNumber)
+        Patient patient = patientRepository.findBySessionId(idNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
         auditService.recordEvent(null, patient, "PATIENT_VIEW_PROFILE",
                 "viewed their patient portal profile", "PATIENT", patient.getId());
@@ -289,7 +292,7 @@ public class PatientPortalService {
     }
 
     public PatientRecordResponse getPatientRecord(String idNumber) {
-        Patient patient = patientRepository.findByIdNumber(idNumber)
+        Patient patient = patientRepository.findBySessionId(idNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
         List<Allergy> allergies = allergyRepository.findByPatientId(patient.getId());

@@ -75,7 +75,7 @@ public class ReminderService {
 
     @Transactional
     public List<MedicationAdherence> getTodayAdherenceLogsForPatient(String idNumber) {
-        Patient patient = patientRepository.findByIdNumber(idNumber)
+        Patient patient = patientRepository.findBySessionId(idNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
         LocalDate today = LocalDate.now();

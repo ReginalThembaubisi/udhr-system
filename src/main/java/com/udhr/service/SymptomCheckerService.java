@@ -39,7 +39,7 @@ public class SymptomCheckerService {
 
     @Transactional
     public SymptomCheck performSymptomCheck(String patientIdNumber, List<Long> symptomIds) {
-        Patient patient = patientRepository.findByIdNumber(patientIdNumber)
+        Patient patient = patientRepository.findBySessionId(patientIdNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
         List<Symptom> selectedSymptoms = symptomRepository.findAllById(symptomIds);
@@ -99,7 +99,7 @@ public class SymptomCheckerService {
     }
 
     public List<SymptomCheck> getPatientHistory(String patientIdNumber) {
-        Patient patient = patientRepository.findByIdNumber(patientIdNumber)
+        Patient patient = patientRepository.findBySessionId(patientIdNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
         return symptomCheckRepository.findByPatientIdOrderByCheckedAtDesc(patient.getId());
     }

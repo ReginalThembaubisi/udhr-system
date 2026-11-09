@@ -89,7 +89,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // choose a new PIN (or sign out) before accessing medical data.
                 boolean patientMustChangePin = "PATIENT".equals(role)
                         && (jwtUtil.extractMustChangePin(token)
-                            || patientRepository.findByIdNumber(staffNumber)
+                            || patientRepository.findBySessionId(staffNumber)
                                     .map(p -> Boolean.TRUE.equals(p.getMustChangePortalPin()))
                                     .orElse(false));
                 if (patientMustChangePin

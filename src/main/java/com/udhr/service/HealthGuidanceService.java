@@ -30,7 +30,7 @@ public class HealthGuidanceService {
     private MedicationWarningService medicationWarningService;
 
     public HealthGuidanceResponse getPersonalGuidance(String patientIdNumber) {
-        Patient patient = patientRepository.findByIdNumber(patientIdNumber)
+        Patient patient = patientRepository.findBySessionId(patientIdNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
         // Fetch patient conditions and allergies

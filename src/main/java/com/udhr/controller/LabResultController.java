@@ -78,7 +78,7 @@ public class LabResultController {
     public ResponseEntity<?> getMyLabResults() {
         try {
             String idNumber = (String) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-            Patient patient = patientRepository.findByIdNumber(idNumber)
+            Patient patient = patientRepository.findBySessionId(idNumber)
                     .orElseThrow(() -> new RuntimeException("Patient not found"));
             List<LabResult> labResults = labResultService.getLabResultsByPatient(patient.getId());
             return ResponseEntity.ok(labResults);

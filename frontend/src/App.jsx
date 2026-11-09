@@ -317,6 +317,7 @@ function parseStockList(text, stockItems) {
     if (!name) problem = 'Medication name is missing';
     else if (seen.has(name.toLowerCase())) problem = `Already listed above (${seen.get(name.toLowerCase())})`;
     else if (!Number.isInteger(quantity) || quantity < 0) problem = `Quantity "${qtyText}" isn't a whole number`;
+    else if (quantity > 10000) problem = `Quantity ${quantity} is more than 10,000: probably a typing mistake`;
     else if (reorder !== null && (!Number.isInteger(reorder) || reorder < 0)) problem = `Reorder level "${reorderText}" isn't a whole number`;
     else if (expiry === null) problem = `Expiry date "${expiryText}" isn't a date (use 2027-06-30)`;
     else if (expiry && expiry < today) problem = `Expired on ${expiry}`;

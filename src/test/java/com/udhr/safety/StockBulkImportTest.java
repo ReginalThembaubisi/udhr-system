@@ -67,10 +67,12 @@ class StockBulkImportTest {
                 row("", "tablets", 5, null, null),
                 row("Bulk Bad Expired", "tablets", 10, null, LocalDate.now().minusDays(3).toString()),
                 row("zz bulk bad one", "tablets", 1, null, null),
-                row("Bulk Bad Negative", "tablets", -4, null, null)), 400));
-        assertThat(refused.get("errors")).hasSize(4);
+                row("Bulk Bad Negative", "tablets", -4, null, null),
+                row("Bulk Bad Typo", "tablets", 500001, null, null)), 400));
+        assertThat(refused.get("errors")).hasSize(5);
         assertThat(refused.get("errors").toString())
-                .contains("Row 2").contains("missing").contains("expired").contains("already in row 1").contains("negative");
+                .contains("Row 2").contains("missing").contains("expired").contains("already in row 1").contains("negative")
+                .contains("Row 6").contains("more than 10,000");
         // Nothing was saved, not even the good first row.
         assertThat(stockItemRepository.findByFacilityIdAndMedicationNameIgnoreCase(facilityId, "Zz Bulk Bad One")).isEmpty();
     }

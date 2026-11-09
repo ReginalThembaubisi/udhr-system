@@ -317,6 +317,7 @@ function parseStockList(text, stockItems) {
     if (!name) problem = 'Medication name is missing';
     else if (seen.has(name.toLowerCase())) problem = `Already listed above (${seen.get(name.toLowerCase())})`;
     else if (!Number.isInteger(quantity) || quantity < 0) problem = `Quantity "${qtyText}" isn't a whole number`;
+    else if (quantity > 10000) problem = `Quantity ${quantity} is more than 10,000: probably a typing mistake`;
     else if (reorder !== null && (!Number.isInteger(reorder) || reorder < 0)) problem = `Reorder level "${reorderText}" isn't a whole number`;
     else if (expiry === null) problem = `Expiry date "${expiryText}" isn't a date (use 2027-06-30)`;
     else if (expiry && expiry < today) problem = `Expired on ${expiry}`;
@@ -2993,6 +2994,22 @@ function App() {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
+    // Already on the list? Don't make a second entry: open that medicine's
+    // "Delivery arrived" form with the quantity and expiry filled in.
+    const name = (newStockItemForm.medicationName || '').trim().toLowerCase();
+    const existing = stockItems.find(item => (item.medicationName || '').trim().toLowerCase() === name);
+    if (existing) {
+      const qty = parseInt(newStockItemForm.quantityOnHand, 10);
+      setStockEdit({
+        id: existing.id, mode: 'delivery', qty: qty > 0 ? String(qty) : '', reason: 'Damaged', otherReason: '',
+        expiry: newStockItemForm.expiryDate || existing.expiryDate || '', reorder: String(existing.reorderLevel ?? '')
+      });
+      setSuccessMessage(`${existing.medicationName} is already on your list (${existing.quantityOnHand} ${existing.unit}). `
+        + 'Its "Delivery arrived" form is open below with your numbers: check them and press Save to add them.');
+      setNewStockItemForm({ medicationName: '', unit: 'tablets', quantityOnHand: 0, reorderLevel: 10, expiryDate: '' });
+      setTimeout(() => document.getElementById(`stock-row-${existing.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+      return;
+    }
     try {
       const response = await apiFetch('/api/stock', {
         method: 'POST',
@@ -3803,9 +3820,6 @@ function App() {
                 <button type="submit" className="udhr-btn-primary" disabled={loading} aria-busy={loading}>
                   {loading ? t('login.submitting') : t('login.submit')}
                 </button>
-                {loading && <p className="udhr-row-subtitle" role="status" style={{ marginTop: '10px' }}>
-                  Connecting securely… If the server does not respond, you will see an error instead of waiting indefinitely.
-                </p>}
               </form>
             )}
           </div>
@@ -6487,7 +6501,7 @@ function App() {
               <p className="udhr-empty-note">No stock items tracked yet. Add one above.</p>
             ) : (
               stockItems.map(item => (
-                <div key={item.id} className="udhr-list-row" style={{ flexWrap: 'wrap' }}>
+                <div key={item.id} id={`stock-row-${item.id}`} className="udhr-list-row" style={{ flexWrap: 'wrap' }}>
                   <div>
                     <p className="udhr-row-title">
                       {item.medicationName}{' '}

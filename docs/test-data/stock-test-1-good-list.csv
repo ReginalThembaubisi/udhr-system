@@ -1,0 +1,16 @@
+Medication name,Unit,Quantity,Reorder level,Expiry date (YYYY-MM-DD)
+Paracetamol 500mg,tablets,1000,200,2027-06-30
+Amoxicillin 500mg,capsules,500,100,2027-03-31
+Ibuprofen 400mg,tablets,600,120,2027-09-30
+Metformin 500mg,tablets,800,150,2028-01-31
+Amlodipine 5mg,tablets,400,80,2027-12-31
+Enalapril 10mg,tablets,300,60,2027-11-30
+Hydrochlorothiazide 12.5mg,tablets,300,60,2028-02-29
+Atorvastatin 20mg,tablets,250,50,2027-10-31
+Salbutamol inhaler 100mcg,inhalers,60,15,2027-08-31
+Cotrimoxazole 480mg,tablets,400,80,2027-07-31
+Ferrous sulphate 200mg,tablets,500,100,2028-03-31
+Folic acid 5mg,tablets,500,100,2028-04-30
+Oral rehydration salts,sachets,200,50,2027-12-31
+Chlorphenamine 4mg,tablets,300,60,2027-05-31
+Omeprazole 20mg,capsules,280,56,2027-10-31

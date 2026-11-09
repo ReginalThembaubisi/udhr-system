@@ -53,7 +53,7 @@ public class StockService {
         Facility facility = staff.getFacility();
 
         if (stockItemRepository.existsByFacilityIdAndMedicationNameIgnoreCase(facility.getId(), request.getMedicationName())) {
-            throw new RuntimeException("This medication is already tracked at your facility — use Receive Stock to add quantity instead");
+            throw new RuntimeException("This medication is already on your stock list. Find it in the list and use Update stock, then Delivery arrived, to add to it.");
         }
 
         StockItem item = new StockItem();
@@ -158,6 +158,10 @@ public class StockService {
             }
             if (row.getQuantityOnHand() != null && row.getQuantityOnHand() < 0) {
                 errors.add("Row " + number + ": the quantity for " + name + " can't be negative.");
+            }
+            if (row.getQuantityOnHand() != null && row.getQuantityOnHand() > MAX_SINGLE_CHANGE) {
+                errors.add("Row " + number + ": " + row.getQuantityOnHand() + " " + name + " is more than "
+                        + String.format("%,d", MAX_SINGLE_CHANGE) + " at once. Check the number: it's probably a typing mistake.");
             }
             if (row.getReorderLevel() != null && row.getReorderLevel() < 0) {
                 errors.add("Row " + number + ": the reorder level for " + name + " can't be negative.");

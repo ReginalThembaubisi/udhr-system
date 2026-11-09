@@ -26,6 +26,19 @@ public interface PatientRepository extends JpaRepository<Patient, Long>, org.spr
     @Query("select p from Patient p where p.mrn = :mrn")
     Optional<Patient> findByMrn(@Param("mrn") String mrn);
 
+    /**
+     * The patient a portal session belongs to. A session is keyed on the SA ID
+     * number when the patient has one, otherwise on their file number (MRN),
+     * so patients without an SA ID (foreign nationals, passport holders) can
+     * use the portal too.
+     */
+    default Optional<Patient> findBySessionId(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return Optional.empty();
+        }
+        return findByIdNumber(sessionId).or(() -> findByMrn(sessionId));
+    }
+
     @Query("select count(p) > 0 from Patient p where p.mrn = :mrn")
     boolean existsByMrn(@Param("mrn") String mrn);
 

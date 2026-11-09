@@ -30,7 +30,7 @@ public class FoodIngredientService {
     private FoodScanRepository foodScanRepository;
 
     public List<IngredientCheckResult> checkIngredients(String patientIdNumber, String rawIngredients) {
-        Patient patient = patientRepository.findByIdNumber(patientIdNumber)
+        Patient patient = patientRepository.findBySessionId(patientIdNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
         // Fetch patient conditions and allergies

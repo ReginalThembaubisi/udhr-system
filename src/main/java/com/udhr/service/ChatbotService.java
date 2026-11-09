@@ -254,7 +254,7 @@ public class ChatbotService {
     private record Part(String text, String urgency) {}
 
     public ChatbotResponse respond(String idNumber, String rawMessage) {
-        Patient patient = patientRepository.findByIdNumber(idNumber)
+        Patient patient = patientRepository.findBySessionId(idNumber)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
 
         String message = rawMessage == null ? "" : rawMessage.trim();

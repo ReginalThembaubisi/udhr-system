@@ -739,6 +739,10 @@ function App() {
   const [newResetPassword, setNewResetPassword] = useState('');
   const [newResetPasswordAgain, setNewResetPasswordAgain] = useState('');
   const [patientIdNumber, setPatientIdNumber] = useState('');
+  // How the patient identifies themselves: SA ID number, file number (MRN) or
+  // passport. The server accepts any of the three; only an SA ID fills in the
+  // date of birth by itself.
+  const [patientIdType, setPatientIdType] = useState('id');
   const [patientDob, setPatientDob] = useState('');
   const [patientPin, setPatientPin] = useState('');
   // "Forgot your PIN?": null (signing in), 'start' (ID + date of birth), or 'code'
@@ -1227,6 +1231,48 @@ function App() {
       setLoading(false);
     }
   };
+
+  // The patient's identifier box, with a choice of SA ID number, file number
+  // (MRN) or passport: not every patient has an SA ID.
+  const patientIdLabels = {
+    id: [t('login.idNumber'), t('login.idPlaceholder')],
+    mrn: ['File number (MRN)', 'e.g. MRN-2026-123456 (on your clinic card)'],
+    passport: ['Passport number', 'As on your passport'],
+  };
+  const renderPatientIdField = (inputId) => (
+    <div className="udhr-form-group">
+      <div className="udhr-segmented" role="radiogroup" aria-label="Sign in with" style={{ marginBottom: '8px' }}>
+        {[['id', 'SA ID number'], ['mrn', 'File number (MRN)'], ['passport', 'Passport']].map(([type, label]) => (
+          <button key={type} type="button" role="radio" aria-checked={patientIdType === type}
+            className={`udhr-segmented-btn ${patientIdType === type ? 'active' : ''}`}
+            onClick={() => { setPatientIdType(type); setPatientIdNumber(''); }}>{label}</button>
+        ))}
+      </div>
+      <label className="udhr-label" htmlFor={inputId}>{patientIdLabels[patientIdType][0]}</label>
+      <input
+        type="text"
+        id={inputId}
+        className="udhr-input"
+        value={patientIdNumber}
+        onChange={(e) => {
+          if (patientIdType === 'id') {
+            const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
+            setPatientIdNumber(digits);
+            // The date of birth is in the ID number, so fill it in.
+            const parsed = parseSaId(digits);
+            if (parsed?.dateOfBirth) setPatientDob(parsed.dateOfBirth);
+          } else {
+            setPatientIdNumber(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 30));
+          }
+        }}
+        inputMode={patientIdType === 'id' ? 'numeric' : 'text'}
+        autoCapitalize="characters"
+        placeholder={patientIdLabels[patientIdType][1]}
+        required
+        maxLength={patientIdType === 'id' ? 13 : 30}
+      />
+    </div>
+  );
 
   // Shown with every "new device" code: untick on a shared or public computer.
   const rememberBox = (
@@ -3676,17 +3722,7 @@ function App() {
                 <p className="udhr-row-subtitle" style={{ marginBottom: '14px' }}>
                   We'll text a code to the cellphone number on your health record. You'll use it to choose a new PIN.
                 </p>
-                <div className="udhr-form-group">
-                  <label className="udhr-label" htmlFor="resetId">{t('login.idNumber')}</label>
-                  <input type="text" id="resetId" className="udhr-input" value={patientIdNumber} inputMode="numeric" required
-                    placeholder={t('login.idPlaceholder')}
-                    onChange={(e) => {
-                      const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
-                      setPatientIdNumber(digits);
-                      const parsed = parseSaId(digits);
-                      if (parsed?.dateOfBirth) setPatientDob(parsed.dateOfBirth);
-                    }} maxLength={100} />
-                </div>
+                {renderPatientIdField('resetId')}
                 <div className="udhr-form-group">
                   <label className="udhr-label" htmlFor="resetDob">{t('login.dateOfBirth')}</label>
                   <DateOfBirthField id="resetDob" value={patientDob} onChange={setPatientDob} required />
@@ -3740,24 +3776,7 @@ function App() {
               <form onSubmit={handleLogin}>
                 {loginRole === 'patient' ? (
                   <>
-                    <div className="udhr-form-group">
-                      <label className="udhr-label" htmlFor="patientId">{t('login.idNumber')}</label>
-                      <input
-                        type="text"
-                        id="patientId"
-                        className="udhr-input"
-                        value={patientIdNumber}
-                        onChange={(e) => {
-                          const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
-                          setPatientIdNumber(digits);
-                          // The date of birth is in the ID number, so fill it in.
-                          const parsed = parseSaId(digits);
-                          if (parsed?.dateOfBirth) setPatientDob(parsed.dateOfBirth);
-                        }}
-                        inputMode="numeric"
-                        placeholder={t('login.idPlaceholder')}
-                        required maxLength={100} />
-                    </div>
+                    {renderPatientIdField('patientId')}
                     <div className="udhr-form-group">
                       <label className="udhr-label" htmlFor="patientDob">{t('login.dateOfBirth')}</label>
                       <DateOfBirthField id="patientDob" value={patientDob} onChange={setPatientDob} required />

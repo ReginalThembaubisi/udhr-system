@@ -2993,6 +2993,22 @@ function App() {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
+    // Already on the list? Don't make a second entry: open that medicine's
+    // "Delivery arrived" form with the quantity and expiry filled in.
+    const name = (newStockItemForm.medicationName || '').trim().toLowerCase();
+    const existing = stockItems.find(item => (item.medicationName || '').trim().toLowerCase() === name);
+    if (existing) {
+      const qty = parseInt(newStockItemForm.quantityOnHand, 10);
+      setStockEdit({
+        id: existing.id, mode: 'delivery', qty: qty > 0 ? String(qty) : '', reason: 'Damaged', otherReason: '',
+        expiry: newStockItemForm.expiryDate || existing.expiryDate || '', reorder: String(existing.reorderLevel ?? '')
+      });
+      setSuccessMessage(`${existing.medicationName} is already on your list (${existing.quantityOnHand} ${existing.unit}). `
+        + 'Its "Delivery arrived" form is open below with your numbers: check them and press Save to add them.');
+      setNewStockItemForm({ medicationName: '', unit: 'tablets', quantityOnHand: 0, reorderLevel: 10, expiryDate: '' });
+      setTimeout(() => document.getElementById(`stock-row-${existing.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+      return;
+    }
     try {
       const response = await apiFetch('/api/stock', {
         method: 'POST',
@@ -6487,7 +6503,7 @@ function App() {
               <p className="udhr-empty-note">No stock items tracked yet. Add one above.</p>
             ) : (
               stockItems.map(item => (
-                <div key={item.id} className="udhr-list-row" style={{ flexWrap: 'wrap' }}>
+                <div key={item.id} id={`stock-row-${item.id}`} className="udhr-list-row" style={{ flexWrap: 'wrap' }}>
                   <div>
                     <p className="udhr-row-title">
                       {item.medicationName}{' '}

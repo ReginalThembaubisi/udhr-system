@@ -53,7 +53,7 @@ public class StockService {
         Facility facility = staff.getFacility();
 
         if (stockItemRepository.existsByFacilityIdAndMedicationNameIgnoreCase(facility.getId(), request.getMedicationName())) {
-            throw new RuntimeException("This medication is already tracked at your facility — use Receive Stock to add quantity instead");
+            throw new RuntimeException("This medication is already on your stock list. Find it in the list and use Update stock, then Delivery arrived, to add to it.");
         }
 
         StockItem item = new StockItem();
